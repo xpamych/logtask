@@ -477,5 +477,6 @@ pub fn parse_file(name: &str, kind: PageKind, text: &str) -> Page {
         roots,
         order,
         mtime: None,
+        path: None,
     }
 }

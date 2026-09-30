@@ -4,16 +4,25 @@ import type { TaskDto } from "~/lib/api";
 
 export function TaskCard(props: {
   task: TaskDto;
-  onOpenPage?: (name: string) => void;
+  onOpenPage?: (name: string, uuid?: string) => void;
+  draggable?: boolean;
 }): JSX.Element {
   const t = props.task;
+
+  const onDragStart = (e: DragEvent) => {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.setData("text/plain", t.uuid);
+    e.dataTransfer.effectAllowed = "move";
+  };
 
   return (
     <button
       class="task-card"
       classList={{ "task-done": t.done }}
       title={t.content}
-      onClick={() => props.onOpenPage?.(t.page)}
+      draggable={props.draggable}
+      onDragStart={onDragStart}
+      onClick={() => props.onOpenPage?.(t.page, t.uuid)}
     >
       <div class="task-card-text">{t.content || <span class="muted">·</span>}</div>
       <div class="task-card-meta">

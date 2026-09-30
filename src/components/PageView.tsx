@@ -9,11 +9,13 @@ export function PageView(props: {
   name: string;
   onOpenPage: (name: string) => void;
   refreshKey: number;
+  focusUuid?: string | null;
 }): JSX.Element {
   const [page, setPage] = createSignal<PageDto | null>(null);
   const [backlinks, setBacklinks] = createSignal<[string, string][]>([]);
   const [open, setOpen] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  let mainEl: HTMLElement | undefined;
 
   const load = async () => {
     setError(null);
@@ -30,8 +32,21 @@ export function PageView(props: {
       }
       setPage(p);
       setBacklinks(await backlinksGet(props.name));
+      if (props.focusUuid) {
+        queueMicrotask(() => focusBlock(props.focusUuid!));
+      }
     } catch (e) {
       setError(String(e));
+    }
+  };
+
+  /// прокручивает к блоку и подсвечивает его
+  const focusBlock = (uuid: string) => {
+    const el = mainEl?.querySelector(`[data-uuid="${uuid}"]`);
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "auto" });
+      el.classList.add("block-focus");
+      window.setTimeout(() => el.classList.remove("block-focus"), 2200);
     }
   };
 
@@ -42,7 +57,7 @@ export function PageView(props: {
   });
 
   return (
-    <main class="journal">
+    <main class="journal" ref={mainEl}>
       <Show when={error()}>
         {(e) => <div class="error">{e()}</div>}
       </Show>

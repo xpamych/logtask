@@ -128,6 +128,10 @@ export async function importLogseqQueries(): Promise<number> {
   return invoke<number>("import_logseq_queries");
 }
 
+export async function taskSetStatus(uuid: string, marker: string): Promise<string> {
+  return invoke<string>("task_set_status", { uuid, marker });
+}
+
 export async function search(query: string): Promise<SearchHit[]> {
   return invoke<SearchHit[]>("search", { query });
 }

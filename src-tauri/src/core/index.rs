@@ -63,10 +63,10 @@ impl Graph {
         };
 
         if journals_dir.is_dir() {
-            self.index_subdir(&journals_dir, PageKind::Journal, &mut stats)?;
+            self.index_subdir(root, &journals_dir, PageKind::Journal, &mut stats)?;
         }
         if pages_dir.is_dir() {
-            self.index_subdir(&pages_dir, PageKind::Page, &mut stats)?;
+            self.index_subdir(root, &pages_dir, PageKind::Page, &mut stats)?;
         }
 
         // обратные ссылки
@@ -77,6 +77,7 @@ impl Graph {
 
     fn index_subdir(
         &mut self,
+        root: &Path,
         dir: &Path,
         kind: PageKind,
         stats: &mut IndexStats,
@@ -108,7 +109,8 @@ impl Graph {
             let mtime = std::fs::metadata(&path)
                 .ok()
                 .and_then(|m| m.modified().ok());
-            self.index_file_content(&name, kind, &text, mtime, stats);
+            let rel_path = path.strip_prefix(root).ok().map(|p| p.to_path_buf());
+            self.index_file_content(&name, kind, &text, mtime, stats, rel_path);
         }
         Ok(())
     }
@@ -121,6 +123,7 @@ impl Graph {
         text: &str,
         mtime: Option<std::time::SystemTime>,
         stats: &mut IndexStats,
+        path: Option<PathBuf>,
     ) {
         let parsed = parse_document(text);
         let mut roots = Vec::new();
@@ -153,6 +156,7 @@ impl Graph {
                 roots,
                 order,
                 mtime,
+                path,
             },
         );
     }
@@ -212,6 +216,74 @@ impl Graph {
         String::new()
     }
 
+    /// Меняет статус задачи и перезаписывает файл страницы на диск.
+    /// После записи файл переиндексируется (блоки/ссылки/обратные ссылки).
+    /// Возвращает имя страницы, если блок найден и сохранён.
+    pub fn set_block_status(
+        &mut self,
+        id: &Uuid,
+        status: super::model::Status,
+        root: &Path,
+    ) -> std::io::Result<Option<String>> {
+        let page_name = self.page_of_block(id);
+        if page_name.is_empty() {
+            return Ok(None);
+        }
+
+        let (kind, rel_path, roots) = {
+            let Some(page) = self.pages.get(&page_name) else {
+                return Ok(None);
+            };
+            (
+                page.kind,
+                page.path
+                    .clone()
+                    .unwrap_or_else(|| default_rel_path(&page.name, page.kind)),
+                page.roots.clone(),
+            )
+        };
+
+        let Some(block) = self.blocks.get_mut(id) else {
+            return Ok(None);
+        };
+        if block.status == Some(status) {
+            return Ok(Some(page_name));
+        }
+        block.set_status(status);
+
+        let text = super::serializer::serialize_document(&roots, &self.blocks);
+        let abs = root.join(&rel_path);
+        std::fs::write(&abs, text)?;
+
+        // переиндексация этой страницы: удалить старые блоки и добавить новые
+        let old_order = self.pages[&page_name].order.clone();
+        for old in old_order {
+            self.blocks.remove(&old);
+        }
+        let text = std::fs::read_to_string(&abs)?;
+        let mut stats = IndexStats {
+            pages: 0,
+            journals: 0,
+            blocks: 0,
+            tasks: 0,
+            links: 0,
+        };
+        self.index_file_content(&page_name, kind, &text, None, &mut stats, Some(rel_path));
+        self.rebuild_backlinks();
+
+        Ok(Some(page_name))
+    }
+}
+
+/// Путь к файлу страницы по умолчанию: journals/<name>.md или pages/<name>.md
+fn default_rel_path(name: &str, kind: super::model::PageKind) -> PathBuf {
+    match kind {
+        super::model::PageKind::Journal => PathBuf::from("journals").join(format!("{name}.md")),
+        super::model::PageKind::Page => PathBuf::from("pages").join(format!("{name}.md")),
+    }
+}
+
+impl Graph {
     /// Все имена страниц + тегов (для автодополнения [[...]])
     pub fn all_page_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self.pages.keys().cloned().collect();

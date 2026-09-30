@@ -211,6 +211,43 @@ impl Block {
             || self.props.contains_key("scheduled")
     }
 
+    /// Меняет статус задачи и маркер в raw-фрагменте так, чтобы
+    /// round-trip сериализация осталась байт-точной для остального файла.
+    pub fn set_status(&mut self, status: Status) {
+        let all_markers = [
+            "LATER",
+            "TODO",
+            "DOING",
+            "REVIEW",
+            "DONE",
+            "CANCELED",
+            "NOW",
+            "BACKLOG",
+            "WAITING",
+            "WAIT",
+            "IN-PROGRESS",
+            "STARTED",
+            "COMPLETED",
+            "CANCELLED",
+        ];
+        let lead_len = self.raw.marker_str.len() - self.raw.marker_str.trim_start().len();
+        let (lead, rest) = self.raw.marker_str.split_at(lead_len);
+
+        let mut tail = rest;
+        for m in all_markers {
+            if tail.starts_with(m) {
+                let after = &tail[m.len()..];
+                // поглощаем ровно один пробел после маркера (как в Logseq)
+                tail = after.strip_prefix(' ').unwrap_or(after);
+                break;
+            }
+        }
+
+        let marker = status.to_marker();
+        self.raw.marker_str = format!("{lead}{marker} {tail}");
+        self.status = Some(status);
+    }
+
     /// Важность: явное свойство важнее приоритета [#A]/[#B]/[#C]
     pub fn effective_importance(&self) -> Level {
         self.importance
@@ -251,6 +288,9 @@ pub struct Page {
     /// порядок блоков как в файле
     pub order: Vec<uuid::Uuid>,
     pub mtime: Option<std::time::SystemTime>,
+    /// путь к файлу относительно корня графа
+    #[serde(default)]
+    pub path: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, Default)]

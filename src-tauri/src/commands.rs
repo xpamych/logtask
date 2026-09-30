@@ -502,6 +502,38 @@ pub fn import_logseq_queries(state: tauri::State<'_, AppState>) -> Result<usize,
     Ok(imported.len())
 }
 
+/// Меняет статус задачи (drag&drop в канбане). Перезаписывает .md файл.
+#[tauri::command]
+pub async fn task_set_status(
+    uuid: String,
+    marker: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+    let status = Status::from_marker(&marker).ok_or(format!("неизвестный маркер: {marker}"))?;
+
+    let page = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .set_block_status(&id, status, &root)
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    let Some(page) = page else {
+        return Err("блок не найден в графе".into());
+    };
+
+    // переиндексируем и оповестим UI
+    crate::watcher::reindex_and_emit(&app);
+    Ok(page)
+}
+
 /// Запросы по умолчанию (пока config.edn не импортирован)
 fn default_queries() -> Vec<crate::core::query::SavedQuery> {
     use crate::core::query::{SavedQuery, TaskFilter};

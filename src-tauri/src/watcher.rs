@@ -79,7 +79,7 @@ pub fn spawn_for_current(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn reindex_and_emit(app: &AppHandle) {
+pub fn reindex_and_emit(app: &AppHandle) {
     let root: Option<PathBuf> = app.state::<AppState>().root.read().clone();
     let Some(root) = root else {
         return;

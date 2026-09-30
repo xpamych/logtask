@@ -18,10 +18,12 @@ const App: Component = () => {
   const [error, setError] = createSignal<string | null>(null);
   const [refreshKey, setRefreshKey] = createSignal(0);
   const [current, setCurrent] = createSignal<string | null>(null);
+  const [focusUuid, setFocusUuid] = createSignal<string | null>(null);
   const [tab, setTab] = createSignal<Tab>("Канбан");
 
-  const openPage = (name: string) => {
+  const openPage = (name: string, uuid?: string) => {
     if (!name) return;
+    setFocusUuid(uuid ?? null);
     setCurrent(name);
   };
 
@@ -67,7 +69,12 @@ const App: Component = () => {
         fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} />}
       >
         {(name) => (
-          <PageView name={name()} onOpenPage={openPage} refreshKey={refreshKey()} />
+          <PageView
+            name={name()}
+            onOpenPage={openPage}
+            refreshKey={refreshKey()}
+            focusUuid={focusUuid()}
+          />
         )}
       </Show>
       <aside class="taskpanel">

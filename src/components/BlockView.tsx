@@ -30,6 +30,7 @@ export function BlockView(props: {
     <div
       class="block"
       classList={{ "block-task": b.task }}
+      data-uuid={b.uuid || undefined}
       style={{ "padding-left": `${10 + b.indent * 22}px` }}
     >
       <span
