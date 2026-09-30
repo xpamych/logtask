@@ -77,6 +77,48 @@ fn roundtrip_page_with_headings() {
     roundtrip_check("pages/Arch Linux.md");
 }
 
+// --- Проблемные кейсы по ревью: round-trip должен сохранять байты ---
+// Пока ядро их не держит — тесты падают, задача следующих фаз их починить.
+
+#[test]
+fn roundtrip_page_props() {
+    // page-level свойства до первого bullet не должны теряться
+    let src = "title:: AMD\nalias:: ATI\n\n- первый блок\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
+fn roundtrip_blank_lines_position() {
+    // пустые строки остаются между теми же блоками
+    let src = "- a\n\n- b\n\n\n- c\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
+fn roundtrip_raw_before_first_block() {
+    // сырой текст до первого блока — без мусорных цифр
+    let src = "\nhello\n\n- a\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
+fn roundtrip_two_logbook_sections() {
+    let src = "- DONE задача\n  :LOGBOOK:\n  CLOCK: [2026-01-18 Sun 10:00:00]--[2026-01-18 Sun 11:00:00] =>  1:00:00\n  :END:\n  :LOGBOOK:\n  CLOCK: [2026-01-19 Mon 12:00:00]--[2026-01-19 Mon 13:30:00] =>  1:30:00\n  :END:\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
+fn roundtrip_no_trailing_newline() {
+    let src = "- a\n- b";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
+fn roundtrip_prop_extra_spaces() {
+    let src = "- a\n  key::  val  \n";
+    assert_eq!(roundtrip(src), src);
+}
+
 #[test]
 #[ignore]
 fn dump_diff_journal() {
