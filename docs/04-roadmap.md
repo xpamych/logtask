@@ -4,29 +4,33 @@
 запускать и пользоваться. Все пункты ниже при старте фазы заводятся как
 задачи в самом Logtask (dogfooding).
 
-## Фаза 0 — Скелет (1–2 дня)
-- [ ] создать репозиторий `git init`, структуру: `src-tauri/`, `src/`,
-  `docs/`, `.gitignore`
-- [ ] `cargo create-tauri-app` (шаблон SolidJS+TS), проверить сборку и запуск
-      на Linux (webkit2gtk4.1 уже есть)
-- [ ] крейт `logtask-core` внутри репо (workspace), пустой + 1 unit-тест
-- [ ] CI-примитивы локально: `cargo fmt`, `clippy -D warnings`, `tsc --noEmit`,
-      `npm run lint` (solid)
+## Фаза 0 — Скелет ✅
+- [x] создать репозиторий `git init`, структуру: `src-tauri/`, `src/`,
+      `docs/`, `.gitignore`
+- [x] Tauri 2 + SolidJS + TS, сборка и запуск на Linux
+- [x] крейт `logtask` внутри репо (workspace), модуль `core`
+- [x] CI-примитивы: `cargo fmt --check`, `clippy -D warnings`, `tsc --noEmit`
+- [x] rustfmt/clippy установлены локально (rustup, toolchain stable)
 
-**Критерий готовности**: `cargo tauri dev` открывает пустое окно <500 мс.
+**Критерий готовности**: `cargo tauri dev` открывает пустое окно <500 мс ✅
+(бинарник 15 МБ, окно открывается)
 
-## Фаза 1 — Парсер и ядро (3–5 дней)
-- [ ] `parser.rs`: bullet-outliner (отступы tab/2+ пробелов), вложенности,
-      `:LOGBOOK:` + CLOCK, свойства `key:: value`, маркеры и приоритеты
-- [ ] `model.rs`: Page/Block/Task/Link из 01-architecture
-- [ ] `index.rs`: построение индекса,反向 ссылки (backlinks), теги, поиск
-- [ ] `query.rs`: фильтры + сортировки для канбона/матрицы/запросов
-- [ ] тесты-фикстуры: 3 реальных файла из твоего графа
-      (`journals/2026_09_11.md`, `pages/PPDB - TODO.md`, `pages/Arch Linux.md`)
-- [ ] бенчмарк: индекс твоего графа (700 файлов) — уложиться <100 мс
+## Фаза 1 — Парсер и ядро ✅
+- [x] `parser.rs`: bullet-outliner (отступы tab/2+ пробелов), вложенности,
+      `:LOGBOOK:` + CLOCK, свойства `key:: value`, маркеры и приоритеты,
+      заголовки, trailing whitespace, пустые строки
+- [x] `model.rs`: Page/Block/Task/Link/Graph, Status, Priority, Level,
+      Quadrant, Trailing, BlockRaw
+- [x] `index.rs`: построение индекса, обратные ссылки, теги, поиск
+- [x] `query.rs`: фильтры + сортировки для канбана/матрицы/запросов
+- [x] `serializer.rs`: round-trip сериализация
+- [x] тесты-фикстуры: 4 реальных файла из твоего графа
+      (2 журнала + 2 страницы, 8908 блоков в полном графе)
+- [x] round-trip: parse → serialize = байт-в-байт для всех 4 фикстур
+- [x] бенчмарк: индекс твоего графа (706 файлов) — **72 мс** vs бюджет <100 мс
 
-**Критерий**: `cargo test` зелёный, граф парсится без потерь (round-trip:
-прочитать → сериализовать → байты совпадают).
+**Критерий**: 19 тестов зелёные, граф парсится без потерь ✅
+(тесты: 6 unit + 9 index + 4 roundtrip)
 
 ## Фаза 2 — Чтение: лента журнала + страницы (3–4 дня)
 - [ ] IPC `graph_load`, `journal_day`, `journal_prev`, `page_get`, `backlinks_get`

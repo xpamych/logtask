@@ -1,0 +1,481 @@
+//! Парсер Logseq-совместимого outliner markdown (см. docs/02-format.md).
+//!
+//! Поддерживает: bullet-блоки с отступами (tab и 2-пробельные), маркеры
+//! статусов, приоритеты [#A..C], свойства `key:: value`, блоки `:LOGBOOK:`
+//! с `CLOCK:`-записями, заголовки `##`, сырые параграфы, `[[вики-ссылки]]`
+//! и `#теги`. Round-trip: parse → serialize должен возвращать те же байты
+//! для реальных файлов (см. tests/roundtrip.rs).
+
+use std::collections::HashMap;
+
+use uuid::Uuid;
+
+use super::model::{
+    Block, BlockRaw, Clock, LinkTarget, Page, PageKind, Priority, Status, Trailing,
+};
+
+/// "логический" отступ: таб = 1 уровень, 2 пробела =  уровень
+pub(crate) fn logical_indent(line: &str) -> u8 {
+    let mut level: u8 = 0;
+    let mut spaces: u32 = 0;
+    for ch in line.chars() {
+        match ch {
+            '\t' => {
+                level += 1;
+                spaces = 0;
+            }
+            ' ' => {
+                spaces += 1;
+                if spaces == 2 {
+                    level += 1;
+                    spaces = 0;
+                }
+            }
+            _ => break,
+        }
+    }
+    level
+}
+
+/// возвращает (сырой отступ, остаток строки)
+fn split_indent(line: &str) -> (&str, &str) {
+    let pos = line
+        .chars()
+        .position(|c| c != ' ' && c != '\t')
+        .unwrap_or(line.len());
+    line.split_at(pos)
+}
+
+/// длина whitespace-префикса
+fn ws_len(s: &str) -> usize {
+    s.chars().take_while(|c| *c == ' ' || *c == '\t').count()
+}
+
+/// Результат разбора строки bullet-блока:
+/// (bullet, marker_str, status, priority, content)
+/// marker_str — сырой фрагмент "DONE  [#B] " для round-trip
+fn parse_bullet_line(rest: &str) -> (String, String, Option<Status>, Option<Priority>, &str) {
+    // rest начинается с '-'
+    let after_dash = &rest[1..];
+    let ws = ws_len(after_dash);
+    let bullet = rest[..1 + ws].to_string();
+    let s = &after_dash[ws..];
+
+    // маркер: первое слово
+    let marker_end = s.find(|c: char| c.is_whitespace()).unwrap_or(s.len());
+    let head = &s[..marker_end];
+    if let Some(status) = Status::from_marker(head) {
+        let after_marker = &s[marker_end..];
+        let ws2 = ws_len(after_marker);
+        let t = &after_marker[ws2..];
+
+        // приоритет: [#A] сразу после маркера
+        if let Some(r) = t.strip_prefix("[#") {
+            if let Some(end) = r.find(']') {
+                let prio_len = 2 + end + 1;
+                let after_prio = &t[prio_len..];
+                let ws3 = ws_len(after_prio);
+                let priority = match &r[..end] {
+                    "A" => Some(Priority::A),
+                    "B" => Some(Priority::B),
+                    "C" => Some(Priority::C),
+                    _ => None,
+                };
+                if priority.is_some() {
+                    let marker_str = s[..marker_end + ws2 + prio_len + ws3].to_string();
+                    return (
+                        bullet,
+                        marker_str,
+                        Some(status),
+                        priority,
+                        &after_prio[ws3..],
+                    );
+                }
+            }
+        }
+
+        // маркер без приоритета
+        let marker_str = s[..marker_end + ws2].to_string();
+        return (bullet, marker_str, Some(status), None, t);
+    }
+
+    // нет маркера — весь остаток контент
+    (bullet, String::new(), None, None, s)
+}
+
+fn parse_prop(rest: &str) -> Option<(String, String)> {
+    let (key, value) = rest.split_once("::")?;
+    Some((key.trim().to_string(), value.trim().to_string()))
+}
+
+fn parse_clock(line: &str) -> Option<Clock> {
+    // CLOCK: [2026-01-18 Sun 19:08:08]--[2026-01-19 Mon 17:35:18] =>  22:27:10
+    let body = line.trim_start().strip_prefix("CLOCK:")?.trim();
+    let (range, duration) = match body.split_once("=>") {
+        Some((r, d)) => (r.trim(), Some(d.trim().to_string())),
+        None => (body, None),
+    };
+    let (start, end) = match range.split_once("--") {
+        Some((a, b)) => (a.trim().to_string(), Some(b.trim().to_string())),
+        None => (range.to_string(), None),
+    };
+    fn unbracket(s: &str) -> String {
+        s.trim_matches(|c| c == '[' || c == ']').to_string()
+    }
+    Some(Clock {
+        start: unbracket(&start),
+        end: end.map(|e| unbracket(&e)),
+        duration,
+    })
+}
+
+/// Извлекает [[вики-ссылки]] и #теги из текста блока
+pub fn extract_links(content: &str) -> Vec<LinkTarget> {
+    let mut links = Vec::new();
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'[' && bytes.get(i + 1) == Some(&b'[') {
+            if let Some(end) = content[i + 2..].find("]]") {
+                let raw = &content[i + 2..i + 2 + end];
+                let name = match raw.split_once('|') {
+                    Some((n, _)) => n,
+                    None => raw,
+                };
+                links.push(LinkTarget::Page(name.trim().to_string()));
+                i += 2 + end + 2;
+                continue;
+            }
+        }
+        if bytes[i] == b'#' {
+            // #тег или #[[тег]]
+            if bytes.get(i + 1) == Some(&b'[') && bytes.get(i + 2) == Some(&b'[') {
+                if let Some(end) = content[i + 3..].find("]]") {
+                    let raw = &content[i + 3..i + 3 + end];
+                    links.push(LinkTarget::Tag(raw.trim().to_string()));
+                    i += 3 + end + 2;
+                    continue;
+                }
+            } else {
+                let rest = &content[i + 1..];
+                let end = rest
+                    .find(|c: char| c.is_whitespace() || matches!(c, '[' | ']' | '#'))
+                    .unwrap_or(rest.len());
+                if end > 0 {
+                    links.push(LinkTarget::Tag(rest[..end].to_string()));
+                    i += 1 + end;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    links
+}
+
+/// Одна распарсенная строка файла
+enum Line {
+    /// начало блока
+    Block {
+        indent_str: String,
+        bullet: String,
+        marker_str: String,
+        status: Option<Status>,
+        priority: Option<Priority>,
+        content: String,
+    },
+    /// `key:: value`
+    Prop {
+        indent_str: String,
+        key: String,
+        value: String,
+    },
+    LogbookOpen(String),
+    LogbookClose(String),
+    Clock(Clock),
+    /// всё остальное (заголовки, параграфы, продолжение контента)
+    Raw {
+        indent_str: String,
+        text: String,
+    },
+    Empty,
+}
+
+fn classify(line: &str) -> Line {
+    if line.is_empty() {
+        return Line::Empty;
+    }
+    let (indent_str, rest) = split_indent(line);
+    let indent_str = indent_str.to_string();
+    let trimmed_end = rest.trim_end();
+
+    if trimmed_end.is_empty() {
+        // строка из одних пробелов/tab'ов — значимый whitespace (round-trip)
+        return Line::Raw {
+            indent_str: String::new(),
+            text: line.to_string(),
+        };
+    }
+
+    if trimmed_end == "-" {
+        return Line::Block {
+            indent_str,
+            bullet: "-".to_string(),
+            marker_str: String::new(),
+            status: None,
+            priority: None,
+            content: String::new(),
+        };
+    }
+
+    if trimmed_end.starts_with(":LOGBOOK:") {
+        return Line::LogbookOpen(indent_str);
+    }
+    if trimmed_end.starts_with(":END:") {
+        return Line::LogbookClose(indent_str);
+    }
+    if let Some(clock) = parse_clock(trimmed_end) {
+        return Line::Clock(clock);
+    }
+    if let Some((key, value)) = parse_prop(trimmed_end) {
+        if !key.is_empty() && !key.contains(char::is_whitespace) {
+            return Line::Prop {
+                indent_str,
+                key,
+                value,
+            };
+        }
+    }
+
+    // bullet?
+    if trimmed_end.starts_with('-') && trimmed_end.len() > 1 {
+        let (bullet, marker_str, status, priority, content) = parse_bullet_line(rest);
+        return Line::Block {
+            indent_str,
+            bullet,
+            marker_str,
+            status,
+            priority,
+            content: content.to_string(),
+        };
+    }
+
+    Line::Raw {
+        indent_str,
+        text: rest.to_string(),
+    }
+}
+
+/// Распарсенный документ: блоки + хвост из пустых строк в конце файла
+pub struct ParsedFile {
+    pub blocks: Vec<Block>,
+    /// пустые строки в самом конце файла
+    pub trailing_blank: u16,
+    /// оканчивается ли файл переводом строки
+    pub ends_with_newline: bool,
+}
+
+/// Парсит содержимое .md файла в упорядоченный список блоков.
+/// Блоки получают свежие uuid (сохранение `id::` — Фаза 5).
+pub fn parse_document(text: &str) -> ParsedFile {
+    // отделяем хвост: завершающие переводы строк
+    let ends_with_newline = text.ends_with('\n');
+    let mut rest = text;
+    let mut trailing_blank: u16 = 0;
+    while rest.ends_with('\n') {
+        trailing_blank += 1;
+        rest = &rest[..rest.len() - 1];
+    }
+    // serialize_document пишет '\n' после последнего блока —
+    // это и есть финальный перевод, пустые строки считаем отдельно
+    trailing_blank = trailing_blank.saturating_sub(1);
+
+    let mut blocks: Vec<Block> = Vec::new();
+    // стек индексов блоков по уровню отступа для построения parent/children
+    let mut stack: Vec<(u8, usize)> = Vec::new();
+    let mut pending_blank: u16 = 0;
+
+    let lines: Vec<&str> = rest.split('\n').collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        match classify(line) {
+            Line::Empty => {
+                pending_blank += 1;
+                i += 1;
+            }
+            Line::Block {
+                indent_str,
+                bullet,
+                marker_str,
+                status,
+                priority,
+                content,
+            } => {
+                let indent = logical_indent(line);
+                let id = Uuid::now_v7();
+                let links = extract_links(&content);
+                let mut raw = BlockRaw {
+                    indent_str,
+                    bullet,
+                    marker_str,
+                    blank_after: pending_blank,
+                    trailing: Vec::new(),
+                };
+                let _ = &mut raw;
+                let block = Block {
+                    id: Some(id),
+                    indent,
+                    status,
+                    priority,
+                    content,
+                    props: HashMap::new(),
+                    urgency: None,
+                    importance: None,
+                    logbook: Vec::new(),
+                    links,
+                    children: Vec::new(),
+                    parent: None,
+                    raw,
+                };
+                while let Some((lvl, _)) = stack.last() {
+                    if *lvl < indent {
+                        break;
+                    }
+                    stack.pop();
+                }
+                if let Some((_, parent_idx)) = stack.last().copied() {
+                    blocks[parent_idx].children.push(id);
+                    let parent_id = blocks[parent_idx].id;
+                    let mut blk = block;
+                    blk.parent = parent_id;
+                    blocks.push(blk);
+                } else {
+                    blocks.push(block);
+                }
+                stack.push((indent, blocks.len() - 1));
+                pending_blank = 0;
+                i += 1;
+            }
+            Line::Prop {
+                indent_str,
+                key,
+                value,
+            } => {
+                if let Some((_, idx)) = stack.last().copied() {
+                    let blk = &mut blocks[idx];
+                    blk.props.insert(key.clone(), value.clone());
+                    blk.raw.trailing.push(Trailing::Prop {
+                        indent: indent_str,
+                        key,
+                        value,
+                    });
+                    reparse_props(blk);
+                }
+                i += 1;
+            }
+            Line::LogbookOpen(indent_str) => {
+                if let Some((_, idx)) = stack.last().copied() {
+                    blocks[idx]
+                        .raw
+                        .trailing
+                        .push(Trailing::LogbookStart(indent_str));
+                }
+                i += 1;
+            }
+            Line::LogbookClose(indent_str) => {
+                if let Some((_, idx)) = stack.last().copied() {
+                    blocks[idx]
+                        .raw
+                        .trailing
+                        .push(Trailing::LogbookEnd(indent_str));
+                }
+                i += 1;
+            }
+            Line::Clock(clock) => {
+                if let Some((_, idx)) = stack.last().copied() {
+                    blocks[idx].logbook.push(clock);
+                }
+                i += 1;
+            }
+            Line::Raw { indent_str, text } => {
+                if let Some((_, idx)) = stack.last().copied() {
+                    blocks[idx].raw.trailing.push(Trailing::Raw {
+                        indent: indent_str,
+                        text,
+                    });
+                } else {
+                    let id = Uuid::now_v7();
+                    blocks.push(Block {
+                        id: Some(id),
+                        indent: 0,
+                        status: None,
+                        priority: None,
+                        content: text,
+                        props: HashMap::new(),
+                        urgency: None,
+                        importance: None,
+                        logbook: Vec::new(),
+                        links: Vec::new(),
+                        children: Vec::new(),
+                        parent: None,
+                        raw: BlockRaw {
+                            indent_str: pending_blank.to_string(),
+                            bullet: String::new(),
+                            marker_str: String::new(),
+                            blank_after: pending_blank,
+                            trailing: Vec::new(),
+                        },
+                    });
+                }
+                pending_blank = 0;
+                i += 1;
+            }
+        }
+    }
+
+    ParsedFile {
+        blocks,
+        trailing_blank,
+        ends_with_newline,
+    }
+}
+
+/// обновляет urgency/importance из props
+fn reparse_props(blk: &mut Block) {
+    if let Some(v) = blk.props.get("urgency") {
+        blk.urgency = parse_level(v);
+    }
+    if let Some(v) = blk.props.get("importance") {
+        blk.importance = parse_level(v);
+    }
+}
+
+fn parse_level(v: &str) -> Option<super::model::Level> {
+    match v.trim().to_ascii_lowercase().as_str() {
+        "low" | "1" => Some(super::model::Level::Low),
+        "medium" | "med" | "2" => Some(super::model::Level::Medium),
+        "high" | "3" => Some(super::model::Level::High),
+        _ => None,
+    }
+}
+
+/// Парсит файл целиком: блоки + заголовок страницы
+pub fn parse_file(name: &str, kind: PageKind, text: &str) -> Page {
+    let parsed = parse_document(text);
+    let mut roots = Vec::new();
+    let mut order = Vec::new();
+    for b in &parsed.blocks {
+        order.push(b.id.expect("свежий uuid всегда есть"));
+        if b.parent.is_none() {
+            roots.push(b.id.expect("свежий uuid всегда есть"));
+        }
+    }
+    Page {
+        name: name.to_string(),
+        kind,
+        roots,
+        order,
+        mtime: None,
+    }
+}
