@@ -405,3 +405,187 @@ body {
 .back-to-journal:hover {
   color: var(--fg);
 }
+
+/* ---- Канбан / Запросы ---- */
+
+.kanban {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.kanban-col {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-alt);
+  overflow: hidden;
+}
+
+.kanban-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.kanban-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.kanban-label {
+  font-weight: 600;
+  flex: 1;
+}
+
+.kanban-count {
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.kanban-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  max-height: 38vh;
+  overflow-y: auto;
+}
+
+.kanban-empty {
+  color: var(--fg-muted);
+  text-align: center;
+  padding: 4px;
+}
+
+.task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.task-card:hover {
+  background: var(--bg-alt);
+}
+
+.task-card.task-done {
+  opacity: 0.55;
+}
+
+.task-card-text {
+  font-size: 13px;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.task-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.task-page {
+  color: var(--accent);
+}
+
+.task-priority {
+  color: #d9822b;
+  font-weight: 600;
+}
+
+.task-date {
+  color: #a05252;
+}
+
+.task-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-tag {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.queries {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.queries-note {
+  font-size: 12px;
+  color: var(--fg-muted);
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.queries-import {
+  padding: 8px 12px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.query-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.query-head:hover {
+  border-color: var(--accent);
+}
+
+.caret {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.query-title {
+  flex: 1;
+  font-weight: 600;
+}
+
+.query-count {
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.query-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 2px;
+}

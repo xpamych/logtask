@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use crate::core::index::IndexStats;
-use crate::core::model::{Block, Graph, PageKind};
+use crate::core::model::{Block, Graph, PageKind, Status};
 use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize)]
@@ -318,6 +318,203 @@ fn is_journal_name(name: &str) -> bool {
         && d.parse::<u8>()
             .map(|d| (1..=31).contains(&d))
             .unwrap_or(false)
+}
+
+/// Задача для UI: блок + страница-источник
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskDto {
+    pub uuid: String,
+    pub page: String,
+    pub content: String,
+    pub status: Option<String>,
+    pub status_label: Option<String>,
+    pub priority: Option<String>,
+    pub urgency: Option<String>,
+    pub importance: Option<String>,
+    pub deadline: Option<String>,
+    pub scheduled: Option<String>,
+    pub tags: Vec<String>,
+    pub done: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskColumn {
+    pub marker: String,
+    pub label: String,
+    pub tasks: Vec<TaskDto>,
+}
+
+fn task_dto(graph: &Graph, id: uuid::Uuid, block: &Block) -> TaskDto {
+    let tags: Vec<String> = block
+        .links
+        .iter()
+        .filter_map(|l| match l {
+            crate::core::model::LinkTarget::Tag(t) => Some(t.clone()),
+            _ => None,
+        })
+        .collect();
+    TaskDto {
+        uuid: id.to_string(),
+        page: graph.page_of_block(&id),
+        content: block.content.trim().to_string(),
+        status: block.status.map(|s| s.to_marker().to_string()),
+        status_label: block.status.map(|s| s.label().to_string()),
+        priority: block.priority.map(|p| format!("[#{p:?}]").replace('"', "")),
+        urgency: block.urgency.map(|l| format!("{l:?}").to_lowercase()),
+        importance: block.importance.map(|l| format!("{l:?}").to_lowercase()),
+        deadline: block.props.get("deadline").cloned(),
+        scheduled: block.props.get("scheduled").cloned(),
+        tags,
+        done: block.status.map(|s| s.is_done()).unwrap_or(false),
+    }
+}
+
+/// Канбан: все задачи, сгруппированные по 6 статусам
+#[tauri::command]
+pub fn kanban(state: tauri::State<'_, AppState>) -> Result<Vec<TaskColumn>, String> {
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+
+    let mut columns: Vec<(String, String, Vec<TaskDto>)> = vec![
+        ("LATER".into(), Status::Later.label().to_string(), vec![]),
+        ("TODO".into(), Status::Todo.label().to_string(), vec![]),
+        ("DOING".into(), Status::Doing.label().to_string(), vec![]),
+        ("REVIEW".into(), Status::Review.label().to_string(), vec![]),
+        ("DONE".into(), Status::Done.label().to_string(), vec![]),
+        (
+            "CANCELED".into(),
+            Status::Canceled.label().to_string(),
+            vec![],
+        ),
+    ];
+
+    let by_marker: std::collections::HashMap<&str, usize> = [
+        ("LATER", 0),
+        ("TODO", 1),
+        ("DOING", 2),
+        ("REVIEW", 3),
+        ("DONE", 4),
+        ("CANCELED", 5),
+    ]
+    .into_iter()
+    .collect();
+
+    for (id, block) in graph.all_tasks() {
+        let Some(status) = block.status else {
+            continue;
+        };
+        let marker = status.to_marker();
+        if let Some(&idx) = by_marker.get(marker) {
+            columns[idx].2.push(task_dto(graph, id, block));
+        }
+    }
+
+    // внутри колонки — по приоритету, потом по странице
+    for (_, _, tasks) in columns.iter_mut() {
+        tasks.sort_by(|a, b| {
+            a.priority
+                .clone()
+                .unwrap_or("Z".into())
+                .cmp(&b.priority.clone().unwrap_or("Z".into()))
+                .then_with(|| a.page.cmp(&b.page))
+        });
+    }
+
+    Ok(columns
+        .into_iter()
+        .map(|(marker, label, tasks)| TaskColumn {
+            marker,
+            label,
+            tasks,
+        })
+        .collect())
+}
+
+/// Задачи по фильтру (для saved-запросов)
+#[tauri::command]
+pub fn tasks_by_filter(
+    filter: crate::core::query::TaskFilter,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<TaskDto>, String> {
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    let entries = graph.filter_tasks(&filter);
+    Ok(entries
+        .into_iter()
+        .map(|(id, block)| task_dto(graph, id, block))
+        .collect())
+}
+
+/// Сохранённые запросы графа (читает/пишет <граф>/.logtask/queries.json)
+#[tauri::command]
+pub fn queries_list(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<crate::core::query::SavedQuery>, String> {
+    let root = state.root.read().clone();
+    let Some(root) = root else {
+        return Ok(default_queries());
+    };
+    let path = root.join(".logtask").join("queries.json");
+    if path.exists() {
+        match std::fs::read_to_string(&path) {
+            Ok(text) => serde_json::from_str(&text).map_err(|e| format!("queries.json: {e}")),
+            Err(_) => Ok(default_queries()),
+        }
+    } else {
+        Ok(default_queries())
+    }
+}
+
+#[tauri::command]
+pub fn queries_save(
+    queries: Vec<crate::core::query::SavedQuery>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let dir = root.join(".logtask");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{e}"))?;
+    let path = dir.join("queries.json");
+    let text = serde_json::to_string_pretty(&queries).map_err(|e| format!("{e}"))?;
+    std::fs::write(&path, text).map_err(|e| format!("{e}"))
+}
+
+/// Импорт `:default-queries` из logseq/config.edn (разовый при первом старте):
+/// переносит «Сейчас / Работа / PPDB / Gitea / Остальные дела»
+#[tauri::command]
+pub fn import_logseq_queries(state: tauri::State<'_, AppState>) -> Result<usize, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let config = root.join("logseq").join("config.edn");
+    if !config.exists() {
+        return Err("logseq/config.edn не найден".into());
+    }
+    let text = std::fs::read_to_string(&config).map_err(|e| format!("{e}"))?;
+    let imported = crate::config_edn::parse_default_queries(&text);
+    if imported.is_empty() {
+        return Ok(0);
+    }
+    let dir = root.join(".logtask");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{e}"))?;
+    let path = dir.join("queries.json");
+    let text = serde_json::to_string_pretty(&imported).map_err(|e| format!("{e}"))?;
+    std::fs::write(&path, text).map_err(|e| format!("{e}"))?;
+    Ok(imported.len())
+}
+
+/// Запросы по умолчанию (пока config.edn не импортирован)
+fn default_queries() -> Vec<crate::core::query::SavedQuery> {
+    use crate::core::query::{SavedQuery, TaskFilter};
+
+    vec![SavedQuery {
+        title: "Открытые задачи".into(),
+        filter: TaskFilter {
+            open: true,
+            ..Default::default()
+        },
+        sort: vec![],
+        collapsed: false,
+    }]
 }
 
 #[tauri::command]

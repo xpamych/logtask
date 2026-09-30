@@ -1,4 +1,5 @@
 mod commands;
+pub mod config_edn;
 pub mod core;
 mod state;
 mod watcher;
@@ -25,6 +26,11 @@ pub fn run() {
             commands::follow_link,
             commands::search,
             commands::backlinks_get,
+            commands::kanban,
+            commands::tasks_by_filter,
+            commands::queries_list,
+            commands::queries_save,
+            commands::import_logseq_queries,
             commands::ping,
         ])
         .setup(|app| {

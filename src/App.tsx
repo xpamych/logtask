@@ -1,10 +1,15 @@
 import type { Component } from "solid-js";
-import { Show, createSignal, onMount } from "solid-js";
+import { For, Show, createSignal, onMount } from "solid-js";
 import type { GraphSummary } from "~/lib/api";
 import { graphLoad, graphSummary, journalList, pageList, ping } from "~/lib/api";
 import { JournalTape } from "~/components/JournalTape";
+import { Kanban } from "~/components/Kanban";
 import { PageView } from "~/components/PageView";
+import { Queries } from "~/components/Queries";
 import { Sidebar } from "~/components/Sidebar";
+
+const TABS = ["Канбан", "Матрица", "Запросы"] as const;
+type Tab = (typeof TABS)[number];
 
 const App: Component = () => {
   const [summary, setSummary] = createSignal<GraphSummary | null>(null);
@@ -13,6 +18,7 @@ const App: Component = () => {
   const [error, setError] = createSignal<string | null>(null);
   const [refreshKey, setRefreshKey] = createSignal(0);
   const [current, setCurrent] = createSignal<string | null>(null);
+  const [tab, setTab] = createSignal<Tab>("Канбан");
 
   const openPage = (name: string) => {
     if (!name) return;
@@ -66,9 +72,17 @@ const App: Component = () => {
       </Show>
       <aside class="taskpanel">
         <div class="tabs">
-          <button class="tab active">Канбан</button>
-          <button class="tab">Матрица</button>
-          <button class="tab">Запросы</button>
+          <For each={TABS}>
+            {(t) => (
+              <button
+                class="tab"
+                classList={{ active: tab() === t }}
+                onClick={() => setTab(t)}
+              >
+                {t}
+              </button>
+            )}
+          </For>
         </div>
         <div class="taskpanel-body">
           <Show when={current()}>
@@ -76,10 +90,20 @@ const App: Component = () => {
               ← К ленте журнала
             </button>
           </Show>
-          <p class="muted">Панель задач — Фазы 3–4.</p>
-          <Show when={error()}>
-            {(e) => <p class="error">{e()}</p>}
+          <Show
+            when={tab() === "Канбан"}
+            fallback={
+              <Show
+                when={tab() === "Запросы"}
+                fallback={<p class="muted">Матрица Эйзенхауэра — Фаза 4.</p>}
+              >
+                <Queries refreshKey={refreshKey()} onOpenPage={openPage} />
+              </Show>
+            }
+          >
+            <Kanban refreshKey={refreshKey()} onOpenPage={openPage} />
           </Show>
+          <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>
         </div>
       </aside>
     </div>

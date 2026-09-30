@@ -70,6 +70,64 @@ export async function pageList(): Promise<string[]> {
   return invoke<string[]>("page_list");
 }
 
+export interface TaskDto {
+  uuid: string;
+  page: string;
+  content: string;
+  status: string | null;
+  statusLabel: string | null;
+  priority: string | null;
+  urgency: string | null;
+  importance: string | null;
+  deadline: string | null;
+  scheduled: string | null;
+  tags: string[];
+  done: boolean;
+}
+
+export interface TaskColumn {
+  marker: string;
+  label: string;
+  tasks: TaskDto[];
+}
+
+export interface TaskFilter {
+  open: boolean;
+  status: string[];
+  page: string | null;
+  pagePrefix: string | null;
+  excludePage: string | null;
+  tags: string[];
+  quadrant: string | null;
+}
+
+export interface SavedQuery {
+  title: string;
+  filter: TaskFilter;
+  sort: string[];
+  collapsed: boolean;
+}
+
+export async function kanban(): Promise<TaskColumn[]> {
+  return invoke<TaskColumn[]>("kanban");
+}
+
+export async function tasksByFilter(filter: TaskFilter): Promise<TaskDto[]> {
+  return invoke<TaskDto[]>("tasks_by_filter", { filter });
+}
+
+export async function queriesList(): Promise<SavedQuery[]> {
+  return invoke<SavedQuery[]>("queries_list");
+}
+
+export async function queriesSave(queries: SavedQuery[]): Promise<void> {
+  await invoke<void>("queries_save", { queries });
+}
+
+export async function importLogseqQueries(): Promise<number> {
+  return invoke<number>("import_logseq_queries");
+}
+
 export async function search(query: string): Promise<SearchHit[]> {
   return invoke<SearchHit[]>("search", { query });
 }

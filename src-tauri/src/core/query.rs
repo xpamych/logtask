@@ -21,6 +21,9 @@ pub struct TaskFilter {
     /// страницы с этим префиксом (как "Gitea -" в config.edn)
     #[serde(default)]
     pub page_prefix: Option<String>,
+    /// исключить задачи этой страницы
+    #[serde(default)]
+    pub exclude_page: Option<String>,
     /// теги
     #[serde(default)]
     pub tags: Vec<String>,
@@ -114,6 +117,10 @@ impl Graph {
             })
             .filter(|(id, _)| {
                 let page = self.page_of_block(id);
+                match &filter.exclude_page {
+                    Some(p) if page == *p => return false,
+                    _ => {}
+                }
                 match &filter.page {
                     Some(p) => page == *p,
                     None => true,

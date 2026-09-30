@@ -86,7 +86,7 @@ impl Status {
         match s.trim() {
             "LATER" | "BACKLOG" => Some(Status::Later),
             "TODO" => Some(Status::Todo),
-            "DOING" | "IN-PROGRESS" | "STARTED" => Some(Status::Doing),
+            "DOING" | "IN-PROGRESS" | "STARTED" | "NOW" => Some(Status::Doing),
             "REVIEW" | "WAITING" | "WAIT" => Some(Status::Review),
             "DONE" | "COMPLETED" => Some(Status::Done),
             "CANCELED" | "CANCELLED" => Some(Status::Canceled),
