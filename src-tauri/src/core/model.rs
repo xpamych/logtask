@@ -61,7 +61,8 @@ pub fn org_timestamp(secs: i64) -> String {
     )
 }
 
-/// Разность двух Org timestamp в формате Logseq: "=>  118:30:48"
+/// Разность двух Org timestamp в формате Logseq: "118:30:48" (без префикса
+/// "=>  " — его добавляет сериализатор; парсер хранит duration так же)
 pub fn org_duration(start: &str, end: &str) -> Option<String> {
     let a = parse_org_time(start)?;
     let b = parse_org_time(end)?;
@@ -72,7 +73,7 @@ pub fn org_duration(start: &str, end: &str) -> Option<String> {
     let h = total / 3600;
     let m = (total % 3600) / 60;
     let s = total % 60;
-    Some(format!("=>  {h}:{m:02}:{s:02}"))
+    Some(format!("{h}:{m:02}:{s:02}"))
 }
 
 /// Org timestamp → секунды от эпохи
@@ -645,7 +646,7 @@ impl Block {
             .insert(pos, Trailing::Clock { indent, idx });
     }
 
-    /// Останавливает CLOCK. Возвращает длительность в формате Logseq.
+    /// Останавливает CLOCK. Возвращает длительность "H:MM:SS" (без префикса "=>  ").
     pub fn clock_stop(&mut self, now: &str) -> Option<String> {
         let clock = self.logbook.iter_mut().rev().find(|c| c.end.is_none())?;
         clock.end = Some(now.to_string());

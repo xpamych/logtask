@@ -890,7 +890,7 @@ pub async fn clock_start(
     clock_toggle(uuid, true, app, state).await
 }
 
-/// Останавливает CLOCK на задаче. Возвращает длительность ("118:30:48").
+/// Останавливает CLOCK на задаче. Возвращает путь страницы (для переиндексации).
 #[tauri::command]
 pub async fn clock_stop(
     uuid: String,

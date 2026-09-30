@@ -290,9 +290,8 @@ fn clock_start_creates_logbook() {
         .unwrap();
 
     let after = fs::read_to_string(&file).unwrap();
-    assert!(after.contains(":LOGBOOK:"), "{after}");
-    assert!(after.contains("CLOCK: ["), "{after}");
-    assert!(after.contains(":END:"), "{after}");
+    let expected = format!("- TODO задача для таймера\n  :LOGBOOK:\n  CLOCK: [{start}]\n  :END:\n");
+    assert_eq!(after, expected);
 
     // останавливаем — появляется длительность.
     // внимание: после mutate_block uuid пересоздаётся (переиндексация),
@@ -307,12 +306,57 @@ fn clock_start_creates_logbook() {
     graph
         .mutate_block(&id2, &dir, |b| {
             let dur = b.clock_stop(&end);
-            assert_eq!(dur.as_deref(), Some("=>  1:00:48"));
+            assert_eq!(dur.as_deref(), Some("1:00:48"));
+        })
+        .unwrap();
+
+    // ровно один префикс "=>  " — его печатает сериализатор, а не org_duration
+    let after = fs::read_to_string(&file).unwrap();
+    let expected =
+        format!("- TODO задача для таймера\n  :LOGBOOK:\n  CLOCK: [{start}]--[{end}] =>  1:00:48\n  :END:\n");
+    assert_eq!(after, expected);
+}
+
+#[test]
+fn clock_stop_two_logbook_sections() {
+    use logtask_lib::core::model::org_timestamp;
+
+    // две LOGBOOK-секции: новые часы попадают в последнюю, префикс "=>  " один
+    let dir = std::env::temp_dir().join("logtask_clock_test3");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("journals")).unwrap();
+    let file = dir.join("journals/2026_10_10.md");
+    let src = "- DONE задача\n  :LOGBOOK:\n  CLOCK: [2026-01-18 Sun 10:00:00]--[2026-01-18 Sun 11:00:00] =>  1:00:00\n  :END:\n  :LOGBOOK:\n  CLOCK: [2026-01-19 Mon 12:00:00]--[2026-01-19 Mon 13:30:00] =>  1:30:00\n  :END:\n";
+    fs::write(&file, src).unwrap();
+
+    let mut graph = Graph::default();
+    graph.index_dir(&dir).unwrap();
+    let (id, _) = graph.all_tasks().into_iter().next().expect("есть задача");
+
+    let start = org_timestamp(1_800_000_000);
+    graph
+        .mutate_block(&id, &dir, |b| b.clock_start(&start))
+        .unwrap();
+
+    let end = org_timestamp(1_800_003_600); // +1:00:00
+    let id2 = graph
+        .all_tasks()
+        .into_iter()
+        .find(|(_, b)| b.content == "задача")
+        .map(|(id, _)| id)
+        .expect("задача найдена");
+    graph
+        .mutate_block(&id2, &dir, |b| {
+            let dur = b.clock_stop(&end);
+            assert_eq!(dur.as_deref(), Some("1:00:00"));
         })
         .unwrap();
 
     let after = fs::read_to_string(&file).unwrap();
-    assert!(after.contains("=>  1:00:48"), "{after}");
+    let expected = format!(
+        "- DONE задача\n  :LOGBOOK:\n  CLOCK: [2026-01-18 Sun 10:00:00]--[2026-01-18 Sun 11:00:00] =>  1:00:00\n  :END:\n  :LOGBOOK:\n  CLOCK: [2026-01-19 Mon 12:00:00]--[2026-01-19 Mon 13:30:00] =>  1:30:00\n  CLOCK: [{start}]--[{end}] =>  1:00:00\n  :END:\n"
+    );
+    assert_eq!(after, expected);
 }
 
 #[test]
