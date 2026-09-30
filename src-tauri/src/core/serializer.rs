@@ -40,8 +40,6 @@ impl Block {
         out.push_str(&self.content);
         out.push('\n');
 
-        let mut clock_iter = 0usize;
-        let clocks = &self.logbook;
         for item in &self.raw.trailing {
             match item {
                 Trailing::Prop { indent, key, value } => {
@@ -54,14 +52,16 @@ impl Block {
                 Trailing::LogbookStart(indent) => {
                     out.push_str(indent);
                     out.push_str(":LOGBOOK:\n");
-                    while clock_iter < clocks.len() {
-                        write_clock(indent, &clocks[clock_iter], out);
-                        clock_iter += 1;
-                    }
+                }
+                Trailing::LogbookEnd(indent) => {
                     out.push_str(indent);
                     out.push_str(":END:\n");
                 }
-                Trailing::LogbookEnd(_) => {}
+                Trailing::Clock { indent, idx } => {
+                    if let Some(c) = self.logbook.get(*idx) {
+                        write_clock(indent, c, out);
+                    }
+                }
                 Trailing::Raw { indent, text } => {
                     out.push_str(indent);
                     out.push_str(text);
@@ -69,23 +69,6 @@ impl Block {
                 }
                 Trailing::Blank => out.push('\n'),
             }
-        }
-        // часы вне блока :LOGBOOK: (маловероятно, но не теряем)
-        let fallback_indent: &str = self
-            .raw
-            .trailing
-            .first()
-            .map(|t| match t {
-                Trailing::Prop { indent, .. }
-                | Trailing::LogbookStart(indent)
-                | Trailing::LogbookEnd(indent)
-                | Trailing::Raw { indent, .. } => indent.as_str(),
-                Trailing::Blank => self.raw.indent_str.as_str(),
-            })
-            .unwrap_or(&self.raw.indent_str);
-        while clock_iter < clocks.len() {
-            write_clock(fallback_indent, &clocks[clock_iter], out);
-            clock_iter += 1;
         }
     }
 }

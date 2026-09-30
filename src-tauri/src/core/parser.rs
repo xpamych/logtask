@@ -192,7 +192,10 @@ enum Line {
     },
     LogbookOpen(String),
     LogbookClose(String),
-    Clock(Clock),
+    Clock {
+        indent_str: String,
+        clock: Clock,
+    },
     /// всё остальное (заголовки, параграфы, продолжение контента)
     Raw {
         indent_str: String,
@@ -235,7 +238,7 @@ fn classify(line: &str) -> Line {
         return Line::LogbookClose(indent_str);
     }
     if let Some(clock) = parse_clock(trimmed_end) {
-        return Line::Clock(clock);
+        return Line::Clock { indent_str, clock };
     }
     if let Some((key, value)) = parse_prop(trimmed_end) {
         if !key.is_empty() && !key.contains(char::is_whitespace) {
@@ -402,9 +405,15 @@ pub fn parse_document(text: &str) -> ParsedFile {
                 }
                 i += 1;
             }
-            Line::Clock(clock) => {
+            Line::Clock { indent_str, clock } => {
                 if let Some((_, idx)) = stack.last().copied() {
-                    blocks[idx].logbook.push(clock);
+                    let blk = &mut blocks[idx];
+                    let ci = blk.logbook.len();
+                    blk.logbook.push(clock);
+                    blk.raw.trailing.push(Trailing::Clock {
+                        indent: indent_str,
+                        idx: ci,
+                    });
                 }
                 i += 1;
             }

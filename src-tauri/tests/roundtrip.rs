@@ -128,6 +128,13 @@ fn roundtrip_two_logbook_sections() {
 }
 
 #[test]
+fn roundtrip_blank_inside_logbook() {
+    // пустая строка внутри :LOGBOOK:-секции остаётся на месте
+    let src = "- a\n  :LOGBOOK:\n\n  CLOCK: [2026-01-18 Sun 10:00:00]--[2026-01-18 Sun 11:00:00] =>  1:00:00\n  :END:\n- b\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
 fn roundtrip_no_trailing_newline() {
     let src = "- a\n- b";
     assert_eq!(roundtrip(src), src);

@@ -298,6 +298,11 @@ pub enum Trailing {
     LogbookStart(String),
     /// `:END:`
     LogbookEnd(String),
+    /// CLOCK-запись: idx — индекс в Block.logbook
+    Clock {
+        indent: String,
+        idx: usize,
+    },
     Raw {
         indent: String,
         text: String,
@@ -619,13 +624,25 @@ impl Block {
                 .insert(pos, Trailing::LogbookStart(indent.clone()));
             self.raw
                 .trailing
-                .insert(pos + 1, Trailing::LogbookEnd(indent));
+                .insert(pos + 1, Trailing::LogbookEnd(indent.clone()));
         }
         self.logbook.push(Clock {
             start: now.to_string(),
             end: None,
             duration: None,
         });
+        // trailing-запись — перед :END: последней LOGBOOK-секции,
+        // чтобы часы сериализовались на своём месте
+        let idx = self.logbook.len() - 1;
+        let pos = self
+            .raw
+            .trailing
+            .iter()
+            .rposition(|t| matches!(t, Trailing::LogbookEnd(_)))
+            .unwrap_or(self.raw.trailing.len());
+        self.raw
+            .trailing
+            .insert(pos, Trailing::Clock { indent, idx });
     }
 
     /// Останавливает CLOCK. Возвращает длительность в формате Logseq.
