@@ -219,12 +219,18 @@ impl Graph {
     /// Меняет статус задачи и перезаписывает файл страницы на диск.
     /// После записи файл переиндексируется (блоки/ссылки/обратные ссылки).
     /// Возвращает имя страницы, если блок найден и сохранён.
-    pub fn set_block_status(
+    /// Применяет функцию к блоку и перезаписывает файл страницы на диск.
+    /// После записи файл переиндексируется (блоки/ссылки/обратные ссылки).
+    /// Возвращает имя страницы, если блок найден и сохранён.
+    pub fn mutate_block<F>(
         &mut self,
         id: &Uuid,
-        status: super::model::Status,
         root: &Path,
-    ) -> std::io::Result<Option<String>> {
+        f: F,
+    ) -> std::io::Result<Option<String>>
+    where
+        F: FnOnce(&mut super::model::Block),
+    {
         let page_name = self.page_of_block(id);
         if page_name.is_empty() {
             return Ok(None);
@@ -246,10 +252,7 @@ impl Graph {
         let Some(block) = self.blocks.get_mut(id) else {
             return Ok(None);
         };
-        if block.status == Some(status) {
-            return Ok(Some(page_name));
-        }
-        block.set_status(status);
+        f(block);
 
         let text = super::serializer::serialize_document(&roots, &self.blocks);
         let abs = root.join(&rel_path);
@@ -272,6 +275,35 @@ impl Graph {
         self.rebuild_backlinks();
 
         Ok(Some(page_name))
+    }
+
+    /// Меняет статус задачи (drag&drop в канбане).
+    pub fn set_block_status(
+        &mut self,
+        id: &Uuid,
+        status: super::model::Status,
+        root: &Path,
+    ) -> std::io::Result<Option<String>> {
+        self.mutate_block(id, root, |b| b.set_status(status))
+    }
+
+    /// Меняет срочность/важность задачи (drag&drop в матрице).
+    /// None — оставляет свойство как есть (явный сброс через set_level).
+    pub fn set_block_quadrant(
+        &mut self,
+        id: &Uuid,
+        urgency: Option<super::model::Level>,
+        importance: Option<super::model::Level>,
+        root: &Path,
+    ) -> std::io::Result<Option<String>> {
+        self.mutate_block(id, root, |b| {
+            if let Some(u) = urgency {
+                b.set_level("urgency", Some(u));
+            }
+            if let Some(i) = importance {
+                b.set_level("importance", Some(i));
+            }
+        })
     }
 }
 

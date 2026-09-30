@@ -445,6 +445,129 @@ pub fn tasks_by_filter(
         .collect())
 }
 
+/// Квадрант матрицы Эйзенхауэра
+#[derive(Debug, Clone, Serialize)]
+pub struct MatrixQuadrant {
+    pub key: String,
+    pub label: String,
+    /// (urgency, importance) для дроп-зоны
+    pub urgency: String,
+    pub importance: String,
+    pub tasks: Vec<TaskDto>,
+}
+
+/// Матрица Эйзенхауэра: открытые задачи по 4 квадрантам
+#[tauri::command]
+pub fn matrix(state: tauri::State<'_, AppState>) -> Result<Vec<MatrixQuadrant>, String> {
+    use crate::core::model::{level_str, Level, Quadrant};
+
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+
+    let mut quadrants: Vec<MatrixQuadrant> = vec![
+        MatrixQuadrant {
+            key: "do".into(),
+            label: "Сделать".into(),
+            urgency: level_str(Level::High),
+            importance: level_str(Level::High),
+            tasks: vec![],
+        },
+        MatrixQuadrant {
+            key: "schedule".into(),
+            label: "Запланировать".into(),
+            urgency: level_str(Level::Low),
+            importance: level_str(Level::High),
+            tasks: vec![],
+        },
+        MatrixQuadrant {
+            key: "delegate".into(),
+            label: "Делегировать".into(),
+            urgency: level_str(Level::High),
+            importance: level_str(Level::Low),
+            tasks: vec![],
+        },
+        MatrixQuadrant {
+            key: "drop".into(),
+            label: "Отбросить".into(),
+            urgency: level_str(Level::Low),
+            importance: level_str(Level::Low),
+            tasks: vec![],
+        },
+    ];
+
+    let by_key: [(&str, usize); 4] = [("do", 0), ("schedule", 1), ("delegate", 2), ("drop", 3)];
+
+    for (id, block) in graph.all_tasks() {
+        // только открытые задачи
+        if block.status.map(|s| s.is_done()).unwrap_or(false) {
+            continue;
+        }
+        let q = block.quadrant();
+        let key = match q {
+            Quadrant::Do => "do",
+            Quadrant::Schedule => "schedule",
+            Quadrant::Delegate => "delegate",
+            Quadrant::Drop => "drop",
+        };
+        let idx = by_key.iter().find(|(k, _)| *k == key).map(|(_, i)| *i);
+        if let Some(idx) = idx {
+            quadrants[idx].tasks.push(task_dto(graph, id, block));
+        }
+    }
+
+    // внутри квадранта — по приоритету
+    for q in quadrants.iter_mut() {
+        q.tasks.sort_by(|a, b| {
+            a.priority
+                .clone()
+                .unwrap_or("Z".into())
+                .cmp(&b.priority.clone().unwrap_or("Z".into()))
+                .then_with(|| a.page.cmp(&b.page))
+        });
+    }
+
+    Ok(quadrants)
+}
+
+/// Меняет срочность/важность задачи (drag&drop в матрице). Перезаписывает .md.
+#[tauri::command]
+pub async fn task_set_quadrant(
+    uuid: String,
+    urgency: Option<String>,
+    importance: Option<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    use crate::core::model::{parse_level, Level};
+
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+
+    let urgency = urgency.and_then(|s| parse_level(&s));
+    let importance = importance.and_then(|s| parse_level(&s));
+    if urgency.is_none() && importance.is_none() {
+        return Err("нужно указать хотя бы одно свойство".into());
+    }
+    let _ = Level::default();
+
+    let page = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .set_block_quadrant(&id, urgency, importance, &root)
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    let Some(page) = page else {
+        return Err("блок не найден в графе".into());
+    };
+    crate::watcher::reindex_and_emit(&app);
+    Ok(page)
+}
+
 /// Сохранённые запросы графа (читает/пишет <граф>/.logtask/queries.json)
 #[tauri::command]
 pub fn queries_list(

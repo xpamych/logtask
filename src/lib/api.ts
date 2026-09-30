@@ -132,6 +132,26 @@ export async function taskSetStatus(uuid: string, marker: string): Promise<strin
   return invoke<string>("task_set_status", { uuid, marker });
 }
 
+export interface MatrixQuadrant {
+  key: string;
+  label: string;
+  urgency: string;
+  importance: string;
+  tasks: TaskDto[];
+}
+
+export async function matrix(): Promise<MatrixQuadrant[]> {
+  return invoke<MatrixQuadrant[]>("matrix");
+}
+
+export async function taskSetQuadrant(
+  uuid: string,
+  urgency: string | null,
+  importance: string | null,
+): Promise<string> {
+  return invoke<string>("task_set_quadrant", { uuid, urgency, importance });
+}
+
 export async function search(query: string): Promise<SearchHit[]> {
   return invoke<SearchHit[]>("search", { query });
 }

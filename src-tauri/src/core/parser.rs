@@ -370,7 +370,7 @@ pub fn parse_document(text: &str) -> ParsedFile {
                         key,
                         value,
                     });
-                    reparse_props(blk);
+                    blk.refresh_levels();
                 }
                 i += 1;
             }
@@ -438,25 +438,6 @@ pub fn parse_document(text: &str) -> ParsedFile {
         blocks,
         trailing_blank,
         ends_with_newline,
-    }
-}
-
-/// обновляет urgency/importance из props
-fn reparse_props(blk: &mut Block) {
-    if let Some(v) = blk.props.get("urgency") {
-        blk.urgency = parse_level(v);
-    }
-    if let Some(v) = blk.props.get("importance") {
-        blk.importance = parse_level(v);
-    }
-}
-
-fn parse_level(v: &str) -> Option<super::model::Level> {
-    match v.trim().to_ascii_lowercase().as_str() {
-        "low" | "1" => Some(super::model::Level::Low),
-        "medium" | "med" | "2" => Some(super::model::Level::Medium),
-        "high" | "3" => Some(super::model::Level::High),
-        _ => None,
     }
 }
 

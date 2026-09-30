@@ -15,6 +15,60 @@ pub enum Level {
     High,
 }
 
+/// Сколько дней до дедлайна считается "скоро" для автосрочности
+pub const URGENT_DAYS: i64 = 3;
+
+/// Строковое представление уровня для записи в .md
+pub fn level_str(l: Level) -> String {
+    match l {
+        Level::Low => "low",
+        Level::Medium => "medium",
+        Level::High => "high",
+    }
+    .to_string()
+}
+
+/// Парсит уровень из строки ("high"/"3"/"medium"…)
+pub fn parse_level(v: &str) -> Option<Level> {
+    match v.trim().to_ascii_lowercase().as_str() {
+        "low" | "1" => Some(Level::Low),
+        "medium" | "med" | "2" => Some(Level::Medium),
+        "high" | "3" => Some(Level::High),
+        _ => None,
+    }
+}
+
+/// deadline:: в формате YYYY-MM-DD — скоро ли (в пределах days дней)?
+pub fn deadline_is_soon(deadline: &str, days: i64) -> bool {
+    let Some(d) = parse_date(deadline) else {
+        return false;
+    };
+    let now = now_days();
+    d >= now && d <= now + days
+}
+
+/// День в "днях от эпохи" из строки YYYY-MM-DD
+fn parse_date(s: &str) -> Option<i64> {
+    let s = s.trim();
+    let mut parts = s.split('-');
+    let y: i64 = parts.next()?.parse().ok()?;
+    let m: u32 = parts.next()?.parse().ok()?;
+    let d: u32 = parts.next()?.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    // дни от 1970-01-01 без високосных уточнений — достаточно для сравнения
+    Some((y - 1970) * 365 + (m as i64 - 1) * 30 + d as i64 - 1)
+}
+
+fn now_days() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64 / 86400)
+        .unwrap_or(0)
+}
+
 /// Приоритет Logseq: [#A] > [#B] > [#C]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -255,8 +309,70 @@ impl Block {
             .unwrap_or_default()
     }
 
+    /// Срочность: явное свойство, иначе автосрочность по deadline
+    /// (дедлайн в пределах URGENT_DAYS дней → high)
     pub fn effective_urgency(&self) -> Level {
-        self.urgency.unwrap_or_default()
+        if let Some(u) = self.urgency {
+            return u;
+        }
+        if let Some(deadline) = self.props.get("deadline") {
+            if deadline_is_soon(deadline, URGENT_DAYS) {
+                return Level::High;
+            }
+        }
+        Level::Low
+    }
+
+    /// Устанавливает/сбрасывает свойство urgency:: или importance::
+    /// и обновляет raw-фрагмент для байт-точной сериализации.
+    /// При добавлении свойство вставляется перед :LOGBOOK: (как в Logseq).
+    pub fn set_level(&mut self, key: &str, level: Option<Level>) {
+        match level {
+            Some(l) => {
+                let value = level_str(l);
+                self.props.insert(key.to_string(), value.clone());
+                let existing = self
+                    .raw
+                    .trailing
+                    .iter()
+                    .position(|t| matches!(t, Trailing::Prop { key: k, .. } if k == key));
+                if let Some(idx) = existing {
+                    if let Trailing::Prop { value: v, .. } = &mut self.raw.trailing[idx] {
+                        *v = value;
+                    }
+                } else {
+                    let indent = format!("{}  ", self.raw.indent_str);
+                    let prop = Trailing::Prop {
+                        indent,
+                        key: key.to_string(),
+                        value: value.clone(),
+                    };
+                    // перед LOGBOOK, если он есть
+                    let pos = self
+                        .raw
+                        .trailing
+                        .iter()
+                        .position(|t| matches!(t, Trailing::LogbookStart(_)));
+                    match pos {
+                        Some(p) => self.raw.trailing.insert(p, prop),
+                        None => self.raw.trailing.push(prop),
+                    }
+                }
+            }
+            None => {
+                self.props.remove(key);
+                self.raw
+                    .trailing
+                    .retain(|t| !matches!(t, Trailing::Prop { key: k, .. } if k == key));
+            }
+        }
+        self.refresh_levels();
+    }
+
+    /// Пересчитывает urgency/importance из props
+    pub fn refresh_levels(&mut self) {
+        self.urgency = self.props.get("urgency").and_then(|v| parse_level(v));
+        self.importance = self.props.get("importance").and_then(|v| parse_level(v));
     }
 
     /// Квадрант матрицы Эйзенхауэра

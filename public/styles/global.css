@@ -648,3 +648,91 @@ body {
   cursor: pointer;
   user-select: none;
 }
+
+/* ---- Матрица Эйзенхауэра ---- */
+
+.matrix {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.matrix-cell {
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--quad-color, #666);
+  border-radius: 8px;
+  background: var(--bg-alt);
+  overflow: hidden;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+}
+
+.matrix-drop {
+  border-color: var(--quad-color, var(--accent));
+  box-shadow: inset 0 0 0 1px var(--quad-color, var(--accent));
+}
+
+.matrix-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.matrix-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--quad-color, #666);
+  flex: none;
+}
+
+.matrix-label {
+  font-weight: 600;
+  flex: 1;
+}
+
+.matrix-count {
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.matrix-hint {
+  padding: 0 10px 4px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.matrix-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 8px 8px;
+}
+
+.matrix-more {
+  margin: 0 8px 8px;
+  padding: 4px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.matrix-more:hover {
+  color: var(--fg);
+}
+
+/* приоритет карточки */
+
+.task-prio-a {
+  border-left-color: #c0392b;
+}
+
+.task-prio-b {
+  border-left-color: #d9822b;
+}

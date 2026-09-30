@@ -18,7 +18,11 @@ export function TaskCard(props: {
   return (
     <button
       class="task-card"
-      classList={{ "task-done": t.done }}
+      classList={{
+        "task-done": t.done,
+        "task-prio-a": t.priority === "[#A]",
+        "task-prio-b": t.priority === "[#B]",
+      }}
       title={t.content}
       draggable={props.draggable}
       onDragStart={onDragStart}

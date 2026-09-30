@@ -32,6 +32,8 @@ pub fn run() {
             commands::queries_save,
             commands::import_logseq_queries,
             commands::task_set_status,
+            commands::matrix,
+            commands::task_set_quadrant,
             commands::ping,
         ])
         .setup(|app| {

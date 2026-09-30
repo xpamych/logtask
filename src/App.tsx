@@ -4,6 +4,7 @@ import type { GraphSummary } from "~/lib/api";
 import { graphLoad, graphSummary, journalList, pageList, ping } from "~/lib/api";
 import { JournalTape } from "~/components/JournalTape";
 import { Kanban } from "~/components/Kanban";
+import { Matrix } from "~/components/Matrix";
 import { PageView } from "~/components/PageView";
 import { Queries } from "~/components/Queries";
 import { Sidebar } from "~/components/Sidebar";
@@ -102,7 +103,7 @@ const App: Component = () => {
             fallback={
               <Show
                 when={tab() === "Запросы"}
-                fallback={<p class="muted">Матрица Эйзенхауэра — Фаза 4.</p>}
+                fallback={<Matrix refreshKey={refreshKey()} onOpenPage={openPage} />}
               >
                 <Queries refreshKey={refreshKey()} onOpenPage={openPage} />
               </Show>
