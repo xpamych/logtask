@@ -1,19 +1,36 @@
 import { For, Show, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
-import type { GraphSummary, SearchHit } from "~/lib/api";
-import { search } from "~/lib/api";
+import type { GraphSummary, RecentGraph, SearchHit } from "~/lib/api";
+import { pickGraphDir, recentGraphs, search } from "~/lib/api";
 
 export function Sidebar(props: {
   summary: GraphSummary | null;
   journals: string[];
   pages: string[];
   onOpenPage: (name: string) => void;
+  onOpenSettings: () => void;
+  onOpenGraph: (path: string) => void;
 }): JSX.Element {
   const [query, setQuery] = createSignal("");
   const [hits, setHits] = createSignal<SearchHit[]>([]);
   const [showPages, setShowPages] = createSignal(true);
+  const [recents, setRecents] = createSignal<RecentGraph[]>([]);
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const loadRecents = async () => {
+    try {
+      setRecents(await recentGraphs());
+    } catch {
+      setRecents([]);
+    }
+  };
+  void loadRecents();
+
+  const onPickGraph = async () => {
+    const path = await pickGraphDir();
+    if (path) props.onOpenGraph(path);
+  };
 
   const onQuery = (value: string) => {
     setQuery(value);
@@ -40,7 +57,40 @@ export function Sidebar(props: {
           value={query()}
           onInput={(e) => onQuery(e.currentTarget.value)}
         />
+        <button
+          class="settings-btn"
+          title="Открыть другой граф"
+          onClick={onPickGraph}
+        >
+          📂
+        </button>
+        <button
+          class="settings-btn"
+          title="Настройки"
+          onClick={props.onOpenSettings}
+        >
+          ⚙
+        </button>
       </div>
+
+      <Show when={recents().length > 0}>
+        <div class="sidebar-section">
+          <div class="sidebar-title">Недавние графы</div>
+          <div class="scroll-list">
+            <For each={recents().slice(0, 5)}>
+              {(g) => (
+                <button
+                  class="page-item"
+                  title={g.path}
+                  onClick={() => props.onOpenGraph(g.path)}
+                >
+                  {g.path.split("/").pop() ?? g.path}
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
 
       <Show when={props.summary}>
         {(s) => (

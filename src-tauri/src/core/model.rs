@@ -160,6 +160,15 @@ pub enum Priority {
     C,
 }
 
+/// Маркер приоритета для записи в .md
+pub fn priority_marker(p: Priority) -> &'static str {
+    match p {
+        Priority::A => "[#A]",
+        Priority::B => "[#B]",
+        Priority::C => "[#C]",
+    }
+}
+
 impl Priority {
     /// [#A] → high, [#B] → medium, [#C] → low
     pub fn importance(self) -> Level {
@@ -403,6 +412,112 @@ impl Block {
             }
         }
         Level::Low
+    }
+
+    /// Устанавливает/сбрасывает свойство (deadline::, scheduled::, …).
+    /// urgency/importance лучше менять через set_level.
+    pub fn set_prop(&mut self, key: &str, value: Option<&str>) {
+        match value {
+            Some(v) => {
+                self.props.insert(key.to_string(), v.to_string());
+                let existing = self
+                    .raw
+                    .trailing
+                    .iter()
+                    .position(|t| matches!(t, Trailing::Prop { key: k, .. } if k == key));
+                if let Some(idx) = existing {
+                    if let Trailing::Prop { value: val, .. } = &mut self.raw.trailing[idx] {
+                        *val = v.to_string();
+                    }
+                } else {
+                    let indent = format!("{}  ", self.raw.indent_str);
+                    let prop = Trailing::Prop {
+                        indent,
+                        key: key.to_string(),
+                        value: v.to_string(),
+                    };
+                    let pos = self
+                        .raw
+                        .trailing
+                        .iter()
+                        .position(|t| matches!(t, Trailing::LogbookStart(_)));
+                    match pos {
+                        Some(p) => self.raw.trailing.insert(p, prop),
+                        None => self.raw.trailing.push(prop),
+                    }
+                }
+            }
+            None => {
+                self.props.remove(key);
+                self.raw
+                    .trailing
+                    .retain(|t| !matches!(t, Trailing::Prop { key: k, .. } if k == key));
+            }
+        }
+        self.refresh_levels();
+    }
+
+    /// Устанавливает приоритет [#A]/[#B]/[#C] или сбрасывает.
+    /// Обновляет marker_str так, чтобы round-trip остался точным.
+    pub fn set_priority(&mut self, priority: Option<Priority>) {
+        const MARKERS: [&str; 14] = [
+            "LATER",
+            "TODO",
+            "DOING",
+            "REVIEW",
+            "DONE",
+            "CANCELED",
+            "NOW",
+            "BACKLOG",
+            "WAITING",
+            "WAIT",
+            "IN-PROGRESS",
+            "STARTED",
+            "COMPLETED",
+            "CANCELLED",
+        ];
+
+        // ищем существующий [#X] в marker_str
+        let old_pos = self.raw.marker_str.find("[#");
+        if let Some(pos) = old_pos {
+            let rest = &self.raw.marker_str[pos..];
+            // длина старого [#X] — 4 символа
+            let len = rest.find(']').map(|e| e + 1).unwrap_or(4).min(rest.len());
+            let after = &rest[len..];
+            match priority {
+                Some(p) => {
+                    let tag = priority_marker(p);
+                    self.raw.marker_str =
+                        format!("{}{}{}", &self.raw.marker_str[..pos], tag, after);
+                }
+                None => {
+                    // убираем [#X] и один следующий пробел
+                    let after = after.strip_prefix(' ').unwrap_or(after);
+                    self.raw.marker_str = format!("{}{}", &self.raw.marker_str[..pos], after);
+                }
+            }
+        } else if let Some(p) = priority {
+            // вставляем [#X] после маркера
+            let ms = &self.raw.marker_str;
+            let mut insert_at = ms.len();
+            for m in MARKERS {
+                if let Some(pos) = ms.find(m) {
+                    let after_marker = pos + m.len();
+                    let after = &ms[after_marker..];
+                    let ws = after.len() - after.trim_start().len();
+                    insert_at = after_marker + ws;
+                    break;
+                }
+            }
+            let tag = priority_marker(p);
+            let mut new_ms = String::new();
+            new_ms.push_str(&ms[..insert_at]);
+            new_ms.push_str(tag);
+            new_ms.push(' ');
+            new_ms.push_str(&ms[insert_at..]);
+            self.raw.marker_str = new_ms;
+        }
+        self.priority = priority;
     }
 
     /// Устанавливает/сбрасывает свойство urgency:: или importance::

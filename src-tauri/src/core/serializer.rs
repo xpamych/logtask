@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
-use super::model::{Block, BlockRaw, Priority, Status, Trailing};
+use super::model::{Block, BlockRaw, Status, Trailing};
 
 fn write_clock(indent: &str, c: &super::model::Clock, out: &mut String) {
     out.push_str(indent);
@@ -157,14 +157,5 @@ pub fn new_block(content: String, indent: u8) -> Block {
             trailing: Vec::new(),
             blank_after: 0,
         },
-    }
-}
-
-/// Префикс для приоритета (для UI-помощников)
-pub fn priority_marker(p: Priority) -> &'static str {
-    match p {
-        Priority::A => "[#A]",
-        Priority::B => "[#B]",
-        Priority::C => "[#C]",
     }
 }

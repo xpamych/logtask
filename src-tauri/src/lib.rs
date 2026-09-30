@@ -1,6 +1,8 @@
 mod commands;
 pub mod config_edn;
 pub mod core;
+mod recent;
+mod settings;
 mod state;
 mod watcher;
 
@@ -15,6 +17,22 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Folder {
+                        path: std::path::PathBuf::from(
+                            std::env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                        )
+                        .join(".config/logtask/logs"),
+                        file_name: Some("logtask".to_string()),
+                    }),
+                ])
+                .build(),
+        )
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::graph_load,
@@ -39,6 +57,12 @@ pub fn run() {
             commands::block_create,
             commands::clock_start,
             commands::clock_stop,
+            commands::settings_get,
+            commands::settings_save,
+            commands::task_set_priority,
+            commands::block_set_prop,
+            commands::recent_graphs,
+            commands::pick_graph_dir,
             commands::ping,
         ])
         .setup(|app| {

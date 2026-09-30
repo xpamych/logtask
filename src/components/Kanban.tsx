@@ -1,17 +1,8 @@
 import { For, Show, createMemo, createSignal, createEffect } from "solid-js";
 import type { JSX } from "solid-js";
-import type { TaskColumn } from "~/lib/api";
+import type { Settings, TaskColumn } from "~/lib/api";
 import { kanban, taskSetStatus } from "~/lib/api";
 import { TaskCard } from "./TaskCard";
-
-const COLUMN_ACCENTS: Record<string, string> = {
-  LATER: "#8ba8b5",
-  TODO: "#106ba3",
-  DOING: "#d9822b",
-  REVIEW: "#8a6d3b",
-  DONE: "#3d8a4e",
-  CANCELED: "#a05252",
-};
 
 const CLOSED_MARKERS = ["DONE", "CANCELED"];
 
@@ -36,13 +27,21 @@ function loadFilter(): KanbanFilter {
 
 export function Kanban(props: {
   refreshKey: number;
-  onOpenPage: (name: string) => void;
+  onOpenPage: (name: string, uuid?: string) => void;
+  settings?: Settings | null;
 }): JSX.Element {
   const [columns, setColumns] = createSignal<TaskColumn[]>([]);
   const [loading, setLoading] = createSignal(false);
   const [dragOver, setDragOver] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [filter, setFilter] = createSignal<KanbanFilter>(loadFilter());
+
+  const colorOf = (marker: string): string => {
+    const found = props.settings?.statuses.find((s) => s.marker === marker);
+    return found?.color ?? "#666";
+  };
+
+  const limit = () => props.settings?.kanbanLimit ?? 50;
 
   const saveFilter = (f: KanbanFilter) => {
     setFilter(f);
@@ -53,11 +52,12 @@ export function Kanban(props: {
     }
   };
 
-  // клиентская фильтрация колонок/задач
+  // клиентская фильтрация колонок/задач + порядок/видимость из настроек
   const visibleColumns = createMemo(() => {
     const f = filter();
     const q = f.search.trim().toLowerCase();
-    return columns()
+    const order = props.settings?.statuses ?? [];
+    let cols = columns()
       .filter((col) => !(f.hideClosed && CLOSED_MARKERS.includes(col.marker)))
       .map((col) => ({
         ...col,
@@ -67,6 +67,14 @@ export function Kanban(props: {
           return true;
         }),
       }));
+
+    if (order.length) {
+      cols = order
+        .filter((st) => st.visible)
+        .map((st) => cols.find((c) => c.marker === st.marker))
+        .filter((c): c is TaskColumn => c !== undefined);
+    }
+    return cols;
   });
 
   const load = async () => {
@@ -166,13 +174,13 @@ export function Kanban(props: {
             <header class="kanban-head">
               <span
                 class="kanban-dot"
-                style={{ background: COLUMN_ACCENTS[col.marker] ?? "#666" }}
+                style={{ background: colorOf(col.marker) }}
               />
               <span class="kanban-label">{col.label}</span>
               <span class="kanban-count">{col.tasks.length}</span>
             </header>
             <div class="kanban-body">
-              <For each={col.tasks.slice(0, 50)}>
+              <For each={col.tasks.slice(0, limit())}>
                 {(task) => (
                   <TaskCard
                     task={task}
@@ -184,8 +192,10 @@ export function Kanban(props: {
               <Show when={col.tasks.length === 0}>
                 <div class="kanban-empty">перетащи сюда задачу</div>
               </Show>
-              <Show when={col.tasks.length > 50}>
-                <div class="kanban-empty">…и ещё {col.tasks.length - 50}</div>
+              <Show when={col.tasks.length > limit()}>
+                <div class="kanban-empty">
+                  …и ещё {col.tasks.length - limit()}
+                </div>
               </Show>
             </div>
           </section>

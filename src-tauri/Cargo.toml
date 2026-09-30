@@ -26,6 +26,8 @@ dashmap = "6"
 rayon = "1"
 log = "0.4"
 env_logger = "0.11"
+tauri-plugin-dialog = "2.0.0-rc.8"
+tauri-plugin-log = "2.0.0-rc.2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

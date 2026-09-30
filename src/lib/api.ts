@@ -22,6 +22,8 @@ export interface BlockDto {
   links: string[];
   clockRunning: boolean;
   clockTotal: string | null;
+  deadline: string | null;
+  scheduled: string | null;
 }
 
 export interface PageDto {
@@ -178,6 +180,58 @@ export async function clockStart(uuid: string): Promise<string> {
 
 export async function clockStop(uuid: string): Promise<string> {
   return invoke<string>("clock_stop", { uuid });
+}
+
+export interface StatusConfig {
+  marker: string;
+  label: string;
+  color: string;
+  visible: boolean;
+  shortcut: string | null;
+}
+
+export interface Settings {
+  theme: string;
+  fontScale: number;
+  weekStart: number;
+  kanbanLimit: number;
+  statuses: StatusConfig[];
+}
+
+export async function settingsGet(): Promise<Settings> {
+  return invoke<Settings>("settings_get");
+}
+
+export async function settingsSave(settings: Settings): Promise<void> {
+  await invoke<void>("settings_save", { settings });
+}
+
+export async function taskSetPriority(
+  uuid: string,
+  priority: string | null,
+): Promise<string> {
+  return invoke<string>("task_set_priority", { uuid, priority });
+}
+
+export async function blockSetProp(
+  uuid: string,
+  key: string,
+  value: string | null,
+): Promise<string> {
+  return invoke<string>("block_set_prop", { uuid, key, value });
+}
+
+export interface RecentGraph {
+  path: string;
+  lastOpened: string;
+}
+
+export async function recentGraphs(): Promise<RecentGraph[]> {
+  return invoke<RecentGraph[]>("recent_graphs");
+}
+
+export async function pickGraphDir(): Promise<string | null> {
+  return invoke<string | null>("pick_graph_dir");
 }
 
 export async function search(query: string): Promise<SearchHit[]> {

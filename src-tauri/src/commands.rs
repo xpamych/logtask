@@ -28,6 +28,8 @@ pub struct BlockDto {
     pub links: Vec<String>,
     pub clock_running: bool,
     pub clock_total: Option<String>,
+    pub deadline: Option<String>,
+    pub scheduled: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,6 +64,8 @@ impl From<&Block> for BlockDto {
                 .collect(),
             clock_running: b.clock_running(),
             clock_total,
+            deadline: b.props.get("deadline").cloned(),
+            scheduled: b.props.get("scheduled").cloned(),
         }
     }
 }
@@ -139,6 +143,9 @@ pub fn graph_load(
         stats.tasks,
         graph.backlinks.len()
     );
+
+    // запоминаем граф в недавних
+    crate::recent::touch(&root);
 
     let summary = GraphSummary {
         pages: stats.pages,
@@ -925,6 +932,121 @@ async fn clock_toggle(
     };
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
+}
+
+/// Настройки графа (тема, шрифты, статусы канбана)
+#[tauri::command]
+pub fn settings_get(
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::settings::Settings, String> {
+    let root = state.root.read().clone();
+    Ok(root.map(|r| crate::settings::load(&r)).unwrap_or_default())
+}
+
+/// Сохраняет настройки графа
+#[tauri::command]
+pub fn settings_save(
+    settings: crate::settings::Settings,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let root = state.root.read().clone();
+    let Some(root) = root else {
+        return Err("граф не загружен".into());
+    };
+    crate::settings::save(&root, &settings).map_err(|e| format!("ошибка: {e}"))
+}
+
+/// Устанавливает приоритет задачи ([#A]/[#B]/[#C] или сброс)
+#[tauri::command]
+pub async fn task_set_priority(
+    uuid: String,
+    priority: Option<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    use crate::core::model::Priority;
+
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+    let prio = priority
+        .as_deref()
+        .map(|p| match p {
+            "A" => Some(Priority::A),
+            "B" => Some(Priority::B),
+            "C" => Some(Priority::C),
+            _ => None,
+        })
+        .unwrap_or(None);
+
+    let page = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .mutate_block(&id, &root, |b| b.set_priority(prio))
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    let Some(page) = page else {
+        return Err("блок не найден в графе".into());
+    };
+    crate::watcher::reindex_and_emit(&app);
+    Ok(page)
+}
+
+/// Устанавливает свойство (deadline/scheduled/urgency/importance…)
+#[tauri::command]
+pub async fn block_set_prop(
+    uuid: String,
+    key: String,
+    value: Option<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+
+    let page = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .mutate_block(&id, &root, |b| b.set_prop(&key, value.as_deref()))
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    let Some(page) = page else {
+        return Err("блок не найден в графе".into());
+    };
+    crate::watcher::reindex_and_emit(&app);
+    Ok(page)
+}
+
+/// Список недавних графов
+#[tauri::command]
+pub fn recent_graphs() -> Vec<crate::recent::RecentGraph> {
+    crate::recent::list()
+}
+
+/// Диалог выбора папки графа (нативный)
+#[tauri::command]
+pub async fn pick_graph_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title("Выбрать папку графа Logseq")
+        .pick_folder(move |folder| {
+            let _ = tx.send(folder);
+        });
+
+    let result = rx.recv().map_err(|e| format!("ошибка диалога: {e}"))?;
+    Ok(result.map(|f| f.to_string()))
 }
 
 /// Запросы по умолчанию (пока config.edn не импортирован)

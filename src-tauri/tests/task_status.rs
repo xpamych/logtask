@@ -323,3 +323,59 @@ fn clock_start_twice_keeps_single_running() {
     let clock_count = after.matches("CLOCK: [").count();
     assert_eq!(clock_count, 1, "только один открытый CLOCK:\n{after}");
 }
+
+#[test]
+fn set_priority_and_deadline() {
+    let dir = std::env::temp_dir().join("logtask_prio_test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("journals")).unwrap();
+    let file = dir.join("journals/2026_10_10.md");
+    fs::write(&file, "- TODO задача без приоритета\n").unwrap();
+
+    let mut graph = Graph::default();
+    graph.index_dir(&dir).unwrap();
+    let (id, _) = graph.all_tasks().into_iter().next().expect("есть задача");
+
+    graph
+        .mutate_block(&id, &dir, |b| {
+            b.set_priority(Some(logtask_lib::core::model::Priority::A));
+        })
+        .unwrap();
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(
+        after.contains("- TODO [#A] задача без приоритета"),
+        "{after}"
+    );
+
+    // смена A → C
+    let id2 = graph
+        .all_tasks()
+        .into_iter()
+        .map(|(id, _)| id)
+        .next()
+        .expect("задача есть");
+    graph
+        .mutate_block(&id2, &dir, |b| {
+            b.set_priority(Some(logtask_lib::core::model::Priority::C));
+        })
+        .unwrap();
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(
+        after.contains("- TODO [#C] задача без приоритета"),
+        "{after}"
+    );
+
+    // deadline
+    let id3 = graph
+        .all_tasks()
+        .into_iter()
+        .map(|(id, _)| id)
+        .next()
+        .expect("задача есть");
+    graph
+        .mutate_block(&id3, &dir, |b| b.set_prop("deadline", Some("2026-10-15")))
+        .unwrap();
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(after.contains("deadline:: 2026-10-15"), "{after}");
+    assert!(after.contains("- TODO [#C] задача"), "{after}");
+}

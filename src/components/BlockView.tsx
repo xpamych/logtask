@@ -3,10 +3,13 @@ import type { JSX } from "solid-js";
 import { parseSegments } from "~/lib/text";
 import type { BlockDto } from "~/lib/api";
 import {
+  blockSetProp,
   blockUpdateText,
   clockStart,
   clockStop,
   pageList,
+  taskSetPriority,
+  taskSetQuadrant,
 } from "~/lib/api";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -32,6 +35,13 @@ const MARKER_LABELS: Record<string, string> = {
   REVIEW: "На проверке",
   DONE: "Выполнено",
   CANCELED: "Отменено",
+};
+const PRIORITIES = ["A", "B", "C"];
+const LEVELS = ["low", "medium", "high"];
+const LEVEL_LABELS: Record<string, string> = {
+  low: "низкая",
+  medium: "средняя",
+  high: "высокая",
 };
 
 export function BlockView(props: {
@@ -174,6 +184,45 @@ export function BlockView(props: {
       props.onChanged?.();
     } catch (e) {
       console.error("ошибка CLOCK:", e);
+    }
+  };
+
+  const onPriority = async (prio: string | null) => {
+    setMenu(false);
+    try {
+      await taskSetPriority(b.uuid, prio);
+      props.onChanged?.();
+    } catch (e) {
+      console.error("ошибка приоритета:", e);
+    }
+  };
+
+  const onLevel = async (key: "urgency" | "importance", level: string) => {
+    setMenu(false);
+    try {
+      await taskSetQuadrant(
+        b.uuid,
+        key === "urgency" ? level : null,
+        key === "importance" ? level : null,
+      );
+      props.onChanged?.();
+    } catch (e) {
+      console.error("ошибка уровня:", e);
+    }
+  };
+
+  const onDeadline = async () => {
+    setMenu(false);
+    const value = window.prompt(
+      "Дедлайн (YYYY-MM-DD):",
+      b.deadline ?? "",
+    );
+    if (value === null) return;
+    try {
+      await blockSetProp(b.uuid, "deadline", value.trim() || null);
+      props.onChanged?.();
+    } catch (e) {
+      console.error("ошибка deadline:", e);
     }
   };
 
@@ -326,6 +375,76 @@ export function BlockView(props: {
                 </button>
               )}
             </For>
+          </div>
+
+          <div class="block-menu-title">Приоритет</div>
+          <div class="block-menu-row">
+            <For each={PRIORITIES}>
+              {(p) => (
+                <button
+                  class="block-menu-item"
+                  classList={{ active: b.priority === `[#${p}]` }}
+                  onClick={() => onPriority(p)}
+                >
+                  [#{p}]
+                </button>
+              )}
+            </For>
+            <Show when={b.priority}>
+              <button class="block-menu-item" onClick={() => onPriority(null)}>
+                убрать
+              </button>
+            </Show>
+          </div>
+
+          <div class="block-menu-title">Срочность</div>
+          <div class="block-menu-row">
+            <For each={LEVELS}>
+              {(l) => (
+                <button
+                  class="block-menu-item"
+                  classList={{ active: b.urgency === l }}
+                  onClick={() => onLevel("urgency", l)}
+                >
+                  {LEVEL_LABELS[l]}
+                </button>
+              )}
+            </For>
+          </div>
+
+          <div class="block-menu-title">Важность</div>
+          <div class="block-menu-row">
+            <For each={LEVELS}>
+              {(l) => (
+                <button
+                  class="block-menu-item"
+                  classList={{ active: b.importance === l }}
+                  onClick={() => onLevel("importance", l)}
+                >
+                  {LEVEL_LABELS[l]}
+                </button>
+              )}
+            </For>
+          </div>
+
+          <div class="block-menu-title">Дедлайн</div>
+          <div class="block-menu-row">
+            <button class="block-menu-item" onClick={onDeadline}>
+              {b.deadline ? `изменить (${b.deadline})` : "установить"}
+            </button>
+            <Show when={b.deadline}>
+              <button
+                class="block-menu-item"
+                onClick={() => {
+                  setMenu(false);
+                  void blockSetProp(b.uuid, "deadline", null).then(() =>
+                    props.onChanged?.(),
+                  );
+                }}
+              >
+                убрать
+              </button>
+            </Show>
           </div>
         </div>
       </Show>
