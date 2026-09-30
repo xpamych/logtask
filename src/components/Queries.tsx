@@ -1,7 +1,13 @@
 import { For, Show, createSignal, createEffect } from "solid-js";
 import type { JSX } from "solid-js";
 import type { SavedQuery, TaskDto } from "~/lib/api";
-import { importLogseqQueries, queriesList, tasksByFilter } from "~/lib/api";
+import {
+  importLogseqQueries,
+  queriesList,
+  queriesSave,
+  tasksByFilter,
+} from "~/lib/api";
+import { QueryEditor } from "./QueryEditor";
 import { TaskCard } from "./TaskCard";
 
 export function Queries(props: {
@@ -12,6 +18,8 @@ export function Queries(props: {
   const [results, setResults] = createSignal<Record<string, TaskDto[]>>({});
   const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>({});
   const [error, setError] = createSignal<string | null>(null);
+  const [editing, setEditing] = createSignal<SavedQuery | null>(null);
+  const [editorOpen, setEditorOpen] = createSignal(false);
 
   const load = async () => {
     setError(null);
@@ -43,14 +51,51 @@ export function Queries(props: {
     }
   };
 
+  const persist = async (qs: SavedQuery[]) => {
+    try {
+      await queriesSave(qs);
+      setQueries(qs);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const onSaveQuery = (q: SavedQuery) => {
+    const qs = queries();
+    const idx = qs.findIndex((x) => x.title === q.title);
+    const updated =
+      idx === -1
+        ? [...qs, q]
+        : qs.map((x, i) => (i === idx ? q : x));
+    void persist(updated);
+  };
+
+  const onDeleteQuery = (title: string) => {
+    void persist(queries().filter((q) => q.title !== title));
+  };
+
+  const newQuery = () => {
+    setEditing(null);
+    setEditorOpen(true);
+  };
+
+  const editQuery = (q: SavedQuery) => {
+    setEditing(q);
+    setEditorOpen(true);
+  };
+
   return (
     <div class="queries">
-      <Show when={error()}>{(e) => <div class="queries-note">{e()}</div>}</Show>
-      <Show when={queries().length === 0}>
-        <button class="queries-import" onClick={doImport}>
-          Импортировать запросы из logseq/config.edn
+      <div class="queries-toolbar">
+        <button class="queries-import" onClick={newQuery}>
+          ＋ новый запрос
         </button>
-      </Show>
+        <button class="queries-import" onClick={doImport} title="Импорт из logseq/config.edn">
+          ⤓ импорт из config.edn
+        </button>
+      </div>
+      <Show when={error()}>{(e) => <div class="queries-note">{e()}</div>}</Show>
       <For each={queries()}>
         {(q) => (
           <section class="query">
@@ -63,6 +108,16 @@ export function Queries(props: {
               <span class="caret">{collapsed()[q.title] ? "▸" : "▾"}</span>
               <span class="query-title">{q.title}</span>
               <span class="query-count">{results()[q.title]?.length ?? 0}</span>
+              <span
+                class="query-edit"
+                title="Редактировать запрос"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  editQuery(q);
+                }}
+              >
+                ✎
+              </span>
             </button>
             <Show when={!collapsed()[q.title]}>
               <div class="query-body">
@@ -79,6 +134,14 @@ export function Queries(props: {
           </section>
         )}
       </For>
+      <Show when={editorOpen()}>
+        <QueryEditor
+          query={editing()}
+          onClose={() => setEditorOpen(false)}
+          onSave={onSaveQuery}
+          onDelete={onDeleteQuery}
+        />
+      </Show>
     </div>
   );
 }

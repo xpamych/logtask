@@ -1129,3 +1129,30 @@ body {
   opacity: 0.35;
   cursor: default;
 }
+
+.queries-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.queries-toolbar .queries-import {
+  flex: 1;
+}
+
+.query-edit {
+  padding: 0 4px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.query-edit:hover {
+  color: var(--fg);
+}
+
+.modal-foot-spacer {
+  flex: 1;
+}
+
+.btn.danger-btn {
+  color: #e06666;
+}
