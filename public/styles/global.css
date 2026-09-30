@@ -123,3 +123,285 @@ body {
   padding: 16px;
   color: var(--fg-muted);
 }
+
+.block {
+  position: relative;
+  padding: 3px 8px 3px 0;
+  border-radius: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.block:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.block-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.empty-bullet {
+  color: var(--fg-muted);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  transform: translateY(-1px);
+}
+
+.task-badge {
+  font-size: 10px;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 3px;
+  flex: none;
+}
+
+.stats {
+  padding: 8px 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.stat-num {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.graph-path {
+  padding: 6px 14px 12px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  word-break: break-all;
+  border-bottom: 1px solid var(--border);
+}
+
+.error {
+  padding: 10px 14px;
+  color: #e57373;
+  font-size: 12px;
+}
+
+.backlinks {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.backlinks-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.backlink {
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: var(--bg-panel);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.backlink-from {
+  color: var(--accent);
+  margin-right: 8px;
+  white-space: nowrap;
+}
+
+.backlink-text {
+  color: var(--fg-muted);
+}
+
+/* --- Фаза 2: ссылки, поиск, списки --- */
+
+.scroll-list {
+  max-height: 38vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-collapse {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.caret {
+  color: var(--fg-muted);
+  font-size: 10px;
+}
+
+.page-item,
+.journal-item,
+.search-hit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--fg);
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.page-item:hover,
+.journal-item:hover,
+.search-hit:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.page-item {
+  color: var(--fg-muted);
+}
+
+.journal-item {
+  font-variant-numeric: tabular-nums;
+}
+
+.search-hit-page {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.search-hit-text {
+  color: var(--fg-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.wikilink {
+  background: none;
+  border: none;
+  color: #5fa8d3;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(95, 168, 211, 0.4);
+  text-underline-offset: 2px;
+}
+
+.wikilink:hover {
+  color: #8fc7ec;
+}
+
+.hashtag {
+  background: none;
+  border: none;
+  color: #b08cc7;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+
+.hashtag:hover {
+  color: #c9a9dc;
+}
+
+.block-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.block-task {
+  border-left: 2px solid var(--border);
+  padding-left: 8px !important;
+  margin-left: 4px;
+}
+
+.quad-hint {
+  color: var(--fg-muted);
+  font-size: 10px;
+  letter-spacing: 1px;
+  flex: none;
+  padding-left: 4px;
+}
+
+.priority-badge {
+  color: var(--fg-muted);
+  font-size: 11px;
+  flex: none;
+}
+
+.load-more {
+  display: block;
+  margin: 24px auto;
+  padding: 8px 18px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.load-more:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.load-more:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.backlinks-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.backlinks-list {
+  margin-top: 8px;
+}
+
+.day {
+  margin-bottom: 28px;
+}
+
+.back-to-journal {
+  margin-bottom: 12px;
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.back-to-journal:hover {
+  color: var(--fg);
+}
