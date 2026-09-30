@@ -95,6 +95,13 @@ fn roundtrip_blank_lines_position() {
 }
 
 #[test]
+fn roundtrip_trailing_blank_lines() {
+    // завершающие пустые строки файла не дублируются
+    let src = "- a\n\n\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
 fn roundtrip_raw_before_first_block() {
     // сырой текст до первого блока — без мусорных цифр
     let src = "\nhello\n\n- a\n";

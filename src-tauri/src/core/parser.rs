@@ -297,7 +297,6 @@ pub fn parse_document(text: &str) -> ParsedFile {
     let mut preamble: Vec<String> = Vec::new();
     // стек индексов блоков по уровню отступа для построения parent/children
     let mut stack: Vec<(u8, usize)> = Vec::new();
-    let mut pending_blank: u16 = 0;
 
     let lines: Vec<&str> = rest.split('\n').collect();
     let mut i = 0;
@@ -311,7 +310,9 @@ pub fn parse_document(text: &str) -> ParsedFile {
         }
         match classify(line) {
             Line::Empty => {
-                pending_blank += 1;
+                if let Some(last) = blocks.last_mut() {
+                    last.raw.trailing.push(Trailing::Blank);
+                }
                 i += 1;
             }
             Line::Block {
@@ -325,14 +326,12 @@ pub fn parse_document(text: &str) -> ParsedFile {
                 let indent = logical_indent(line);
                 let id = Uuid::now_v7();
                 let links = extract_links(&content);
-                let mut raw = BlockRaw {
+                let raw = BlockRaw {
                     indent_str,
                     bullet,
                     marker_str,
-                    blank_after: pending_blank,
                     trailing: Vec::new(),
                 };
-                let _ = &mut raw;
                 let block = Block {
                     id: Some(id),
                     indent,
@@ -364,7 +363,6 @@ pub fn parse_document(text: &str) -> ParsedFile {
                     blocks.push(block);
                 }
                 stack.push((indent, blocks.len() - 1));
-                pending_blank = 0;
                 i += 1;
             }
             Line::Prop {
@@ -417,7 +415,6 @@ pub fn parse_document(text: &str) -> ParsedFile {
                         text,
                     });
                 }
-                pending_blank = 0;
                 i += 1;
             }
         }

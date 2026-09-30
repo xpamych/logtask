@@ -67,6 +67,7 @@ impl Block {
                     out.push_str(text);
                     out.push('\n');
                 }
+                Trailing::Blank => out.push('\n'),
             }
         }
         // часы вне блока :LOGBOOK: (маловероятно, но не теряем)
@@ -79,15 +80,12 @@ impl Block {
                 | Trailing::LogbookStart(indent)
                 | Trailing::LogbookEnd(indent)
                 | Trailing::Raw { indent, .. } => indent.as_str(),
+                Trailing::Blank => self.raw.indent_str.as_str(),
             })
             .unwrap_or(&self.raw.indent_str);
         while clock_iter < clocks.len() {
             write_clock(fallback_indent, &clocks[clock_iter], out);
             clock_iter += 1;
-        }
-
-        for _ in 0..self.raw.blank_after {
-            out.push('\n');
         }
     }
 }
@@ -171,7 +169,6 @@ pub fn new_block(content: String, indent: u8) -> Block {
             bullet: "- ".to_string(),
             marker_str: "TODO ".to_string(),
             trailing: Vec::new(),
-            blank_after: 0,
         },
     }
 }

@@ -302,6 +302,8 @@ pub enum Trailing {
         indent: String,
         text: String,
     },
+    /// пустая строка (между блоками или внутри trailing)
+    Blank,
 }
 
 /// Сериализационное представление блока (для round-trip в исходный .md)
@@ -315,8 +317,6 @@ pub struct BlockRaw {
     pub marker_str: String,
     /// trailing-строки в исходном порядке
     pub trailing: Vec<Trailing>,
-    /// пустые строки после блока
-    pub blank_after: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
