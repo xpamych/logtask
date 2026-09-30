@@ -155,6 +155,9 @@ impl Graph {
                 kind,
                 roots,
                 order,
+                preamble: parsed.preamble,
+                trailing_blank: parsed.trailing_blank,
+                ends_with_newline: parsed.ends_with_newline,
                 mtime,
                 path,
             },
@@ -238,24 +241,19 @@ impl Graph {
             return Ok(None);
         }
 
-        let (kind, rel_path, roots, known_mtime) = {
-            let Some(page) = self.pages.get(&page_name) else {
-                return Ok(None);
-            };
-            (
-                page.kind,
-                page.path
-                    .clone()
-                    .unwrap_or_else(|| default_rel_path(&page.name, page.kind)),
-                page.roots.clone(),
-                page.mtime,
-            )
+        let Some(page_snapshot) = self.pages.get(&page_name).cloned() else {
+            return Ok(None);
         };
+        let kind = page_snapshot.kind;
+        let rel_path = page_snapshot
+            .path
+            .clone()
+            .unwrap_or_else(|| default_rel_path(&page_snapshot.name, page_snapshot.kind));
 
         let abs = root.join(&rel_path);
 
         // защита от перезаписи чужих правок
-        if let Some(known) = known_mtime {
+        if let Some(known) = page_snapshot.mtime {
             match std::fs::metadata(&abs).and_then(|m| m.modified()) {
                 Ok(actual) if actual != known => {
                     return Err(std::io::Error::other(
@@ -271,7 +269,7 @@ impl Graph {
         };
         f(block);
 
-        let text = super::serializer::serialize_document(&roots, &self.blocks);
+        let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
         super::fswrite::atomic_write(&abs, &text)?;
 
         // переиндексация этой страницы: удалить старые блоки и добавить новые
@@ -369,8 +367,8 @@ impl Graph {
             page.roots.retain(|x| !to_remove.contains(x));
         }
 
-        let roots = self.pages[&page_name].roots.clone();
-        let text = super::serializer::serialize_document(&roots, &self.blocks);
+        let page_snapshot = self.pages[&page_name].clone();
+        let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
         super::fswrite::atomic_write(&abs, &text)?;
 
         let text = std::fs::read_to_string(&abs)?;
@@ -428,8 +426,8 @@ impl Graph {
             page.order.push(id);
         }
 
-        let roots = self.pages[page_name].roots.clone();
-        let text = super::serializer::serialize_document(&roots, &self.blocks);
+        let page_snapshot = self.pages[page_name].clone();
+        let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
         super::fswrite::atomic_write(&abs, &text)?;
 
         let text = std::fs::read_to_string(&abs)?;

@@ -266,8 +266,10 @@ fn classify(line: &str) -> Line {
     }
 }
 
-/// Распарсенный документ: блоки + хвост из пустых строк в конце файла
+/// Распарсенный документ: преамбула + блоки + хвост из пустых строк
 pub struct ParsedFile {
+    /// сырые строки до первого блока (page-props, заголовки, пустые)
+    pub preamble: Vec<String>,
     pub blocks: Vec<Block>,
     /// пустые строки в самом конце файла
     pub trailing_blank: u16,
@@ -286,11 +288,13 @@ pub fn parse_document(text: &str) -> ParsedFile {
         trailing_blank += 1;
         rest = &rest[..rest.len() - 1];
     }
-    // serialize_document пишет '\n' после последнего блока —
+    // serialize_page пишет '\n' после последнего блока —
     // это и есть финальный перевод, пустые строки считаем отдельно
     trailing_blank = trailing_blank.saturating_sub(1);
 
     let mut blocks: Vec<Block> = Vec::new();
+    // сырые строки до первого блока (page-props, заголовки, пустые)
+    let mut preamble: Vec<String> = Vec::new();
     // стек индексов блоков по уровню отступа для построения parent/children
     let mut stack: Vec<(u8, usize)> = Vec::new();
     let mut pending_blank: u16 = 0;
@@ -299,6 +303,12 @@ pub fn parse_document(text: &str) -> ParsedFile {
     let mut i = 0;
     while i < lines.len() {
         let line = lines[i];
+        // всё до первого bullet-блока уходит в преамбулу как есть
+        if blocks.is_empty() && !matches!(classify(line), Line::Block { .. }) {
+            preamble.push(line.to_string());
+            i += 1;
+            continue;
+        }
         match classify(line) {
             Line::Empty => {
                 pending_blank += 1;
@@ -399,33 +409,12 @@ pub fn parse_document(text: &str) -> ParsedFile {
                 i += 1;
             }
             Line::Raw { indent_str, text } => {
+                // raw до первого блока уходит в преамбулу выше,
+                // здесь stack всегда непуст
                 if let Some((_, idx)) = stack.last().copied() {
                     blocks[idx].raw.trailing.push(Trailing::Raw {
                         indent: indent_str,
                         text,
-                    });
-                } else {
-                    let id = Uuid::now_v7();
-                    blocks.push(Block {
-                        id: Some(id),
-                        indent: 0,
-                        status: None,
-                        priority: None,
-                        content: text,
-                        props: HashMap::new(),
-                        urgency: None,
-                        importance: None,
-                        logbook: Vec::new(),
-                        links: Vec::new(),
-                        children: Vec::new(),
-                        parent: None,
-                        raw: BlockRaw {
-                            indent_str: pending_blank.to_string(),
-                            bullet: String::new(),
-                            marker_str: String::new(),
-                            blank_after: pending_blank,
-                            trailing: Vec::new(),
-                        },
                     });
                 }
                 pending_blank = 0;
@@ -435,6 +424,7 @@ pub fn parse_document(text: &str) -> ParsedFile {
     }
 
     ParsedFile {
+        preamble,
         blocks,
         trailing_blank,
         ends_with_newline,
@@ -457,6 +447,9 @@ pub fn parse_file(name: &str, kind: PageKind, text: &str) -> Page {
         kind,
         roots,
         order,
+        preamble: parsed.preamble,
+        trailing_blank: parsed.trailing_blank,
+        ends_with_newline: parsed.ends_with_newline,
         mtime: None,
         path: None,
     }

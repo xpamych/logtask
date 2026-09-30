@@ -111,26 +111,51 @@ fn write_block_tree(id: &Uuid, blocks: &HashMap<Uuid, Block>, out: &mut String) 
     }
 }
 
+/// Сериализует страницу целиком: преамбула + блоки + хвост.
+pub fn serialize_page(page: &super::model::Page, blocks: &HashMap<Uuid, Block>) -> String {
+    let mut out = String::new();
+    for line in &page.preamble {
+        out.push_str(line);
+        out.push('\n');
+    }
+    for root in &page.roots {
+        write_block_tree(root, blocks, &mut out);
+    }
+    for _ in 0..page.trailing_blank {
+        out.push('\n');
+    }
+    if !page.ends_with_newline && out.ends_with('\n') {
+        out.pop();
+    }
+    out
+}
+
 /// Удобный тестовый helper: парсит документ и сериализует обратно
 pub fn roundtrip(text: &str) -> String {
     let parsed = super::parser::parse_document(text);
     let mut blocks = HashMap::new();
     let mut roots = Vec::new();
+    let mut order = Vec::new();
     for b in parsed.blocks {
         let id = b.id.expect("свежий uuid");
         if b.parent.is_none() {
             roots.push(id);
         }
+        order.push(id);
         blocks.insert(id, b);
     }
-    let mut out = serialize_document(&roots, &blocks);
-    for _ in 0..parsed.trailing_blank {
-        out.push('\n');
-    }
-    if !parsed.ends_with_newline && out.ends_with('\n') {
-        out.pop();
-    }
-    out
+    let page = super::model::Page {
+        name: String::new(),
+        kind: super::model::PageKind::Page,
+        roots,
+        order,
+        preamble: parsed.preamble,
+        trailing_blank: parsed.trailing_blank,
+        ends_with_newline: parsed.ends_with_newline,
+        mtime: None,
+        path: None,
+    };
+    serialize_page(&page, &blocks)
 }
 
 /// Создаёт новый блок с дефолтным форматированием Logseq (tab-отступ)

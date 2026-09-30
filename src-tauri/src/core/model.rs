@@ -650,10 +650,23 @@ pub struct Page {
     pub roots: Vec<uuid::Uuid>,
     /// порядок блоков как в файле
     pub order: Vec<uuid::Uuid>,
+    /// сырые строки до первого блока (для round-trip)
+    #[serde(default, skip)]
+    pub preamble: Vec<String>,
+    /// пустые строки в конце файла (для round-trip)
+    #[serde(default, skip)]
+    pub trailing_blank: u16,
+    /// оканчивается ли файл переводом строки (для round-trip)
+    #[serde(default = "default_true", skip)]
+    pub ends_with_newline: bool,
     pub mtime: Option<std::time::SystemTime>,
     /// путь к файлу относительно корня графа
     #[serde(default)]
     pub path: Option<std::path::PathBuf>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Default)]
