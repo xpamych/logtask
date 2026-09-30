@@ -1,7 +1,14 @@
 import { For, Show, createEffect, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { PageDto } from "~/lib/api";
-import { backlinksGet, followLink, pageGet } from "~/lib/api";
+import {
+  backlinksGet,
+  blockCreate,
+  blockDelete,
+  followLink,
+  pageGet,
+  taskSetStatus,
+} from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
 import { BlockView } from "./BlockView";
 
@@ -15,7 +22,10 @@ export function PageView(props: {
   const [backlinks, setBacklinks] = createSignal<[string, string][]>([]);
   const [open, setOpen] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  const [adding, setAdding] = createSignal(false);
+  const [newText, setNewText] = createSignal("");
   let mainEl: HTMLElement | undefined;
+  let addInputEl: HTMLInputElement | undefined;
 
   const load = async () => {
     setError(null);
@@ -50,6 +60,40 @@ export function PageView(props: {
     }
   };
 
+  const onStatusChange = async (uuid: string, marker: string) => {
+    try {
+      await taskSetStatus(uuid, marker);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const onDelete = async (uuid: string) => {
+    try {
+      await blockDelete(uuid);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const createBlock = async () => {
+    const text = newText().trim();
+    if (!text) {
+      setAdding(false);
+      return;
+    }
+    try {
+      await blockCreate(props.name, text, "TODO");
+      setNewText("");
+      setAdding(false);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   createEffect(() => {
     void props.name;
     void props.refreshKey;
@@ -68,8 +112,43 @@ export function PageView(props: {
               {p().kind === "journal" ? formatJournalName(p().name) : p().name}
             </h2>
             <For each={p().blocks}>
-              {(block) => <BlockView block={block} onOpenPage={props.onOpenPage} />}
+              {(block) => (
+                <BlockView
+                  block={block}
+                  onOpenPage={props.onOpenPage}
+                  onChanged={load}
+                  onStatusChange={onStatusChange}
+                  onDelete={onDelete}
+                />
+              )}
             </For>
+            <Show when={adding()}>
+              <div class="block-add-row">
+                <input
+                  ref={addInputEl}
+                  class="block-add-input"
+                  placeholder="новая задача…"
+                  value={newText()}
+                  onInput={(e) => setNewText(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void createBlock();
+                    } else if (e.key === "Escape") {
+                      setAdding(false);
+                      setNewText("");
+                    }
+                  }}
+                  onBlur={() => void createBlock()}
+                />
+              </div>
+            </Show>
+            <button class="block-add-btn" onClick={() => {
+              setAdding(true);
+              queueMicrotask(() => addInputEl?.focus());
+            }}>
+              ＋ добавить блок
+            </button>
             <Show when={p().blocks.length === 0}>
               <div class="placeholder">Страница пуста</div>
             </Show>

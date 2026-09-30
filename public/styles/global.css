@@ -736,3 +736,191 @@ body {
 .task-prio-b {
   border-left-color: #d9822b;
 }
+
+/* ---- Редактирование блоков ---- */
+
+.block {
+  position: relative;
+}
+
+.block-text {
+  cursor: text;
+  border-radius: 3px;
+}
+
+.block-text:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.block-edit {
+  width: 100%;
+  min-height: 20px;
+  padding: 2px 6px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: vertical;
+  outline: none;
+}
+
+.block-actions {
+  display: none;
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  gap: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px;
+}
+
+.block:hover .block-actions {
+  display: flex;
+}
+
+.block-action {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.block-action:hover {
+  color: var(--fg);
+  background: var(--bg-alt);
+}
+
+.block-menu {
+  position: absolute;
+  right: 2px;
+  top: 24px;
+  z-index: 20;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  min-width: 180px;
+}
+
+.block-menu-title {
+  font-size: 11px;
+  color: var(--fg-muted);
+  margin-bottom: 4px;
+}
+
+.block-menu-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.block-menu-item {
+  padding: 3px 8px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.block-menu-item.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.block-add-btn {
+  display: block;
+  margin: 10px 0 4px;
+  padding: 5px 12px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.block-add-btn:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.block-add-row {
+  margin: 8px 0;
+}
+
+.block-add-input {
+  width: 100%;
+  padding: 5px 9px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  color: var(--fg);
+  font-size: 13px;
+  outline: none;
+}
+
+/* автодополнение [[ */
+
+.ac-list {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.ac-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 4px 9px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ac-item:last-child {
+  border-bottom: none;
+}
+
+.ac-item.active {
+  background: var(--bg-alt);
+  color: var(--accent);
+}
+
+/* CLOCK */
+
+.clock-running {
+  color: #3d8a4e;
+  animation: clock-pulse 1.6s ease-in-out infinite;
+}
+
+.clock-total {
+  color: var(--fg-muted);
+  font-size: 11px;
+  flex: none;
+}
+
+@keyframes clock-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.block-action.danger:hover {
+  color: #e06666;
+}

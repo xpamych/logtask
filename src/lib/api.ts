@@ -20,6 +20,8 @@ export interface BlockDto {
   urgency: string | null;
   importance: string | null;
   links: string[];
+  clockRunning: boolean;
+  clockTotal: string | null;
 }
 
 export interface PageDto {
@@ -83,6 +85,8 @@ export interface TaskDto {
   scheduled: string | null;
   tags: string[];
   done: boolean;
+  clockRunning: boolean;
+  clockTotal: string | null;
 }
 
 export interface TaskColumn {
@@ -150,6 +154,30 @@ export async function taskSetQuadrant(
   importance: string | null,
 ): Promise<string> {
   return invoke<string>("task_set_quadrant", { uuid, urgency, importance });
+}
+
+export async function blockUpdateText(uuid: string, content: string): Promise<string> {
+  return invoke<string>("block_update_text", { uuid, content });
+}
+
+export async function blockDelete(uuid: string): Promise<string> {
+  return invoke<string>("block_delete", { uuid });
+}
+
+export async function blockCreate(
+  page: string,
+  content: string,
+  marker: string | null,
+): Promise<string> {
+  return invoke<string>("block_create", { page, content, marker });
+}
+
+export async function clockStart(uuid: string): Promise<string> {
+  return invoke<string>("clock_start", { uuid });
+}
+
+export async function clockStop(uuid: string): Promise<string> {
+  return invoke<string>("clock_stop", { uuid });
 }
 
 export async function search(query: string): Promise<SearchHit[]> {

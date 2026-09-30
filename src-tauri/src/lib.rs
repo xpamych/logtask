@@ -34,6 +34,11 @@ pub fn run() {
             commands::task_set_status,
             commands::matrix,
             commands::task_set_quadrant,
+            commands::block_update_text,
+            commands::block_delete,
+            commands::block_create,
+            commands::clock_start,
+            commands::clock_stop,
             commands::ping,
         ])
         .setup(|app| {

@@ -220,6 +220,8 @@ impl Graph {
     /// После записи файл переиндексируется (блоки/ссылки/обратные ссылки).
     /// Возвращает имя страницы, если блок найден и сохранён.
     /// Применяет функцию к блоку и перезаписывает файл страницы на диск.
+    /// Перед записью проверяет mtime файла — если он изменился извне
+    /// (Syncthing/Logseq), возвращает Err, чтобы не затереть чужие правки.
     /// После записи файл переиндексируется (блоки/ссылки/обратные ссылки).
     /// Возвращает имя страницы, если блок найден и сохранён.
     pub fn mutate_block<F>(
@@ -236,7 +238,7 @@ impl Graph {
             return Ok(None);
         }
 
-        let (kind, rel_path, roots) = {
+        let (kind, rel_path, roots, known_mtime) = {
             let Some(page) = self.pages.get(&page_name) else {
                 return Ok(None);
             };
@@ -246,8 +248,23 @@ impl Graph {
                     .clone()
                     .unwrap_or_else(|| default_rel_path(&page.name, page.kind)),
                 page.roots.clone(),
+                page.mtime,
             )
         };
+
+        let abs = root.join(&rel_path);
+
+        // защита от перезаписи чужих правок
+        if let Some(known) = known_mtime {
+            match std::fs::metadata(&abs).and_then(|m| m.modified()) {
+                Ok(actual) if actual != known => {
+                    return Err(std::io::Error::other(
+                        "файл изменён другим приложением — обнови граф",
+                    ));
+                }
+                _ => {}
+            }
+        }
 
         let Some(block) = self.blocks.get_mut(id) else {
             return Ok(None);
@@ -255,8 +272,7 @@ impl Graph {
         f(block);
 
         let text = super::serializer::serialize_document(&roots, &self.blocks);
-        let abs = root.join(&rel_path);
-        std::fs::write(&abs, text)?;
+        super::fswrite::atomic_write(&abs, &text)?;
 
         // переиндексация этой страницы: удалить старые блоки и добавить новые
         let old_order = self.pages[&page_name].order.clone();
@@ -264,6 +280,7 @@ impl Graph {
             self.blocks.remove(&old);
         }
         let text = std::fs::read_to_string(&abs)?;
+        let mtime = std::fs::metadata(&abs).ok().and_then(|m| m.modified().ok());
         let mut stats = IndexStats {
             pages: 0,
             journals: 0,
@@ -271,7 +288,7 @@ impl Graph {
             tasks: 0,
             links: 0,
         };
-        self.index_file_content(&page_name, kind, &text, None, &mut stats, Some(rel_path));
+        self.index_file_content(&page_name, kind, &text, mtime, &mut stats, Some(rel_path));
         self.rebuild_backlinks();
 
         Ok(Some(page_name))
@@ -304,6 +321,147 @@ impl Graph {
                 b.set_level("importance", Some(i));
             }
         })
+    }
+
+    /// Меняет текст блока
+    pub fn set_block_text(
+        &mut self,
+        id: &Uuid,
+        content: &str,
+        root: &Path,
+    ) -> std::io::Result<Option<String>> {
+        self.mutate_block(id, root, |b| b.set_content(content))
+    }
+
+    /// Удаляет блок и его дочерние блоки
+    pub fn delete_block(&mut self, id: &Uuid, root: &Path) -> std::io::Result<Option<String>> {
+        let page_name = self.page_of_block(id);
+        if page_name.is_empty() {
+            return Ok(None);
+        }
+        let (kind, rel_path) = {
+            let Some(page) = self.pages.get(&page_name) else {
+                return Ok(None);
+            };
+            (
+                page.kind,
+                page.path
+                    .clone()
+                    .unwrap_or_else(|| default_rel_path(&page.name, page.kind)),
+            )
+        };
+        let abs = root.join(&rel_path);
+
+        // собираем удаляемое поддерево
+        let mut to_remove: Vec<Uuid> = vec![*id];
+        let mut stack = vec![*id];
+        while let Some(cur) = stack.pop() {
+            if let Some(b) = self.blocks.get(&cur) {
+                stack.extend(b.children.iter().copied());
+                to_remove.extend(b.children.iter().copied());
+            }
+        }
+        for r in &to_remove {
+            self.blocks.remove(r);
+        }
+        if let Some(page) = self.pages.get_mut(&page_name) {
+            page.order.retain(|x| !to_remove.contains(x));
+            page.roots.retain(|x| !to_remove.contains(x));
+        }
+
+        let roots = self.pages[&page_name].roots.clone();
+        let text = super::serializer::serialize_document(&roots, &self.blocks);
+        super::fswrite::atomic_write(&abs, &text)?;
+
+        let text = std::fs::read_to_string(&abs)?;
+        // очищаем старые блоки страницы перед переиндексацией
+        let old_order = self.pages[&page_name].order.clone();
+        for old in old_order {
+            self.blocks.remove(&old);
+        }
+        let mtime = std::fs::metadata(&abs).ok().and_then(|m| m.modified().ok());
+        let mut stats = IndexStats {
+            pages: 0,
+            journals: 0,
+            blocks: 0,
+            tasks: 0,
+            links: 0,
+        };
+        self.index_file_content(&page_name, kind, &text, mtime, &mut stats, Some(rel_path));
+        self.rebuild_backlinks();
+        Ok(Some(page_name))
+    }
+
+    /// Добавляет новый блок в конец страницы (корневой уровень).
+    /// Возвращает uuid нового блока.
+    pub fn append_block(
+        &mut self,
+        page_name: &str,
+        content: &str,
+        status: Option<super::model::Status>,
+        root: &Path,
+    ) -> std::io::Result<Option<Uuid>> {
+        let Some(page) = self.pages.get(page_name) else {
+            return Ok(None);
+        };
+        let (kind, rel_path, roots_len) = (
+            page.kind,
+            page.path
+                .clone()
+                .unwrap_or_else(|| default_rel_path(&page.name, page.kind)),
+            page.roots.len(),
+        );
+        let abs = root.join(&rel_path);
+
+        let mut block = super::serializer::new_block(content.to_string(), 0);
+        if let Some(s) = status {
+            block.set_status(s);
+        } else {
+            // обычный блок без маркера
+            block.status = None;
+            block.raw.marker_str = String::new();
+        }
+        let id = block.id.expect("свежий uuid");
+        self.blocks.insert(id, block);
+        if let Some(page) = self.pages.get_mut(page_name) {
+            page.roots.push(id);
+            page.order.push(id);
+        }
+
+        let roots = self.pages[page_name].roots.clone();
+        let text = super::serializer::serialize_document(&roots, &self.blocks);
+        super::fswrite::atomic_write(&abs, &text)?;
+
+        let text = std::fs::read_to_string(&abs)?;
+        // очищаем старые блоки страницы перед переиндексацией
+        let old_order = self.pages[page_name].order.clone();
+        for old in old_order {
+            self.blocks.remove(&old);
+        }
+        let mtime = std::fs::metadata(&abs).ok().and_then(|m| m.modified().ok());
+        let mut stats = IndexStats {
+            pages: 0,
+            journals: 0,
+            blocks: 0,
+            tasks: 0,
+            links: 0,
+        };
+        self.index_file_content(page_name, kind, &text, mtime, &mut stats, Some(rel_path));
+        self.rebuild_backlinks();
+        let _ = roots_len;
+        // uuid пересоздаётся при переиндексации (Logseq не хранит его в .md),
+        // поэтому находим свежий блок по содержанию
+        let new_id = self
+            .pages
+            .get(page_name)
+            .and_then(|p| p.order.last().copied())
+            .filter(|id| {
+                self.blocks
+                    .get(id)
+                    .map(|b| b.content == content)
+                    .unwrap_or(false)
+            });
+        Ok(new_id)
     }
 }
 

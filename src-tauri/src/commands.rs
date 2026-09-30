@@ -26,6 +26,8 @@ pub struct BlockDto {
     pub urgency: Option<String>,
     pub importance: Option<String>,
     pub links: Vec<String>,
+    pub clock_running: bool,
+    pub clock_total: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,6 +39,8 @@ pub struct PageDto {
 
 impl From<&Block> for BlockDto {
     fn from(b: &Block) -> Self {
+        // суммарная длительность по всем CLOCK
+        let clock_total = total_clock_duration(b);
         BlockDto {
             uuid: b.id.map(|u| u.to_string()).unwrap_or_default(),
             status: b.status.map(|s| s.to_marker().to_string()),
@@ -56,8 +60,54 @@ impl From<&Block> for BlockDto {
                     crate::core::model::LinkTarget::Block(n) => format!("(({n}))"),
                 })
                 .collect(),
+            clock_running: b.clock_running(),
+            clock_total,
         }
     }
+}
+
+/// Суммарная длительность CLOCK блока в формате Logseq ("118:30:48")
+fn total_clock_duration(b: &Block) -> Option<String> {
+    let mut total = 0i64;
+    let mut any = false;
+    for c in &b.logbook {
+        if let Some(end) = &c.end {
+            if let Some(dur) = clock_seconds(&c.start, end) {
+                total += dur;
+                any = true;
+            }
+        }
+    }
+    if !any {
+        return None;
+    }
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    Some(format!("{h}:{m:02}:{s:02}"))
+}
+
+/// Секунды между двумя Org timestamp
+fn clock_seconds(start: &str, end: &str) -> Option<i64> {
+    let a = org_time_to_seconds(start)?;
+    let b = org_time_to_seconds(end)?;
+    (b - a).into()
+}
+
+fn org_time_to_seconds(s: &str) -> Option<i64> {
+    use crate::core::model::ymd_to_days;
+    let s = s.trim();
+    let date = s.get(..10)?;
+    let y: i64 = date.get(..4)?.parse().ok()?;
+    let mo: u32 = date.get(5..7)?.parse().ok()?;
+    let d: u32 = date.get(8..10)?.parse().ok()?;
+    let rest = s[10..].trim();
+    let time = rest.split_whitespace().nth(1).unwrap_or("00:00:00");
+    let mut tp = time.split(':');
+    let h: i64 = tp.next()?.parse().ok()?;
+    let m: i64 = tp.next().unwrap_or("0").parse().ok()?;
+    let sec: i64 = tp.next().unwrap_or("0").parse().ok()?;
+    Some(ymd_to_days(y, mo, d) * 86400 + h * 3600 + m * 60 + sec)
 }
 
 /// Индексирует граф и возвращает сводку. Если path не задан — берёт
@@ -77,6 +127,9 @@ pub fn graph_load(
     let stats: IndexStats = graph
         .index_dir(std::path::Path::new(&root))
         .map_err(|e| format!("ошибка индексации: {e}"))?;
+
+    // создаём сегодняшнюю страницу журнала, если её ещё нет
+    ensure_today_journal(std::path::Path::new(&root), &mut graph);
 
     log::info!(
         "граф загружен: {root}: {} журналов, {} страниц, {} блоков, {} задач, {} обратных ссылок",
@@ -653,6 +706,223 @@ pub async fn task_set_status(
     };
 
     // переиндексируем и оповестим UI
+    crate::watcher::reindex_and_emit(&app);
+    Ok(page)
+}
+
+/// Меняет текст блока (редактирование в UI)
+#[tauri::command]
+pub async fn block_update_text(
+    uuid: String,
+    content: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+
+    let page = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .set_block_text(&id, &content, &root)
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    let Some(page) = page else {
+        return Err("блок не найден в графе".into());
+    };
+    crate::watcher::reindex_and_emit(&app);
+    Ok(page)
+}
+
+/// Удаляет блок и его поддерево
+#[tauri::command]
+pub async fn block_delete(
+    uuid: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+
+    let page = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .delete_block(&id, &root)
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    let Some(page) = page else {
+        return Err("блок не найден в графе".into());
+    };
+    crate::watcher::reindex_and_emit(&app);
+    Ok(page)
+}
+
+/// Создаёт новый блок в конце страницы.
+/// marker — один из LATER/TODO/DOING/... или null для обычного блока
+#[tauri::command]
+pub async fn block_create(
+    page: String,
+    content: String,
+    marker: Option<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let status = marker.as_deref().and_then(Status::from_marker);
+
+    let uuid = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .append_block(&page, &content, status, &root)
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    let Some(_) = uuid else {
+        return Err("страница не найдена".into());
+    };
+    crate::watcher::reindex_and_emit(&app);
+    Ok(uuid.unwrap().to_string())
+}
+
+/// Создаёт файл сегодняшнего журнала (journals/YYYY_MM_DD.md), если его нет.
+/// Ничего не делает, если файл существует.
+fn ensure_today_journal(root: &std::path::Path, graph: &mut Graph) {
+    let name = today_journal_name();
+    if graph.pages.contains_key(&name) {
+        return;
+    }
+    let path = root.join("journals").join(format!("{name}.md"));
+    if path.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::create_dir_all(path.parent().unwrap_or(root)) {
+        log::warn!("не удалось создать папку journals: {e}");
+        return;
+    }
+    // Logseq добавляет заголовок-дату первой строкой
+    let title = format!("- {}\n", journal_title(&name));
+    if let Err(e) = std::fs::write(&path, &title) {
+        log::warn!("не удалось создать {path:?}: {e}");
+        return;
+    }
+    log::info!("создана страница журнала: {name}");
+    // индексируем новый файл, чтобы он появился сразу
+    let mut stats = IndexStats {
+        pages: 0,
+        journals: 0,
+        blocks: 0,
+        tasks: 0,
+        links: 0,
+    };
+    let rel = std::path::PathBuf::from(format!("journals/{name}.md"));
+    graph.index_file_content(
+        &name,
+        crate::core::model::PageKind::Journal,
+        &title,
+        None,
+        &mut stats,
+        Some(rel),
+    );
+}
+
+/// Имя сегодняшнего журнала: "2026_09_30"
+fn today_journal_name() -> String {
+    use crate::core::model::days_to_ymd;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let days = now / 86400;
+    let (y, m, d) = days_to_ymd(days);
+    format!("{y:04}_{m:02}_{d:02}")
+}
+
+/// Заголовок журнала как в Logseq: "Sep 30th, 2026"
+fn journal_title(name: &str) -> String {
+    let mut parts = name.split('_');
+    let (y, m, d) = (
+        parts.next().unwrap_or("1970"),
+        parts.next().unwrap_or("01"),
+        parts.next().unwrap_or("01"),
+    );
+    let month = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let m_idx: usize = (m.parse::<usize>().unwrap_or(1)).saturating_sub(1).min(11);
+    let day: u32 = d.parse().unwrap_or(1);
+    let suffix = match day % 10 {
+        1 if day != 11 => "st",
+        2 if day != 12 => "nd",
+        3 if day != 13 => "rd",
+        _ => "th",
+    };
+    format!("{} {}{}, {}", month[m_idx], day, suffix, y)
+}
+
+/// Запускает CLOCK на задаче (если уже идёт — ничего не делает)
+#[tauri::command]
+pub async fn clock_start(
+    uuid: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    clock_toggle(uuid, true, app, state).await
+}
+
+/// Останавливает CLOCK на задаче. Возвращает длительность ("118:30:48").
+#[tauri::command]
+pub async fn clock_stop(
+    uuid: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    clock_toggle(uuid, false, app, state).await
+}
+
+async fn clock_toggle(
+    uuid: String,
+    start: bool,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+    let now = crate::core::model::org_timestamp_now();
+
+    let result = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .mutate_block(&id, &root, |b| {
+                if start {
+                    b.clock_start(&now);
+                } else {
+                    let _ = b.clock_stop(&now);
+                }
+            })
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    let Some(page) = result else {
+        return Err("блок не найден в графе".into());
+    };
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
