@@ -102,6 +102,19 @@ fn roundtrip_trailing_blank_lines() {
 }
 
 #[test]
+fn roundtrip_blank_after_nested_child() {
+    // пустая строка прилепляется к последнему вложенному блоку
+    let src = "- a\n\t- child\n\n- b\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
+fn roundtrip_blank_after_logbook_end() {
+    let src = "- a\n  :LOGBOOK:\n  CLOCK: [2026-01-18 Sun 10:00:00]--[2026-01-18 Sun 11:00:00] =>  1:00:00\n  :END:\n\n- b\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
 fn roundtrip_raw_before_first_block() {
     // сырой текст до первого блока — без мусорных цифр
     let src = "\nhello\n\n- a\n";

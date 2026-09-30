@@ -310,6 +310,8 @@ pub fn parse_document(text: &str) -> ParsedFile {
         }
         match classify(line) {
             Line::Empty => {
+                // пустые строки до первого блока ушли в преамбулу,
+                // поэтому здесь blocks всегда непуст
                 if let Some(last) = blocks.last_mut() {
                     last.raw.trailing.push(Trailing::Blank);
                 }

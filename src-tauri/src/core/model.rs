@@ -302,8 +302,18 @@ pub enum Trailing {
         indent: String,
         text: String,
     },
-    /// пустая строка (между блоками или внутри trailing)
+    /// пустая строка (между блоками или внутри trailing);
+    /// принадлежит последнему встреченному блоку — в т.ч. глубоко вложенному
     Blank,
+}
+
+/// Позиция вставки новой записи блока: перед первой пустой строкой
+/// (свойства/логбук должны прилегать к блоку, как пишет Logseq)
+fn insert_pos_before_blank(trailing: &[Trailing]) -> usize {
+    trailing
+        .iter()
+        .position(|t| matches!(t, Trailing::Blank))
+        .unwrap_or(trailing.len())
 }
 
 /// Сериализационное представление блока (для round-trip в исходный .md)
@@ -436,15 +446,16 @@ impl Block {
                         key: key.to_string(),
                         value: v.to_string(),
                     };
+                    // перед LOGBOOK, если он есть, и до первой пустой строки —
+                    // свойство должно прилегать к блоку
                     let pos = self
                         .raw
                         .trailing
                         .iter()
-                        .position(|t| matches!(t, Trailing::LogbookStart(_)));
-                    match pos {
-                        Some(p) => self.raw.trailing.insert(p, prop),
-                        None => self.raw.trailing.push(prop),
-                    }
+                        .position(|t| matches!(t, Trailing::LogbookStart(_)))
+                        .unwrap_or(self.raw.trailing.len())
+                        .min(insert_pos_before_blank(&self.raw.trailing));
+                    self.raw.trailing.insert(pos, prop);
                 }
             }
             None => {
@@ -544,16 +555,16 @@ impl Block {
                         key: key.to_string(),
                         value: value.clone(),
                     };
-                    // перед LOGBOOK, если он есть
+                    // перед LOGBOOK, если он есть, и до первой пустой строки —
+                    // свойство должно прилегать к блоку
                     let pos = self
                         .raw
                         .trailing
                         .iter()
-                        .position(|t| matches!(t, Trailing::LogbookStart(_)));
-                    match pos {
-                        Some(p) => self.raw.trailing.insert(p, prop),
-                        None => self.raw.trailing.push(prop),
-                    }
+                        .position(|t| matches!(t, Trailing::LogbookStart(_)))
+                        .unwrap_or(self.raw.trailing.len())
+                        .min(insert_pos_before_blank(&self.raw.trailing));
+                    self.raw.trailing.insert(pos, prop);
                 }
             }
             None => {
@@ -601,10 +612,14 @@ impl Block {
             .iter()
             .any(|t| matches!(t, Trailing::LogbookStart(_)));
         if !has_logbook {
+            // обёртку вставляем до пустых строк — иначе :LOGBOOK: оторвётся от блока
+            let pos = insert_pos_before_blank(&self.raw.trailing);
             self.raw
                 .trailing
-                .push(Trailing::LogbookStart(indent.clone()));
-            self.raw.trailing.push(Trailing::LogbookEnd(indent));
+                .insert(pos, Trailing::LogbookStart(indent.clone()));
+            self.raw
+                .trailing
+                .insert(pos + 1, Trailing::LogbookEnd(indent));
         }
         self.logbook.push(Clock {
             start: now.to_string(),

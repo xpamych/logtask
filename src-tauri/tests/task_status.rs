@@ -133,6 +133,31 @@ fn set_quadrant_inserts_before_logbook() {
 }
 
 #[test]
+fn set_prop_stays_before_blank_line() {
+    // регрессия: новое свойство не должно вставать после пустой строки —
+    // иначе оно отрывается от блока и Logseq его не видит
+    let dir = std::env::temp_dir().join("logtask_blank_prop_test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("journals")).unwrap();
+    let file = dir.join("journals/2026_10_09.md");
+    fs::write(&file, "- TODO задача с пустой строкой\n\n- другой блок\n").unwrap();
+
+    let mut graph = Graph::default();
+    graph.index_dir(&dir).unwrap();
+    let (id, _) = graph.all_tasks().into_iter().next().expect("есть задача");
+
+    graph
+        .mutate_block(&id, &dir, |b| b.set_prop("deadline", Some("2026-10-20")))
+        .unwrap();
+
+    let after = fs::read_to_string(&file).unwrap();
+    assert_eq!(
+        after, "- TODO задача с пустой строкой\n  deadline:: 2026-10-20\n\n- другой блок\n",
+        "свойство должно прилегать к блоку, до пустой строки"
+    );
+}
+
+#[test]
 fn set_quadrant_resets_prop() {
     use logtask_lib::core::model::Level;
 
