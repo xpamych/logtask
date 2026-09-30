@@ -103,9 +103,15 @@ fn parse_bullet_line(rest: &str) -> (String, String, Option<Status>, Option<Prio
     (bullet, String::new(), None, None, s)
 }
 
-fn parse_prop(rest: &str) -> Option<(String, String)> {
-    let (key, value) = rest.split_once("::")?;
-    Some((key.trim().to_string(), value.trim().to_string()))
+/// Разбирает строку `key:: value`. Возвращает (key, sep, value), где
+/// sep — исходный фрагмент от `::` до начала значения, value — сырое
+/// значение после sep (без trim, хвостовые пробелы сохраняются для
+/// байт-точного round-trip).
+fn parse_prop(rest: &str) -> Option<(String, String, String)> {
+    let (key, tail) = rest.split_once("::")?;
+    let value_start = tail.len() - tail.trim_start().len();
+    let (sp, value) = tail.split_at(value_start);
+    Some((key.trim().to_string(), format!("::{sp}"), value.to_string()))
 }
 
 fn parse_clock(line: &str) -> Option<Clock> {
@@ -188,6 +194,7 @@ enum Line {
     Prop {
         indent_str: String,
         key: String,
+        sep: String,
         value: String,
     },
     LogbookOpen(String),
@@ -220,10 +227,12 @@ fn classify(line: &str) -> Line {
         };
     }
 
-    if trimmed_end == "-" {
+    if rest.starts_with('-') && rest[1..].chars().all(|c| c == ' ' || c == '\t') {
+        // пустой bullet `-   `: весь остаток (с пробелами) — bullet,
+        // чтобы round-trip давал те же байты
         return Line::Block {
             indent_str,
-            bullet: "-".to_string(),
+            bullet: rest.to_string(),
             marker_str: String::new(),
             status: None,
             priority: None,
@@ -240,11 +249,12 @@ fn classify(line: &str) -> Line {
     if let Some(clock) = parse_clock(trimmed_end) {
         return Line::Clock { indent_str, clock };
     }
-    if let Some((key, value)) = parse_prop(trimmed_end) {
+    if let Some((key, sep, value)) = parse_prop(rest) {
         if !key.is_empty() && !key.contains(char::is_whitespace) {
             return Line::Prop {
                 indent_str,
                 key,
+                sep,
                 value,
             };
         }
@@ -373,14 +383,17 @@ pub fn parse_document(text: &str) -> ParsedFile {
             Line::Prop {
                 indent_str,
                 key,
+                sep,
                 value,
             } => {
                 if let Some((_, idx)) = stack.last().copied() {
                     let blk = &mut blocks[idx];
-                    blk.props.insert(key.clone(), value.clone());
+                    // в props-мапу — trim'нутое значение, в trailing — сырое
+                    blk.props.insert(key.clone(), value.trim().to_string());
                     blk.raw.trailing.push(Trailing::Prop {
                         indent: indent_str,
                         key,
+                        sep,
                         value,
                     });
                     blk.refresh_levels();

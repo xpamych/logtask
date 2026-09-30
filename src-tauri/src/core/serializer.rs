@@ -42,10 +42,15 @@ impl Block {
 
         for item in &self.raw.trailing {
             match item {
-                Trailing::Prop { indent, key, value } => {
+                Trailing::Prop {
+                    indent,
+                    key,
+                    sep,
+                    value,
+                } => {
                     out.push_str(indent);
                     out.push_str(key);
-                    out.push_str(":: ");
+                    out.push_str(sep);
                     out.push_str(value);
                     out.push('\n');
                 }

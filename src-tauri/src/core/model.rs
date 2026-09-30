@@ -293,6 +293,9 @@ pub enum Trailing {
     Prop {
         indent: String,
         key: String,
+        /// исходный разделитель от `::` до начала значения (например `"::  "`)
+        sep: String,
+        /// сырое значение после разделителя (без trim, с хвостовыми пробелами)
         value: String,
     },
     /// `:LOGBOOK:`
@@ -442,15 +445,17 @@ impl Block {
                     .iter()
                     .position(|t| matches!(t, Trailing::Prop { key: k, .. } if k == key));
                 if let Some(idx) = existing {
+                    // меняем только значение — исходный разделитель сохраняем
                     if let Trailing::Prop { value: val, .. } = &mut self.raw.trailing[idx] {
-                        *val = v.to_string();
+                        *val = v.trim().to_string();
                     }
                 } else {
                     let indent = format!("{}  ", self.raw.indent_str);
                     let prop = Trailing::Prop {
                         indent,
                         key: key.to_string(),
-                        value: v.to_string(),
+                        sep: ":: ".to_string(),
+                        value: v.trim().to_string(),
                     };
                     // перед LOGBOOK, если он есть, и до первой пустой строки —
                     // свойство должно прилегать к блоку
@@ -551,6 +556,7 @@ impl Block {
                     .iter()
                     .position(|t| matches!(t, Trailing::Prop { key: k, .. } if k == key));
                 if let Some(idx) = existing {
+                    // меняем только значение — исходный разделитель сохраняем
                     if let Trailing::Prop { value: v, .. } = &mut self.raw.trailing[idx] {
                         *v = value;
                     }
@@ -559,6 +565,7 @@ impl Block {
                     let prop = Trailing::Prop {
                         indent,
                         key: key.to_string(),
+                        sep: ":: ".to_string(),
                         value: value.clone(),
                     };
                     // перед LOGBOOK, если он есть, и до первой пустой строки —

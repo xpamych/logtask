@@ -147,6 +147,12 @@ fn roundtrip_prop_extra_spaces() {
 }
 
 #[test]
+fn roundtrip_empty_bullet() {
+    let src = "-   \n- a\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
 fn roundtrip_empty_file() {
     assert_eq!(roundtrip(""), "");
 }
