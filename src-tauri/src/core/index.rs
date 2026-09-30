@@ -241,6 +241,7 @@ impl Graph {
             return Ok(None);
         }
 
+        // f меняет только блок, не структуру страницы — снимок остаётся свежим
         let Some(page_snapshot) = self.pages.get(&page_name).cloned() else {
             return Ok(None);
         };

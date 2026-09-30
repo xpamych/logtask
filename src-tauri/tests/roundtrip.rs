@@ -120,6 +120,23 @@ fn roundtrip_prop_extra_spaces() {
 }
 
 #[test]
+fn roundtrip_empty_file() {
+    assert_eq!(roundtrip(""), "");
+}
+
+#[test]
+fn roundtrip_only_preamble() {
+    let src = "title:: Только свойства\nalias:: Без блоков\n";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
+fn roundtrip_only_preamble_no_newline() {
+    let src = "title:: Без финального перевода";
+    assert_eq!(roundtrip(src), src);
+}
+
+#[test]
 #[ignore]
 fn dump_diff_journal() {
     let orig = fixture("journals/2026_09_11.md");

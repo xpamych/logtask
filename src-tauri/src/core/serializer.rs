@@ -92,15 +92,6 @@ impl Block {
     }
 }
 
-/// Сериализует блоки документа в markdown (рекурсивно по дереву).
-pub fn serialize_document(roots: &[Uuid], blocks: &HashMap<Uuid, Block>) -> String {
-    let mut out = String::new();
-    for root in roots {
-        write_block_tree(root, blocks, &mut out);
-    }
-    out
-}
-
 fn write_block_tree(id: &Uuid, blocks: &HashMap<Uuid, Block>, out: &mut String) {
     let Some(block) = blocks.get(id) else {
         return;
