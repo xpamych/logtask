@@ -50,6 +50,7 @@ impl Graph {
         self.blocks.clear();
         self.pages.clear();
         self.backlinks.clear();
+        self.block_page.clear();
 
         let journals_dir = root.join("journals");
         let pages_dir = root.join("pages");
@@ -139,6 +140,7 @@ impl Graph {
                 roots.push(id);
             }
             order.push(id);
+            self.block_page.insert(id, name.to_string());
             self.blocks.insert(id, block);
         }
 
@@ -178,6 +180,12 @@ impl Graph {
         }
     }
 
+    /// Удаляет блок из всех индексов
+    fn remove_block(&mut self, id: &Uuid) {
+        self.blocks.remove(id);
+        self.block_page.remove(id);
+    }
+
     /// Блоки-задачи страницы (с сортировкой как в файле)
     pub fn tasks_of_page(&self, page: &str) -> Vec<(Uuid, &Block)> {
         let Some(page) = self.pages.get(page) else {
@@ -209,7 +217,7 @@ impl Graph {
         if let Some(page) = self.pages.get(name) {
             let old_order = page.order.clone();
             for old in old_order {
-                self.blocks.remove(&old);
+                self.remove_block(&old);
             }
         }
         let Ok(text) = std::fs::read_to_string(abs) else {
@@ -237,12 +245,7 @@ impl Graph {
 
     /// Имя страницы, содержащей блок
     pub fn page_of_block(&self, id: &Uuid) -> String {
-        for (name, page) in &self.pages {
-            if page.order.contains(id) {
-                return name.clone();
-            }
-        }
-        String::new()
+        self.block_page.get(id).cloned().unwrap_or_default()
     }
 
     /// Меняет статус задачи и перезаписывает файл страницы на диск.
@@ -373,7 +376,7 @@ impl Graph {
             }
         }
         for r in &to_remove {
-            self.blocks.remove(r);
+            self.remove_block(r);
         }
         if let Some(page) = self.pages.get_mut(&page_name) {
             page.order.retain(|x| !to_remove.contains(x));
@@ -426,6 +429,7 @@ impl Graph {
             block.raw.marker_str = String::new();
         }
         let id = block.id.expect("свежий uuid");
+        self.block_page.insert(id, page_name.to_string());
         self.blocks.insert(id, block);
         if let Some(page) = self.pages.get_mut(page_name) {
             page.roots.push(id);
@@ -493,20 +497,21 @@ impl Graph {
         names
     }
 
-    /// Полнотекстовый поиск по блокам
+    /// Полнотекстовый поиск по блокам (без учёта регистра, Unicode-aware)
     pub fn search(&self, query: &str, limit: usize) -> Vec<(Uuid, String)> {
-        let q = query.to_ascii_lowercase();
+        let q = query.to_lowercase();
         if q.is_empty() {
             return Vec::new();
         }
         let mut out: Vec<(Uuid, String)> = self
             .blocks
             .iter()
-            .filter(|(_, b)| b.content.to_ascii_lowercase().contains(&q))
+            .filter(|(_, b)| b.content.to_lowercase().contains(&q))
             .map(|(id, b)| (*id, b.content.clone()))
-            .take(limit)
             .collect();
-        out.sort_by_key(|a| a.1.len());
+        // сначала сортировка (короткие релевантнее), потом лимит — детерминированно
+        out.sort_by(|a, b| a.1.len().cmp(&b.1.len()).then_with(|| a.1.cmp(&b.1)));
+        out.truncate(limit);
         out
     }
 }

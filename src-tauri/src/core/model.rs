@@ -715,4 +715,6 @@ pub struct Graph {
     pub pages: HashMap<String, Page>,
     /// page-name → ссылающиеся блоки (обратные ссылки)
     pub backlinks: HashMap<String, Vec<uuid::Uuid>>,
+    /// обратная мапа: блок → страница (поддерживается при индексации)
+    pub block_page: HashMap<uuid::Uuid, String>,
 }

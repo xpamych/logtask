@@ -125,6 +125,29 @@ mod tests {
     }
 
     #[test]
+    fn search_cyrillic_case_insensitive() {
+        // индексируем страницу с блоком "Проект Альфа", ищем "проект" и "ПРОЕКТ"
+        let mut g = model::Graph::default();
+        let mut stats = index::IndexStats {
+            pages: 0,
+            journals: 0,
+            blocks: 0,
+            tasks: 0,
+            links: 0,
+        };
+        g.index_file_content(
+            "тест",
+            model::PageKind::Page,
+            "- Проект Альфа\n",
+            None,
+            &mut stats,
+            None,
+        );
+        assert_eq!(g.search("проект", 10).len(), 1);
+        assert_eq!(g.search("ПРОЕКТ", 10).len(), 1);
+    }
+
+    #[test]
     fn roundtrip_logbook_and_props() {
         let text = "- DOING [#B] Вебхук\n  source-id:: ppdb-225\n  :LOGBOOK:\n  CLOCK: [2026-09-11 Fri 16:17:05]--[2026-09-16 Wed 14:47:53] =>  118:30:48\n  :END:\n";
         assert_eq!(roundtrip(text), text);
