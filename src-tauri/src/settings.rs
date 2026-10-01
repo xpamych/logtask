@@ -46,6 +46,12 @@ pub struct Settings {
     /// ширина правой панели задач (px)
     #[serde(default = "default_taskpanel_width")]
     pub taskpanel_width: u32,
+    /// избранные страницы (звёздочка), в порядке добавления
+    #[serde(default)]
+    pub favorites: Vec<String>,
+    /// true — системная рамка окна вместо встроенных кнопок управления
+    #[serde(default)]
+    pub system_titlebar: bool,
     /// статусы канбана: набор/цвета/порядок
     #[serde(default = "default_statuses")]
     pub statuses: Vec<StatusConfig>,
@@ -132,6 +138,8 @@ impl Default for Settings {
             kanban_limit: default_kanban_limit(),
             sidebar_width: default_sidebar_width(),
             taskpanel_width: default_taskpanel_width(),
+            favorites: Vec::new(),
+            system_titlebar: false,
             statuses: default_statuses(),
         }
     }
@@ -169,6 +177,8 @@ mod tests {
         assert_eq!(s.theme, "system");
         assert_eq!(s.sidebar_width, 240);
         assert_eq!(s.taskpanel_width, 320);
+        assert!(s.favorites.is_empty());
+        assert!(!s.system_titlebar);
     }
 
     #[test]
@@ -180,6 +190,8 @@ mod tests {
             font_scale: 1.2,
             sidebar_width: 300,
             taskpanel_width: 400,
+            favorites: vec!["Пример - TODO".into()],
+            system_titlebar: true,
             statuses: {
                 let mut st = default_statuses();
                 st[0].visible = false;
@@ -194,6 +206,8 @@ mod tests {
         assert_eq!(loaded.font_scale, 1.2);
         assert_eq!(loaded.sidebar_width, 300);
         assert_eq!(loaded.taskpanel_width, 400);
+        assert_eq!(loaded.favorites, vec!["Пример - TODO".to_string()]);
+        assert!(loaded.system_titlebar);
         assert!(!loaded.statuses[0].visible);
         assert_eq!(loaded.statuses.len(), 6);
     }
