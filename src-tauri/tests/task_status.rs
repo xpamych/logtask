@@ -394,6 +394,43 @@ fn clock_start_twice_keeps_single_running() {
 }
 
 #[test]
+fn delete_block_fails_on_external_edit() {
+    // mtime-защита: файл подменён снаружи после индексации → delete_block
+    // возвращает Err и не трёт чужие правки
+    let dir = std::env::temp_dir().join("logtask_delete_mtime_test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("journals")).unwrap();
+    let file = dir.join("journals/2026_10_11.md");
+    fs::write(&file, "- оставляем\n- TODO удаляем\n").unwrap();
+
+    let mut graph = Graph::default();
+    graph.index_dir(&dir).unwrap();
+
+    let (id, _) = graph
+        .all_tasks()
+        .into_iter()
+        .find(|(_, b)| b.content.contains("удаляем"))
+        .expect("задача найдена");
+
+    // внешняя правка: другой текст → mtime меняется
+    let external = "- оставляем\n- TODO удаляем\n- внешняя правка\n";
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    fs::write(&file, external).unwrap();
+
+    let res = graph.delete_block(&id, &dir);
+    assert!(res.is_err(), "ожидаем конфликт mtime");
+
+    // файл на диске — внешнее содержимое, не тронуто
+    let after = fs::read_to_string(&file).unwrap();
+    assert_eq!(after, external);
+    // память не мутирована: блок на месте
+    assert!(graph
+        .all_tasks()
+        .into_iter()
+        .any(|(_, b)| b.content.contains("удаляем")));
+}
+
+#[test]
 fn set_priority_and_deadline() {
     let dir = std::env::temp_dir().join("logtask_prio_test");
     let _ = fs::remove_dir_all(&dir);

@@ -201,6 +201,32 @@ impl Graph {
         out
     }
 
+    /// Перечитывает файл страницы с диска и переиндексирует её
+    /// (заменяет блоки страницы и перестраивает обратные ссылки).
+    /// Используется и после успешной записи, и для восстановления памяти
+    /// после неудачной (чтобы граф не расходился с файлом).
+    fn reload_page(&mut self, name: &str, kind: PageKind, abs: &Path, rel_path: Option<PathBuf>) {
+        if let Some(page) = self.pages.get(name) {
+            let old_order = page.order.clone();
+            for old in old_order {
+                self.blocks.remove(&old);
+            }
+        }
+        let Ok(text) = std::fs::read_to_string(abs) else {
+            return;
+        };
+        let mtime = std::fs::metadata(abs).ok().and_then(|m| m.modified().ok());
+        let mut stats = IndexStats {
+            pages: 0,
+            journals: 0,
+            blocks: 0,
+            tasks: 0,
+            links: 0,
+        };
+        self.index_file_content(name, kind, &text, mtime, &mut stats, rel_path);
+        self.rebuild_backlinks();
+    }
+
     /// Обратные ссылки на страницу: (id блока, его страница)
     pub fn backlinks_of(&self, page: &str) -> Vec<(Uuid, String)> {
         let ids = self.backlinks.get(page).cloned().unwrap_or_default();
@@ -254,16 +280,7 @@ impl Graph {
         let abs = root.join(&rel_path);
 
         // защита от перезаписи чужих правок
-        if let Some(known) = page_snapshot.mtime {
-            match std::fs::metadata(&abs).and_then(|m| m.modified()) {
-                Ok(actual) if actual != known => {
-                    return Err(std::io::Error::other(
-                        "файл изменён другим приложением — обнови граф",
-                    ));
-                }
-                _ => {}
-            }
-        }
+        check_mtime(&abs, page_snapshot.mtime)?;
 
         let Some(block) = self.blocks.get_mut(id) else {
             return Ok(None);
@@ -271,24 +288,15 @@ impl Graph {
         f(block);
 
         let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
-        super::fswrite::atomic_write(&abs, &text)?;
+        if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
+            // память уже изменена — перечитываем страницу с диска, чтобы
+            // in-memory граф не расходился с файлом
+            self.reload_page(&page_name, kind, &abs, Some(rel_path.clone()));
+            return Err(e);
+        }
 
         // переиндексация этой страницы: удалить старые блоки и добавить новые
-        let old_order = self.pages[&page_name].order.clone();
-        for old in old_order {
-            self.blocks.remove(&old);
-        }
-        let text = std::fs::read_to_string(&abs)?;
-        let mtime = std::fs::metadata(&abs).ok().and_then(|m| m.modified().ok());
-        let mut stats = IndexStats {
-            pages: 0,
-            journals: 0,
-            blocks: 0,
-            tasks: 0,
-            links: 0,
-        };
-        self.index_file_content(&page_name, kind, &text, mtime, &mut stats, Some(rel_path));
-        self.rebuild_backlinks();
+        self.reload_page(&page_name, kind, &abs, Some(rel_path));
 
         Ok(Some(page_name))
     }
@@ -338,7 +346,7 @@ impl Graph {
         if page_name.is_empty() {
             return Ok(None);
         }
-        let (kind, rel_path) = {
+        let (kind, rel_path, mtime) = {
             let Some(page) = self.pages.get(&page_name) else {
                 return Ok(None);
             };
@@ -347,9 +355,13 @@ impl Graph {
                 page.path
                     .clone()
                     .unwrap_or_else(|| default_rel_path(&page.name, page.kind)),
+                page.mtime,
             )
         };
         let abs = root.join(&rel_path);
+
+        // защита от перезаписи чужих правок — до любых мутаций памяти
+        check_mtime(&abs, mtime)?;
 
         // собираем удаляемое поддерево
         let mut to_remove: Vec<Uuid> = vec![*id];
@@ -370,24 +382,14 @@ impl Graph {
 
         let page_snapshot = self.pages[&page_name].clone();
         let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
-        super::fswrite::atomic_write(&abs, &text)?;
-
-        let text = std::fs::read_to_string(&abs)?;
-        // очищаем старые блоки страницы перед переиндексацией
-        let old_order = self.pages[&page_name].order.clone();
-        for old in old_order {
-            self.blocks.remove(&old);
+        if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
+            // память уже изменена — перечитываем страницу с диска, чтобы
+            // in-memory граф не расходился с файлом
+            self.reload_page(&page_name, kind, &abs, Some(rel_path.clone()));
+            return Err(e);
         }
-        let mtime = std::fs::metadata(&abs).ok().and_then(|m| m.modified().ok());
-        let mut stats = IndexStats {
-            pages: 0,
-            journals: 0,
-            blocks: 0,
-            tasks: 0,
-            links: 0,
-        };
-        self.index_file_content(&page_name, kind, &text, mtime, &mut stats, Some(rel_path));
-        self.rebuild_backlinks();
+
+        self.reload_page(&page_name, kind, &abs, Some(rel_path));
         Ok(Some(page_name))
     }
 
@@ -403,14 +405,17 @@ impl Graph {
         let Some(page) = self.pages.get(page_name) else {
             return Ok(None);
         };
-        let (kind, rel_path, roots_len) = (
+        let (kind, rel_path, mtime) = (
             page.kind,
             page.path
                 .clone()
                 .unwrap_or_else(|| default_rel_path(&page.name, page.kind)),
-            page.roots.len(),
+            page.mtime,
         );
         let abs = root.join(&rel_path);
+
+        // защита от перезаписи чужих правок — до любых мутаций памяти
+        check_mtime(&abs, mtime)?;
 
         let mut block = super::serializer::new_block(content.to_string(), 0);
         if let Some(s) = status {
@@ -429,25 +434,14 @@ impl Graph {
 
         let page_snapshot = self.pages[page_name].clone();
         let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
-        super::fswrite::atomic_write(&abs, &text)?;
-
-        let text = std::fs::read_to_string(&abs)?;
-        // очищаем старые блоки страницы перед переиндексацией
-        let old_order = self.pages[page_name].order.clone();
-        for old in old_order {
-            self.blocks.remove(&old);
+        if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
+            // память уже изменена — перечитываем страницу с диска, чтобы
+            // in-memory граф не расходился с файлом
+            self.reload_page(page_name, kind, &abs, Some(rel_path.clone()));
+            return Err(e);
         }
-        let mtime = std::fs::metadata(&abs).ok().and_then(|m| m.modified().ok());
-        let mut stats = IndexStats {
-            pages: 0,
-            journals: 0,
-            blocks: 0,
-            tasks: 0,
-            links: 0,
-        };
-        self.index_file_content(page_name, kind, &text, mtime, &mut stats, Some(rel_path));
-        self.rebuild_backlinks();
-        let _ = roots_len;
+
+        self.reload_page(page_name, kind, &abs, Some(rel_path));
         // uuid пересоздаётся при переиндексации (Logseq не хранит его в .md),
         // поэтому находим свежий блок по содержанию
         let new_id = self
@@ -462,6 +456,20 @@ impl Graph {
             });
         Ok(new_id)
     }
+}
+
+/// Err, если файл на диске новее прочитанного (внешняя правка)
+fn check_mtime(abs: &Path, known: Option<std::time::SystemTime>) -> std::io::Result<()> {
+    if let Some(known) = known {
+        if let Ok(actual) = std::fs::metadata(abs).and_then(|m| m.modified()) {
+            if actual != known {
+                return Err(std::io::Error::other(
+                    "файл изменён другим приложением — обнови граф",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Путь к файлу страницы по умолчанию: journals/<name>.md или pages/<name>.md
