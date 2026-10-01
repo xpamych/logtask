@@ -46,7 +46,16 @@ pub fn spawn_for_current(app: &AppHandle) -> Result<(), String> {
             std::thread::sleep(Duration::from_millis(QUIET_MS));
             // сбрасываем накопившийся дребезг
             while rx.try_recv().is_ok() {}
-            reindex_and_emit(&app);
+            // эхо собственной записи: команда уже переиндексировала и эмитнула
+            let self_write = {
+                let state = app.state::<AppState>();
+                let last = *state.last_self_write.lock();
+                last.map(|t| t.elapsed() < Duration::from_millis(1500))
+                    .unwrap_or(false)
+            };
+            if !self_write {
+                reindex_and_emit(&app);
+            }
         });
     }
 

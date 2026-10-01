@@ -4,6 +4,11 @@ use crate::core::index::IndexStats;
 use crate::core::model::{Block, Graph, PageKind, Status};
 use crate::state::AppState;
 
+/// Отмечает, что запись в файлы сделана нами — watcher пропустит эхо
+pub(crate) fn mark_self_write(state: &AppState) {
+    *state.last_self_write.lock() = Some(std::time::Instant::now());
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphSummary {
     pub pages: usize,
@@ -629,6 +634,7 @@ pub async fn task_set_quadrant(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
+    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -718,6 +724,7 @@ pub async fn task_set_status(
     };
 
     // переиндексируем и оповестим UI
+    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -747,6 +754,7 @@ pub async fn block_update_text(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
+    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -775,6 +783,7 @@ pub async fn block_delete(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
+    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -806,6 +815,7 @@ pub async fn block_create(
     let Some(_) = uuid else {
         return Err("страница не найдена".into());
     };
+    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(uuid.unwrap().to_string())
 }
@@ -935,6 +945,7 @@ async fn clock_toggle(
     let Some(page) = result else {
         return Err("блок не найден в графе".into());
     };
+    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -997,6 +1008,7 @@ pub async fn task_set_priority(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
+    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -1027,6 +1039,7 @@ pub async fn block_set_prop(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
+    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
