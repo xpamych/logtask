@@ -72,6 +72,21 @@ mod tests {
     }
 
     #[test]
+    fn priority_without_status_is_task() {
+        let parsed = parse_document("- [#A] приоритет без статуса\n");
+        let b = &parsed.blocks[0];
+        assert_eq!(b.priority, Some(model::Priority::A));
+        assert_eq!(b.content, "приоритет без статуса");
+        assert!(b.is_task());
+    }
+
+    #[test]
+    fn roundtrip_priority_without_status() {
+        let text = "- [#A] задача без статуса\n- [#C] другая\n";
+        assert_eq!(roundtrip(text), text);
+    }
+
+    #[test]
     fn deadline_soon_uses_real_dates() {
         // сегодня — срочно; просроченный — срочно; далёкое будущее — нет
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();

@@ -99,6 +99,25 @@ fn parse_bullet_line(rest: &str) -> (String, String, Option<Status>, Option<Prio
         return (bullet, marker_str, Some(status), None, t);
     }
 
+    // приоритет без маркера статуса: "- [#A] текст"
+    if let Some(r) = s.strip_prefix("[#") {
+        if let Some(end) = r.find(']') {
+            let priority = match &r[..end] {
+                "A" => Some(Priority::A),
+                "B" => Some(Priority::B),
+                "C" => Some(Priority::C),
+                _ => None,
+            };
+            if let Some(p) = priority {
+                let prio_len = 2 + end + 1;
+                let after = &s[prio_len..];
+                let ws = ws_len(after);
+                let marker_str = s[..prio_len + ws].to_string();
+                return (bullet, marker_str, None, Some(p), &after[ws..]);
+            }
+        }
+    }
+
     // нет маркера — весь остаток контент
     (bullet, String::new(), None, None, s)
 }
