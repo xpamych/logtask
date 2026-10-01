@@ -22,7 +22,7 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 parking_lot = "0.12"
 log = "0.4"
-tauri-plugin-dialog = "2"
+tauri-plugin-dialog = { version = "2", default-features = false, features = ["xdg-portal"] }
 tauri-plugin-log = "2"
 
 [features]
