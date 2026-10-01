@@ -154,12 +154,30 @@ fn parse_clock(line: &str) -> Option<Clock> {
     })
 }
 
-/// Извлекает [[вики-ссылки]] и #теги из текста блока
+/// Извлекает [[вики-ссылки]], #теги и ((block-ref)) из текста блока;
+/// inline-код в обратных кавычках пропускается.
 pub fn extract_links(content: &str) -> Vec<LinkTarget> {
     let mut links = Vec::new();
     let bytes = content.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
+        // inline-код пропускаем целиком — ссылки внутри не извлекаются
+        if bytes[i] == b'`' {
+            if let Some(end) = content[i + 1..].find('`') {
+                i += 1 + end + 1;
+                continue;
+            }
+        }
+        // block-ref ((uuid))
+        if bytes[i] == b'(' && bytes.get(i + 1) == Some(&b'(') {
+            if let Some(end) = content[i + 2..].find("))") {
+                links.push(LinkTarget::Block(
+                    content[i + 2..i + 2 + end].trim().to_string(),
+                ));
+                i += 2 + end + 2;
+                continue;
+            }
+        }
         if bytes[i] == b'[' && bytes.get(i + 1) == Some(&b'[') {
             if let Some(end) = content[i + 2..].find("]]") {
                 let raw = &content[i + 2..i + 2 + end];
@@ -184,7 +202,25 @@ pub fn extract_links(content: &str) -> Vec<LinkTarget> {
             } else {
                 let rest = &content[i + 1..];
                 let end = rest
-                    .find(|c: char| c.is_whitespace() || matches!(c, '[' | ']' | '#'))
+                    .find(|c: char| {
+                        c.is_whitespace()
+                            || matches!(
+                                c,
+                                '[' | ']'
+                                    | '#'
+                                    | ','
+                                    | '.'
+                                    | ';'
+                                    | ':'
+                                    | '!'
+                                    | '?'
+                                    | '('
+                                    | ')'
+                                    | '"'
+                                    | '«'
+                                    | '»'
+                            )
+                    })
                     .unwrap_or(rest.len());
                 if end > 0 {
                     links.push(LinkTarget::Tag(rest[..end].to_string()));

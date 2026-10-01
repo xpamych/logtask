@@ -96,6 +96,35 @@ mod tests {
     }
 
     #[test]
+    fn links_skip_inline_code() {
+        let links = parser::extract_links("`[[НеСсылка]]` и [[Ссылка]]");
+        assert_eq!(links, vec![model::LinkTarget::Page("Ссылка".into())]);
+    }
+
+    #[test]
+    fn tag_stops_at_punctuation() {
+        let links = parser::extract_links("сделать #срочно, потом #дом.");
+        assert_eq!(
+            links,
+            vec![
+                model::LinkTarget::Tag("срочно".into()),
+                model::LinkTarget::Tag("дом".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn block_ref_parsed() {
+        let links = parser::extract_links("см. ((64f0a1b2-0000-4000-8000-000000000000))");
+        assert_eq!(
+            links,
+            vec![model::LinkTarget::Block(
+                "64f0a1b2-0000-4000-8000-000000000000".into()
+            )]
+        );
+    }
+
+    #[test]
     fn roundtrip_logbook_and_props() {
         let text = "- DOING [#B] Вебхук\n  source-id:: ppdb-225\n  :LOGBOOK:\n  CLOCK: [2026-09-11 Fri 16:17:05]--[2026-09-16 Wed 14:47:53] =>  118:30:48\n  :END:\n";
         assert_eq!(roundtrip(text), text);
