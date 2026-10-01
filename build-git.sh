@@ -37,7 +37,9 @@ if [ "${1:-}" = "--bundle" ]; then
     ls -1 target/release/bundle/appimage/ target/release/bundle/rpm/ target/release/bundle/deb/ 2>/dev/null || true
 else
     npm run build
-    cargo build --release
+    # custom-protocol обязателен: без него tauri собирается в dev-режиме
+    # и бинарник ждёт dev-сервер на localhost:5173 вместо dist/
+    cargo build --release --features custom-protocol
     echo
     echo "✔ Готово: target/release/logtask (версия ${VERSION})"
     echo "  Запуск: ./target/release/logtask"
