@@ -1,23 +1,31 @@
 :root {
-  --bg: #002b37;
-  --bg-alt: #023643;
-  --bg-panel: #002530;
-  --fg: #e8edf2;
-  --fg-muted: #8ba8b5;
-  --accent: #106ba3;
-  --border: #0b3d4f;
+  --bg: #222222;
+  --bg-alt: #2a2a2a;
+  --bg-panel: #1a1a1a;
+  --fg: #ffffff;
+  --fg-muted: #b0b0b0;
+  --accent: #09bec8;
+  --accent-2: #9b59b6;
+  --border: #3a3a3a;
+  --success: #4caf50;
+  --warning: #ff9800;
+  --danger: #f44336;
   --font: -apple-system, "Segoe UI", "Noto Sans", "Liberation Sans", sans-serif;
   color-scheme: dark;
 }
 
 body.theme-light {
-  --bg: #f7f9fa;
-  --bg-alt: #eef2f4;
+  --bg: #f4f6f7;
+  --bg-alt: #e9eef0;
   --bg-panel: #ffffff;
   --fg: #1c2733;
   --fg-muted: #5c7080;
-  --accent: #106ba3;
-  --border: #d3dde3;
+  --accent: #0891a0;
+  --accent-2: #7d3c98;
+  --border: #d5dde1;
+  --success: #43a047;
+  --warning: #f57c00;
+  --danger: #e53935;
   color-scheme: light;
 }
 
@@ -217,7 +225,7 @@ body.panel-resizing {
 
 .error {
   padding: 10px 14px;
-  color: #e57373;
+  color: var(--danger);
   font-size: 12px;
 }
 
@@ -329,30 +337,30 @@ body.panel-resizing {
 .wikilink {
   background: none;
   border: none;
-  color: #5fa8d3;
+  color: var(--accent-2);
   cursor: pointer;
   padding: 0;
   font: inherit;
   text-decoration: underline;
-  text-decoration-color: rgba(95, 168, 211, 0.4);
+  text-decoration-color: color-mix(in srgb, var(--accent-2) 40%, transparent);
   text-underline-offset: 2px;
 }
 
 .wikilink:hover {
-  color: #8fc7ec;
+  color: color-mix(in srgb, var(--accent-2) 70%, var(--fg));
 }
 
 .hashtag {
   background: none;
   border: none;
-  color: #b08cc7;
+  color: var(--accent-2);
   cursor: pointer;
   padding: 0;
   font: inherit;
 }
 
 .hashtag:hover {
-  color: #c9a9dc;
+  color: color-mix(in srgb, var(--accent-2) 70%, var(--fg));
 }
 
 .block-content {
@@ -535,12 +543,12 @@ body.panel-resizing {
 }
 
 .task-priority {
-  color: #d9822b;
+  color: var(--warning);
   font-weight: 600;
 }
 
 .task-date {
-  color: #a05252;
+  color: var(--danger);
 }
 
 .task-tags {
@@ -637,7 +645,7 @@ body.panel-resizing {
 
 @keyframes block-flash {
   0%, 30% {
-    background: rgba(255, 196, 66, 0.32);
+    background: color-mix(in srgb, var(--warning) 32%, transparent);
   }
   100% {
     background: transparent;
@@ -757,11 +765,11 @@ body.panel-resizing {
 /* приоритет карточки */
 
 .task-prio-a {
-  border-left-color: #c0392b;
+  border-left-color: var(--danger);
 }
 
 .task-prio-b {
-  border-left-color: #d9822b;
+  border-left-color: var(--warning);
 }
 
 /* ---- Редактирование блоков ---- */
@@ -933,7 +941,7 @@ body.panel-resizing {
 /* CLOCK */
 
 .clock-running {
-  color: #3d8a4e;
+  color: var(--success);
   animation: clock-pulse 1.6s ease-in-out infinite;
 }
 
@@ -949,7 +957,7 @@ body.panel-resizing {
 }
 
 .block-action.danger:hover {
-  color: #e06666;
+  color: var(--danger);
 }
 
 /* ---- Настройки ---- */
@@ -1170,7 +1178,7 @@ body.panel-resizing {
 }
 
 .btn.danger-btn {
-  color: #e06666;
+  color: var(--danger);
 }
 
 /* Приветственный экран при невыбранном графе */

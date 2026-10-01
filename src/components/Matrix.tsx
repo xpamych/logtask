@@ -8,10 +8,10 @@ const QUADRANT_META: Record<
   string,
   { color: string; hint: string }
 > = {
-  do: { color: "#c0392b", hint: "срочно и важно" },
-  schedule: { color: "#247ba0", hint: "важно, не срочно" },
-  delegate: { color: "#d9822b", hint: "срочно, не важно" },
-  drop: { color: "#6b7a85", hint: "не срочно и не важно" },
+  do: { color: "var(--danger)", hint: "срочно и важно" },
+  schedule: { color: "var(--accent)", hint: "важно, не срочно" },
+  delegate: { color: "var(--warning)", hint: "срочно, не важно" },
+  drop: { color: "var(--fg-muted)", hint: "не срочно и не важно" },
 };
 
 const PAGE_SIZE = 12;
@@ -88,7 +88,7 @@ export function Matrix(props: {
       <For each={quadrants()}>
         {(q) => {
           // неизвестный ключ квадранта не должен ронять рендер
-          const meta = QUADRANT_META[q.key] ?? { color: "#6b7a85", hint: "" };
+          const meta = QUADRANT_META[q.key] ?? { color: "var(--fg-muted)", hint: "" };
           const limit = () => limits()[q.key] ?? PAGE_SIZE;
           const visible = () => q.tasks.slice(0, limit());
           return (

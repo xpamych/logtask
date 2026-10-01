@@ -14,12 +14,12 @@ import {
 } from "~/lib/api";
 
 const STATUS_COLORS: Record<string, string> = {
-  LATER: "#8ba8b5",
-  TODO: "#106ba3",
-  DOING: "#d9822b",
-  REVIEW: "#8a6d3b",
-  DONE: "#3d8a4e",
-  CANCELED: "#a05252",
+  LATER: "#888888",
+  TODO: "#09bec8",
+  DOING: "#ff9800",
+  REVIEW: "#9b59b6",
+  DONE: "#4caf50",
+  CANCELED: "#f44336",
 };
 
 const QUADRANT_HINT: Record<string, string> = {
@@ -277,7 +277,7 @@ export function BlockView(props: {
       <span
         class="status-dot"
         style={{
-          background: b.status ? (STATUS_COLORS[b.status] ?? "#666") : "transparent",
+          background: b.status ? (STATUS_COLORS[b.status] ?? "#888888") : "transparent",
           visibility: b.status ? "visible" : "hidden",
         }}
         title={b.status ? statusLabel(b.status) : ""}

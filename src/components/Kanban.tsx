@@ -39,7 +39,7 @@ export function Kanban(props: {
 
   const colorOf = (marker: string): string => {
     const found = props.settings?.statuses.find((s) => s.marker === marker);
-    return found?.color ?? "#666";
+    return found?.color ?? "#888888";
   };
 
   // подпись колонки из настроек пользователя, иначе — как вернул бэкенд
