@@ -11,8 +11,9 @@ Logtask — десктоп-приложение: лёгкая замена Logse
 графа живёт только в оперативной памяти.
 
 Целевые характеристики: старт <300 мс, построение индекса <100 мс на текущем
-графе пользователя (706 файлов, ~72 мс по замеру в `src-tauri/examples/bench_graph.rs`),
-переключение статуса/перетаскивание <16 мс.
+графе пользователя (706 файлов, ~72 мс по замеру в `src-tauri/examples/bench_graph.rs`).
+Переключение статуса/перетаскивание: цикл записи ~72 мс (перезапись страницы +
+полная переиндексация графа; изначальная цель <16 мс не достигнута).
 
 Ключевой контракт: **совместимость формата с Logseq**. Всё, что Logtask пишет
 в `.md`, должно открываться в Logseq как родное, и наоборот. Контракт зафиксирован
@@ -76,7 +77,8 @@ src-tauri/            — Rust-крейт logtask (lib: logtask_lib, bin: main.r
   src/core/           — ядро (парсер/модель/индекс/query/сериализация/запись)
   tests/              — интеграционные тесты + fixtures/graph (реальные файлы)
   examples/bench_graph.rs — бенчмарк индексации реального графа
-  capabilities/default.json — разрешения Tauri (fs в пределах $HOME)
+  capabilities/default.json — разрешения Tauri (без fs-плагина: core:default,
+                        окно main, dialog:allow-open)
   tauri.conf.json     — окно 1280x800, identifier ru.logtask.app,
                         бандлы: appimage/rpm/deb
 scripts/make_icons.py — генератор PNG-иконок (нужен pillow)
@@ -165,9 +167,12 @@ cargo test --workspace
 
 ## Безопасность
 
-- Разрешения Tauri — `src-tauri/capabilities/default.json`: fs ограничен
-  `$HOME`, окно одно (`main`). При добавлении команд/плагинов обновляй
-  capabilities, не разрешай шире необходимого.
+- Разрешения Tauri — `src-tauri/capabilities/default.json`: только
+  `core:default`, `core:window:allow-show`, `core:window:allow-set-title`,
+  `dialog:allow-open`; окно одно (`main`). fs-плагин удалён: файловый
+  доступ идёт только через Rust-ядро (sandbox-границ у fs нет), поэтому
+  при добавлении команд/плагинов обновляй capabilities и не разрешай
+  шире необходимого.
 - CSP в `tauri.conf.json` отключён (`"csp": null`) — поэтому никакого
   `innerHTML`/инъекций HTML из пользовательского контента. Сейчас рендер
   ссылок и тегов идёт через JSX-сегменты (`src/lib/text.ts`, `parseSegments`),
