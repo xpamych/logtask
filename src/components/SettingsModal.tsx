@@ -4,8 +4,9 @@ import type { Settings } from "~/lib/api";
 import { settingsSave } from "~/lib/api";
 
 const THEMES = [
-  { value: "dark", label: "Тёмная" },
+  { value: "system", label: "Системная" },
   { value: "light", label: "Светлая" },
+  { value: "dark", label: "Тёмная" },
 ];
 
 export function SettingsModal(props: {

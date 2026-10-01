@@ -21,17 +21,19 @@ const TABS = ["Канбан", "Матрица", "Запросы"] as const;
 type Tab = (typeof TABS)[number];
 
 const DEFAULT_SETTINGS: Settings = {
-  theme: "dark",
+  theme: "system",
   fontScale: 1.0,
   weekStart: 1,
   kanbanLimit: 50,
+  sidebarWidth: 240,
+  taskpanelWidth: 320,
   statuses: [
-    { marker: "LATER", label: "Бэклог", color: "#8ba8b5", visible: true, shortcut: null },
-    { marker: "TODO", label: "К выполнению", color: "#106ba3", visible: true, shortcut: null },
-    { marker: "DOING", label: "В работе", color: "#d9822b", visible: true, shortcut: null },
-    { marker: "REVIEW", label: "На проверке", color: "#8a6d3b", visible: true, shortcut: null },
-    { marker: "DONE", label: "Выполнено", color: "#3d8a4e", visible: true, shortcut: null },
-    { marker: "CANCELED", label: "Отменено", color: "#a05252", visible: true, shortcut: null },
+    { marker: "LATER", label: "Бэклог", color: "#888888", visible: true, shortcut: null },
+    { marker: "TODO", label: "К выполнению", color: "#09bec8", visible: true, shortcut: null },
+    { marker: "DOING", label: "В работе", color: "#ff9800", visible: true, shortcut: null },
+    { marker: "REVIEW", label: "На проверке", color: "#9b59b6", visible: true, shortcut: null },
+    { marker: "DONE", label: "Выполнено", color: "#4caf50", visible: true, shortcut: null },
+    { marker: "CANCELED", label: "Отменено", color: "#f44336", visible: true, shortcut: null },
   ],
 };
 
@@ -70,11 +72,25 @@ const App: Component = () => {
     }
   });
 
+  // тема: system — следуем ОС и переключаемся на лету
+  const systemDark =
+    typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: dark)")
+      : null;
+  const [osDark, setOsDark] = createSignal(systemDark?.matches ?? true);
+  onMount(() => {
+    if (!systemDark) return;
+    const onChange = (e: MediaQueryListEvent) => setOsDark(e.matches);
+    systemDark.addEventListener("change", onChange);
+    onCleanup(() => systemDark.removeEventListener("change", onChange));
+  });
+
   // применяем тему и масштаб шрифта
   createEffect(() => {
     const s = settings();
-    document.body.classList.toggle("theme-light", s.theme === "light");
-    document.body.classList.toggle("theme-dark", s.theme !== "light");
+    const dark = s.theme === "system" ? osDark() : s.theme !== "light";
+    document.body.classList.toggle("theme-light", !dark);
+    document.body.classList.toggle("theme-dark", dark);
     document.documentElement.style.fontSize = `${s.fontScale * 14}px`;
   });
 

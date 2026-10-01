@@ -193,6 +193,8 @@ export interface Settings {
   fontScale: number;
   weekStart: number;
   kanbanLimit: number;
+  sidebarWidth: number;
+  taskpanelWidth: number;
   statuses: StatusConfig[];
 }
 
