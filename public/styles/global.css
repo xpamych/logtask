@@ -79,18 +79,97 @@ body.panel-resizing {
   flex-direction: column;
 }
 
-.sidebar-search {
+.sidebar-graph {
   padding: 10px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
-.sidebar-search input {
-  width: 100%;
+.graph-switch {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   background: var(--bg-alt);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--fg);
-  padding: 6px 8px;
-  outline: none;
+  padding: 6px 10px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.graph-switch:hover {
+  border-color: var(--accent);
+}
+
+.graph-switch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar {
+  position: relative;
+}
+
+.graph-menu {
+  position: absolute;
+  top: 52px;
+  left: 8px;
+  right: 8px;
+  z-index: 20;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+}
+
+.graph-menu-item {
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  padding: 7px 10px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-menu-item:hover {
+  background: var(--bg-alt);
+}
+
+.graph-menu-item.current {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.graph-menu-add {
+  color: var(--accent);
+}
+
+.graph-menu-sep {
+  border-top: 1px solid var(--border);
+  margin: 4px 2px;
 }
 
 .sidebar-section {
@@ -962,12 +1041,6 @@ body.panel-resizing {
 
 /* ---- Настройки ---- */
 
-.sidebar-search {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
 .settings-btn {
   flex: none;
   width: 30px;
@@ -1218,4 +1291,61 @@ body.panel-resizing {
 }
 .welcome-pick:hover {
   filter: brightness(1.1);
+}
+
+/* Центральная колонка: поиск сверху + контент */
+.center-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+.center-col > .journal {
+  flex: 1;
+  min-height: 0;
+}
+
+.searchbar {
+  position: relative;
+  flex: none;
+  padding: 10px 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.searchbar input {
+  width: 100%;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  padding: 7px 10px;
+  outline: none;
+}
+
+.searchbar input:focus {
+  border-color: var(--accent);
+}
+
+.searchbar-results {
+  position: absolute;
+  top: 100%;
+  left: 32px;
+  right: 32px;
+  z-index: 30;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  max-height: 50vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.searchbar-empty {
+  padding: 10px;
+  color: var(--fg-muted);
+  font-size: 13px;
 }

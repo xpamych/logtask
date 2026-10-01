@@ -17,6 +17,7 @@ import { Matrix } from "~/components/Matrix";
 import { PageView } from "~/components/PageView";
 import PanelResizer from "~/components/PanelResizer";
 import { Queries } from "~/components/Queries";
+import { SearchBar } from "~/components/SearchBar";
 import { SettingsModal } from "~/components/SettingsModal";
 import { Sidebar } from "~/components/Sidebar";
 import Welcome from "~/components/Welcome";
@@ -177,20 +178,23 @@ const App: Component = () => {
         onOpenGraph={openGraph}
       />
       <PanelResizer side="left" start={sidebarW} onResize={setSidebarW} onCommit={commitWidths} />
-      <Show
-        when={current()}
-        fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
-      >
-        {(name) => (
-          <PageView
-            name={name()}
-            onOpenPage={openPage}
-            refreshKey={refreshKey()}
-            focusUuid={focusUuid()}
-            settings={settings()}
-          />
-        )}
-      </Show>
+      <div class="center-col">
+        <SearchBar onOpenPage={openPage} />
+        <Show
+          when={current()}
+          fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+        >
+          {(name) => (
+            <PageView
+              name={name()}
+              onOpenPage={openPage}
+              refreshKey={refreshKey()}
+              focusUuid={focusUuid()}
+              settings={settings()}
+            />
+          )}
+        </Show>
+      </div>
       <PanelResizer side="right" start={panelW} onResize={setPanelW} onCommit={commitWidths} />
       <aside class="taskpanel">
         <div class="tabs">

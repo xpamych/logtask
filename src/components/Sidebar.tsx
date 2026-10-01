@@ -1,7 +1,7 @@
-import { For, Show, createSignal, onCleanup } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
-import type { GraphSummary, RecentGraph, SearchHit } from "~/lib/api";
-import { pickGraphDir, recentGraphs, search } from "~/lib/api";
+import type { GraphSummary, RecentGraph } from "~/lib/api";
+import { pickGraphDir, recentGraphs } from "~/lib/api";
 
 export function Sidebar(props: {
   summary: GraphSummary | null;
@@ -11,18 +11,15 @@ export function Sidebar(props: {
   onOpenSettings: () => void;
   onOpenGraph: (path: string) => void;
 }): JSX.Element {
-  const [query, setQuery] = createSignal("");
-  const [hits, setHits] = createSignal<SearchHit[]>([]);
   const [showPages, setShowPages] = createSignal(true);
   const [recents, setRecents] = createSignal<RecentGraph[]>([]);
+  const [graphMenu, setGraphMenu] = createSignal(false);
 
-  let searchTimer: ReturnType<typeof setTimeout> | undefined;
-  // поколение запроса: устаревший in-flight search не перезапишет свежие hits
-  let searchGen = 0;
-
-  onCleanup(() => {
-    if (searchTimer !== undefined) clearTimeout(searchTimer);
-  });
+  const graphName = () => {
+    const root = props.summary?.root;
+    if (!root) return "Граф не выбран";
+    return root.split("/").filter(Boolean).pop() ?? root;
+  };
 
   const loadRecents = async () => {
     try {
@@ -33,44 +30,33 @@ export function Sidebar(props: {
   };
   void loadRecents();
 
-  const onPickGraph = async () => {
+  const toggleGraphMenu = () => {
+    // при открытии обновляем список — вдруг графы добавлялись снаружи
+    if (!graphMenu()) void loadRecents();
+    setGraphMenu((v) => !v);
+  };
+
+  const addGraph = async () => {
+    setGraphMenu(false);
     const path = await pickGraphDir();
     if (path) props.onOpenGraph(path);
   };
 
-  const onQuery = (value: string) => {
-    setQuery(value);
-    if (searchTimer !== undefined) clearTimeout(searchTimer);
-    const gen = ++searchGen;
-    if (!value.trim()) {
-      setHits([]);
-      return;
-    }
-    searchTimer = setTimeout(async () => {
-      try {
-        const found = await search(value);
-        if (gen === searchGen) setHits(found);
-      } catch {
-        if (gen === searchGen) setHits([]);
-      }
-    }, 120);
+  const switchGraph = (path: string) => {
+    setGraphMenu(false);
+    if (path !== props.summary?.root) props.onOpenGraph(path);
   };
 
   return (
     <aside class="sidebar">
-      <div class="sidebar-search">
-        <input
-          type="search"
-          placeholder="Поиск страниц и блоков…"
-          value={query()}
-          onInput={(e) => onQuery(e.currentTarget.value)}
-        />
+      <div class="sidebar-graph">
         <button
-          class="settings-btn"
-          title="Открыть другой граф"
-          onClick={onPickGraph}
+          class="graph-switch"
+          title={props.summary?.root ?? "граф не выбран"}
+          onClick={toggleGraphMenu}
         >
-          📂
+          <span class="graph-switch-name">{graphName()}</span>
+          <span class="caret">{graphMenu() ? "▴" : "▾"}</span>
         </button>
         <button
           class="settings-btn"
@@ -81,22 +67,27 @@ export function Sidebar(props: {
         </button>
       </div>
 
-      <Show when={recents().length > 0}>
-        <div class="sidebar-section">
-          <div class="sidebar-title">Недавние графы</div>
-          <div class="scroll-list">
-            <For each={recents().slice(0, 5)}>
+      <Show when={graphMenu()}>
+        <div class="menu-backdrop" onClick={() => setGraphMenu(false)} />
+        <div class="graph-menu">
+          <button class="graph-menu-item graph-menu-add" onClick={addGraph}>
+            ＋ Добавить граф…
+          </button>
+          <Show when={recents().length > 0}>
+            <div class="graph-menu-sep" />
+            <For each={recents()}>
               {(g) => (
                 <button
-                  class="page-item"
+                  class="graph-menu-item"
+                  classList={{ current: g.path === props.summary?.root }}
                   title={g.path}
-                  onClick={() => props.onOpenGraph(g.path)}
+                  onClick={() => switchGraph(g.path)}
                 >
-                  {g.path.split("/").pop() ?? g.path}
+                  {g.path.split("/").filter(Boolean).pop() ?? g.path}
                 </button>
               )}
             </For>
-          </div>
+          </Show>
         </div>
       </Show>
 
@@ -115,53 +106,35 @@ export function Sidebar(props: {
         {(root) => <div class="graph-path" title={root}>{root}</div>}
       </Show>
 
-      <Show when={query().trim()}>
-        <div class="sidebar-section">
-          <div class="sidebar-title">Найдено ({hits().length})</div>
+      <nav class="sidebar-section">
+        <button class="sidebar-collapse" onClick={() => setShowPages((v) => !v)}>
+          <span class="sidebar-title">Страницы ({props.pages.length})</span>
+          <span class="caret">{showPages() ? "▾" : "▸"}</span>
+        </button>
+        <Show when={showPages()}>
           <div class="scroll-list">
-            <For each={hits().slice(0, 40)}>
-              {(hit) => (
-                <button class="search-hit" onClick={() => props.onOpenPage(hit.page)}>
-                  <span class="search-hit-page">{hit.page}</span>
-                  <span class="search-hit-text">{hit.text.trim().slice(0, 90)}</span>
-                </button>
-              )}
-            </For>
-          </div>
-        </div>
-      </Show>
-
-      <Show when={!query().trim()}>
-        <nav class="sidebar-section">
-          <button class="sidebar-collapse" onClick={() => setShowPages((v) => !v)}>
-            <span class="sidebar-title">Страницы ({props.pages.length})</span>
-            <span class="caret">{showPages() ? "▾" : "▸"}</span>
-          </button>
-          <Show when={showPages()}>
-            <div class="scroll-list">
-              <For each={props.pages.slice(0, 300)}>
-                {(name) => (
-                  <button class="page-item" onClick={() => props.onOpenPage(name)}>
-                    {name}
-                  </button>
-                )}
-              </For>
-            </div>
-          </Show>
-        </nav>
-        <nav class="sidebar-section">
-          <div class="sidebar-title">Журналы ({props.journals.length})</div>
-          <div class="scroll-list">
-            <For each={props.journals.slice(0, 40)}>
+            <For each={props.pages.slice(0, 300)}>
               {(name) => (
-                <button class="journal-item" onClick={() => props.onOpenPage(name)}>
+                <button class="page-item" onClick={() => props.onOpenPage(name)}>
                   {name}
                 </button>
               )}
             </For>
           </div>
-        </nav>
-      </Show>
+        </Show>
+      </nav>
+      <nav class="sidebar-section">
+        <div class="sidebar-title">Журналы ({props.journals.length})</div>
+        <div class="scroll-list">
+          <For each={props.journals.slice(0, 40)}>
+            {(name) => (
+              <button class="journal-item" onClick={() => props.onOpenPage(name)}>
+                {name}
+              </button>
+            )}
+          </For>
+        </div>
+      </nav>
     </aside>
   );
 }
