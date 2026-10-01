@@ -39,8 +39,24 @@ body {
 
 .app {
   display: grid;
-  grid-template-columns: 240px 1fr 320px;
+  /* колонки задаются инлайн из настроек: sidebar 5px центр 5px taskpanel */
   height: 100vh;
+}
+
+.panel-resizer {
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+.panel-resizer:hover,
+body.panel-resizing .panel-resizer {
+  background: var(--accent);
+  opacity: 0.4;
+}
+body.panel-resizing {
+  user-select: none;
+  cursor: col-resize;
 }
 
 .sidebar,

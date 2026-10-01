@@ -8,11 +8,13 @@ import {
   pageList,
   ping,
   settingsGet,
+  settingsSave,
 } from "~/lib/api";
 import { JournalTape } from "~/components/JournalTape";
 import { Kanban } from "~/components/Kanban";
 import { Matrix } from "~/components/Matrix";
 import { PageView } from "~/components/PageView";
+import PanelResizer from "~/components/PanelResizer";
 import { Queries } from "~/components/Queries";
 import { SettingsModal } from "~/components/SettingsModal";
 import { Sidebar } from "~/components/Sidebar";
@@ -48,6 +50,21 @@ const App: Component = () => {
   const [tab, setTab] = createSignal<Tab>("Канбан");
   const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = createSignal(false);
+  const [sidebarW, setSidebarW] = createSignal(DEFAULT_SETTINGS.sidebarWidth);
+  const [panelW, setPanelW] = createSignal(DEFAULT_SETTINGS.taskpanelWidth);
+
+  const applySettings = (s: Settings) => {
+    setSettings(s);
+    setSidebarW(s.sidebarWidth);
+    setPanelW(s.taskpanelWidth);
+  };
+
+  // сохраняем ширины панелей после отпускания ручки
+  const commitWidths = () => {
+    const s = { ...settings(), sidebarWidth: sidebarW(), taskpanelWidth: panelW() };
+    setSettings(s);
+    void settingsSave(s).catch((e) => console.error("settings save:", e));
+  };
 
   const openPage = (name: string, uuid?: string) => {
     if (!name) return;
@@ -65,7 +82,7 @@ const App: Component = () => {
       const [js, ps] = await Promise.all([journalList(), pageList()]);
       setJournals(js);
       setPages(ps);
-      setSettings(await settingsGet());
+      applySettings(await settingsGet());
       void listenGraphChanged();
     } catch (e) {
       setError(String(e));
@@ -124,7 +141,7 @@ const App: Component = () => {
       setSummary(s);
       setCurrent(null);
       setTab("Канбан");
-      setSettings(await settingsGet());
+      applySettings(await settingsGet());
       const [js, ps] = await Promise.all([journalList(), pageList()]);
       setJournals(js);
       setPages(ps);
@@ -135,7 +152,10 @@ const App: Component = () => {
   };
 
   return (
-    <div class="app">
+    <div
+      class="app"
+      style={{ "grid-template-columns": `${sidebarW()}px 5px 1fr 5px ${panelW()}px` }}
+    >
       <Sidebar
         summary={summary()}
         journals={journals()}
@@ -144,6 +164,7 @@ const App: Component = () => {
         onOpenSettings={() => setShowSettings(true)}
         onOpenGraph={openGraph}
       />
+      <PanelResizer side="left" start={sidebarW} onResize={setSidebarW} onCommit={commitWidths} />
       <Show
         when={current()}
         fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
@@ -158,6 +179,7 @@ const App: Component = () => {
           />
         )}
       </Show>
+      <PanelResizer side="right" start={panelW} onResize={setPanelW} onCommit={commitWidths} />
       <aside class="taskpanel">
         <div class="tabs">
           <For each={TABS}>
