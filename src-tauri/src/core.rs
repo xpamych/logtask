@@ -72,6 +72,15 @@ mod tests {
     }
 
     #[test]
+    fn deadline_soon_uses_real_dates() {
+        // сегодня — срочно; просроченный — срочно; далёкое будущее — нет
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert!(model::deadline_is_soon(&today, 3));
+        assert!(model::deadline_is_soon("1970-01-01", 3)); // просрочен давно
+        assert!(!model::deadline_is_soon("2999-01-01", 3));
+    }
+
+    #[test]
     fn roundtrip_logbook_and_props() {
         let text = "- DOING [#B] Вебхук\n  source-id:: ppdb-225\n  :LOGBOOK:\n  CLOCK: [2026-09-11 Fri 16:17:05]--[2026-09-16 Wed 14:47:53] =>  118:30:48\n  :END:\n";
         assert_eq!(roundtrip(text), text);

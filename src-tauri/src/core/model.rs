@@ -122,12 +122,12 @@ pub fn days_to_ymd(days: i64) -> (i64, u32, u32) {
 }
 
 /// deadline:: в формате YYYY-MM-DD — скоро ли (в пределах days дней)?
+/// Просроченный дедлайн тоже срочный — нижней границы нет.
 pub fn deadline_is_soon(deadline: &str, days: i64) -> bool {
     let Some(d) = parse_date(deadline) else {
         return false;
     };
-    let now = now_days();
-    d >= now && d <= now + days
+    d <= now_days() + days
 }
 
 /// День в "днях от эпохи" из строки YYYY-MM-DD
@@ -140,8 +140,7 @@ fn parse_date(s: &str) -> Option<i64> {
     if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
         return None;
     }
-    // дни от 1970-01-01 без високосных уточнений — достаточно для сравнения
-    Some((y - 1970) * 365 + (m as i64 - 1) * 30 + d as i64 - 1)
+    Some(ymd_to_days(y, m, d))
 }
 
 fn now_days() -> i64 {
