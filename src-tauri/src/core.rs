@@ -147,6 +147,33 @@ mod tests {
         assert_eq!(g.search("ПРОЕКТ", 10).len(), 1);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_keeps_permissions_and_leaves_no_tmp() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join("logtask_atomic_write_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("страница.md");
+        std::fs::write(&file, "старое\n").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        fswrite::atomic_write(&file, "новое\n").unwrap();
+
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "новое\n");
+        // rename подменяет файл — права исходника должны сохраниться
+        let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755, "права файла должны сохраниться");
+        // tmp-файлов в директории не осталось
+        let tmps: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".logtask.tmp"))
+            .collect();
+        assert!(tmps.is_empty(), "tmp-мусор: {tmps:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn roundtrip_logbook_and_props() {
         let text = "- DOING [#B] Вебхук\n  source-id:: ppdb-225\n  :LOGBOOK:\n  CLOCK: [2026-09-11 Fri 16:17:05]--[2026-09-16 Wed 14:47:53] =>  118:30:48\n  :END:\n";

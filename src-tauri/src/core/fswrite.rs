@@ -7,6 +7,7 @@ use std::path::Path;
 
 /// Записывает файл атомарно: создаёт tmp-файл рядом, fsync, rename.
 /// Родительская директория также fsync'ится (для надёжности на ext4).
+/// Права исходного файла сохраняются (rename сбрасывает их на umask).
 pub fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
     let file_name = path
         .file_name()
@@ -14,22 +15,32 @@ pub fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
         .unwrap_or_else(|| "graph".to_string());
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
 
-    let tmp_name = format!(".{file_name}.logtask.tmp");
+    // pid в имени — два процесса не столкнутся на одном tmp
+    let tmp_name = format!(".{file_name}.{}.logtask.tmp", std::process::id());
     let tmp = dir.join(&tmp_name);
 
-    let mut f = File::create(&tmp)?;
-    f.write_all(text.as_bytes())?;
-    f.sync_all()?;
-    drop(f);
+    let result = (|| -> std::io::Result<()> {
+        let mut f = File::create(&tmp)?;
+        f.write_all(text.as_bytes())?;
+        f.sync_all()?;
+        drop(f);
 
-    // rename атомарен на одной файловой системе
-    std::fs::rename(&tmp, path)?;
+        // сохраняем права исходного файла (rename сбрасывает на umask)
+        if let Ok(meta) = std::fs::metadata(path) {
+            let _ = std::fs::set_permissions(&tmp, meta.permissions());
+        }
 
-    // fsync директории, чтобы rename "закрепился" на диске
-    if let Ok(d) = File::open(dir) {
-        let _ = d.sync_all();
-        drop(d);
+        std::fs::rename(&tmp, path)?;
+
+        if let Ok(d) = File::open(dir) {
+            let _ = d.sync_all();
+        }
+        Ok(())
+    })();
+
+    if result.is_err() {
+        // не оставляем мусорный tmp (его увидит watcher/Syncthing)
+        let _ = std::fs::remove_file(&tmp);
     }
-
-    Ok(())
+    result
 }
