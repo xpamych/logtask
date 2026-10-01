@@ -223,6 +223,44 @@ body.panel-resizing {
   font-weight: 600;
 }
 
+.graph-menu-row {
+  display: flex;
+  align-items: center;
+}
+
+.graph-menu-row .graph-menu-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.graph-menu-row.current .graph-menu-item {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.graph-menu-remove {
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--fg-dim, #888);
+  font: inherit;
+  font-size: 11px;
+  padding: 4px 6px;
+  margin-right: 2px;
+  cursor: pointer;
+  visibility: hidden;
+  flex-shrink: 0;
+}
+
+.graph-menu-row:hover .graph-menu-remove {
+  visibility: visible;
+}
+
+.graph-menu-remove:hover {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+
 .graph-menu-add {
   color: var(--accent);
 }

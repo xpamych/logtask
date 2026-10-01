@@ -202,6 +202,15 @@ pub fn graph_summary(state: tauri::State<'_, AppState>) -> Result<GraphSummary, 
     })
 }
 
+/// Выгружает текущий граф из памяти и останавливает watcher.
+/// Файлы графа не трогаем — только «закрыть» в приложении.
+#[tauri::command]
+pub fn graph_close(state: tauri::State<'_, AppState>) {
+    *state.watcher.write() = None;
+    *state.graph.write() = None;
+    *state.root.write() = None;
+}
+
 /// Список журналов (имена), последние n
 #[tauri::command]
 pub async fn journal_list(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -1054,6 +1063,12 @@ pub async fn block_set_prop(
 #[tauri::command]
 pub fn recent_graphs() -> Vec<crate::recent::RecentGraph> {
     crate::recent::list()
+}
+
+/// Удаляет граф из списка недавних (сам граф с диска не трогаем)
+#[tauri::command]
+pub fn recent_remove(path: String) {
+    crate::recent::remove(&path);
 }
 
 /// Диалог выбора папки графа (нативный)

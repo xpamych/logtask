@@ -32,6 +32,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::graph_load,
             commands::graph_summary,
+            commands::graph_close,
             commands::journal_list,
             commands::journal_prev,
             commands::page_get,
@@ -57,6 +58,7 @@ pub fn run() {
             commands::task_set_priority,
             commands::block_set_prop,
             commands::recent_graphs,
+            commands::recent_remove,
             commands::pick_graph_dir,
             commands::ping,
         ])

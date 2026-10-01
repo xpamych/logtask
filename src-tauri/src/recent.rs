@@ -59,6 +59,13 @@ pub fn touch(root: &str) {
     let _ = save(&items);
 }
 
+/// Удаляет граф из списка недавних
+pub fn remove(root: &str) {
+    let mut items = list();
+    items.retain(|g| g.path != root);
+    let _ = save(&items);
+}
+
 fn save(items: &[RecentGraph]) -> std::io::Result<()> {
     let Some(path) = recent_path() else {
         return Ok(());

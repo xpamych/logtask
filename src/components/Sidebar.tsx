@@ -1,7 +1,7 @@
 import { For, Show, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { GraphSummary, RecentGraph } from "~/lib/api";
-import { pickGraphDir, recentGraphs } from "~/lib/api";
+import { pickGraphDir, recentGraphs, recentRemove } from "~/lib/api";
 
 export function Sidebar(props: {
   summary: GraphSummary | null;
@@ -14,6 +14,7 @@ export function Sidebar(props: {
   onShowAllPages: () => void;
   onOpenSettings: () => void;
   onOpenGraph: (path: string) => void;
+  onCloseGraph: () => void;
 }): JSX.Element {
   const [recents, setRecents] = createSignal<RecentGraph[]>([]);
   const [graphMenu, setGraphMenu] = createSignal(false);
@@ -52,6 +53,13 @@ export function Sidebar(props: {
     if (path !== props.summary?.root) props.onOpenGraph(path);
   };
 
+  const removeGraph = async (path: string) => {
+    await recentRemove(path);
+    setRecents((list) => list.filter((g) => g.path !== path));
+    // удалили текущий граф — закрываем его и уходим на экран приветствия
+    if (path === props.summary?.root) props.onCloseGraph();
+  };
+
   return (
     <aside class="sidebar">
       <div class="sidebar-graph">
@@ -82,14 +90,25 @@ export function Sidebar(props: {
             <div class="graph-menu-sep" />
             <For each={recents()}>
               {(g) => (
-                <button
-                  class="graph-menu-item"
+                <div
+                  class="graph-menu-row"
                   classList={{ current: g.path === props.summary?.root }}
-                  title={g.path}
-                  onClick={() => switchGraph(g.path)}
                 >
-                  {g.path.split("/").filter(Boolean).pop() ?? g.path}
-                </button>
+                  <button
+                    class="graph-menu-item"
+                    title={g.path}
+                    onClick={() => switchGraph(g.path)}
+                  >
+                    {g.path.split("/").filter(Boolean).pop() ?? g.path}
+                  </button>
+                  <button
+                    class="graph-menu-remove"
+                    title={`Убрать из списка: ${g.path}`}
+                    onClick={() => void removeGraph(g.path)}
+                  >
+                    ✕
+                  </button>
+                </div>
               )}
             </For>
           </Show>

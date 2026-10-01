@@ -62,6 +62,7 @@ export function JournalTape(props: {
   };
 
   const reload = async () => {
+    setError(null);
     setDays([]);
     setPages({});
     setDone(false);

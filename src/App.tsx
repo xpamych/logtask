@@ -2,6 +2,7 @@ import type { Component } from "solid-js";
 import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { GraphSummary, Settings } from "~/lib/api";
 import {
+  graphClose,
   graphLoad,
   graphSummary,
   pageList,
@@ -72,6 +73,8 @@ const App: Component = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
   const [panelCollapsed, setPanelCollapsed] = createSignal(false);
   const [recentPages, setRecentPages] = createSignal<string[]>(loadRecentPages());
+  // граф явно закрыт пользователем — показываем экран приветствия
+  const [graphClosed, setGraphClosed] = createSignal(false);
 
   const applySettings = (s: Settings) => {
     setSettings(s);
@@ -190,6 +193,7 @@ const App: Component = () => {
     try {
       const s = await graphLoad(path);
       setSummary(s);
+      setGraphClosed(false);
       setCurrent(null);
       setShowAllPages(false);
       setTab("Канбан");
@@ -201,9 +205,24 @@ const App: Component = () => {
     }
   };
 
+  // закрыть текущий граф: выгружаем в Rust и возвращаемся на экран приветствия
+  const closeGraph = async () => {
+    try {
+      await graphClose();
+    } catch (e) {
+      console.error("graph close:", e);
+    }
+    setSummary(null);
+    setPages([]);
+    setCurrent(null);
+    setShowAllPages(false);
+    setError(null);
+    setGraphClosed(true);
+  };
+
   // первый запуск: граф не выбран — показываем приветственный экран
   const graphNotChosen = () =>
-    !summary() && (error() ?? "").includes("граф не выбран");
+    !summary() && (graphClosed() || (error() ?? "").includes("граф не выбран"));
 
   const pickGraph = async () => {
     const path = await pickGraphDir();
@@ -240,36 +259,39 @@ const App: Component = () => {
               }}
               onOpenSettings={() => setShowSettings(true)}
               onOpenGraph={openGraph}
+              onCloseGraph={() => void closeGraph()}
             />
             <PanelResizer side="left" start={sidebarW} onResize={setSidebarW} onCommit={commitWidths} />
           </Show>
-          <Show
-            when={current()}
-            fallback={
-              <Show
-                when={showAllPages()}
-                fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
-              >
-                <AllPages
-                  pages={pages()}
-                  favorites={settings().favorites}
+          <Show when={summary()}>
+            <Show
+              when={current()}
+              fallback={
+                <Show
+                  when={showAllPages()}
+                  fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+                >
+                  <AllPages
+                    pages={pages()}
+                    favorites={settings().favorites}
+                    onOpenPage={openPage}
+                    onToggleFavorite={toggleFavorite}
+                  />
+                </Show>
+              }
+            >
+              {(name) => (
+                <PageView
+                  name={name()}
                   onOpenPage={openPage}
-                  onToggleFavorite={toggleFavorite}
+                  refreshKey={refreshKey()}
+                  focusUuid={focusUuid()}
+                  settings={settings()}
+                  favorite={settings().favorites.includes(name())}
+                  onToggleFavorite={() => toggleFavorite(name())}
                 />
-              </Show>
-            }
-          >
-            {(name) => (
-              <PageView
-                name={name()}
-                onOpenPage={openPage}
-                refreshKey={refreshKey()}
-                focusUuid={focusUuid()}
-                settings={settings()}
-                favorite={settings().favorites.includes(name())}
-                onToggleFavorite={() => toggleFavorite(name())}
-              />
-            )}
+              )}
+            </Show>
           </Show>
           <Show when={!panelCollapsed()}>
             <PanelResizer side="right" start={panelW} onResize={setPanelW} onCommit={commitWidths} />
@@ -293,22 +315,24 @@ const App: Component = () => {
                     ← К ленте журнала
                   </button>
                 </Show>
-                <Show
-                  when={tab() === "Канбан"}
-                  fallback={
-                    <Show
-                      when={tab() === "Запросы"}
-                      fallback={<Matrix refreshKey={refreshKey()} onOpenPage={openPage} />}
-                    >
-                      <Queries refreshKey={refreshKey()} onOpenPage={openPage} />
-                    </Show>
-                  }
-                >
-                  <Kanban
-                    refreshKey={refreshKey()}
-                    onOpenPage={openPage}
-                    settings={settings()}
-                  />
+                <Show when={summary()}>
+                  <Show
+                    when={tab() === "Канбан"}
+                    fallback={
+                      <Show
+                        when={tab() === "Запросы"}
+                        fallback={<Matrix refreshKey={refreshKey()} onOpenPage={openPage} />}
+                      >
+                        <Queries refreshKey={refreshKey()} onOpenPage={openPage} />
+                      </Show>
+                    }
+                  >
+                    <Kanban
+                      refreshKey={refreshKey()}
+                      onOpenPage={openPage}
+                      settings={settings()}
+                    />
+                  </Show>
                 </Show>
                 <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>
               </div>

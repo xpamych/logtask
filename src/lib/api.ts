@@ -50,6 +50,10 @@ export async function graphSummary(): Promise<GraphSummary> {
   return invoke<GraphSummary>("graph_summary");
 }
 
+export async function graphClose(): Promise<void> {
+  await invoke<void>("graph_close");
+}
+
 export async function journalList(): Promise<string[]> {
   return invoke<string[]>("journal_list");
 }
@@ -230,6 +234,10 @@ export interface RecentGraph {
 
 export async function recentGraphs(): Promise<RecentGraph[]> {
   return invoke<RecentGraph[]>("recent_graphs");
+}
+
+export async function recentRemove(path: string): Promise<void> {
+  await invoke<void>("recent_remove", { path });
 }
 
 export async function pickGraphDir(): Promise<string | null> {
