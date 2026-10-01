@@ -1,17 +1,26 @@
 //! Smoke-тест импорта запросов из config.edn реального графа.
-//! Запуск: cargo test import_real -- --ignored --nocapture
+//! Запуск: LOGTASK_GRAPH=/путь/к/графу cargo test import_real -- --ignored --nocapture
 use std::path::Path;
 
 use logtask_lib::config_edn::parse_default_queries;
 use logtask_lib::core::model::Graph;
 use logtask_lib::core::query::{SavedQuery, TaskFilter};
 
-const GRAPH: &str = "/path/to/graph";
+/// Путь к реальному графу — из окружения; без него тест пропускается.
+fn graph_path() -> Option<String> {
+    std::env::var("LOGTASK_GRAPH")
+        .ok()
+        .filter(|p| !p.is_empty())
+}
 
 #[test]
 #[ignore]
 fn import_real_queries() {
-    let cfg_path = Path::new(GRAPH).join("logseq/config.edn");
+    let Some(root) = graph_path() else {
+        eprintln!("LOGTASK_GRAPH не задан — тест пропущен");
+        return;
+    };
+    let cfg_path = Path::new(&root).join("logseq/config.edn");
     let cfg = std::fs::read_to_string(&cfg_path)
         .unwrap_or_else(|e| panic!("не могу прочитать {}: {e}", cfg_path.display()));
 
@@ -20,7 +29,7 @@ fn import_real_queries() {
     eprintln!("найдено запросов: {}", queries.len());
 
     let mut graph = Graph::default();
-    graph.index_dir(Path::new(GRAPH)).expect("индексация графа");
+    graph.index_dir(Path::new(&root)).expect("индексация графа");
 
     for q in &queries {
         let tasks = graph.query(&SavedQuery {

@@ -1,16 +1,14 @@
 //! Smoke-тест смены статуса на копии реального графа.
-//! Запуск: cargo test status_real --release -- --ignored --nocapture
+//! Запуск: LOGTASK_GRAPH=/путь/к/графу cargo test status_real --release -- --ignored --nocapture
 use std::fs;
 use std::path::PathBuf;
 
 use logtask_lib::core::model::{Graph, Status};
 
-const GRAPH: &str = "/path/to/graph";
-
-fn copy_graph(dst: &std::path::Path) -> std::io::Result<()> {
+fn copy_graph(src_root: &str, dst: &std::path::Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
     for dir in ["journals", "pages", "logseq"] {
-        let src = PathBuf::from(GRAPH).join(dir);
+        let src = PathBuf::from(src_root).join(dir);
         if !src.is_dir() {
             continue;
         }
@@ -29,9 +27,13 @@ fn copy_graph(dst: &std::path::Path) -> std::io::Result<()> {
 #[test]
 #[ignore]
 fn status_real_graph() {
+    let Ok(root) = std::env::var("LOGTASK_GRAPH") else {
+        eprintln!("LOGTASK_GRAPH не задан — тест пропущен");
+        return;
+    };
     let tmp = std::env::temp_dir().join("logtask_real_status");
     let _ = fs::remove_dir_all(&tmp);
-    copy_graph(&tmp).expect("копирование графа");
+    copy_graph(&root, &tmp).expect("копирование графа");
 
     let mut graph = Graph::default();
     let stats = graph.index_dir(&tmp).expect("индексация");

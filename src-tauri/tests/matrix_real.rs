@@ -1,16 +1,18 @@
 //! Smoke-тест матрицы Эйзенхауэра на реальном графе.
-//! Запуск: cargo test matrix_real --release -- --ignored --nocapture
+//! Запуск: LOGTASK_GRAPH=/путь/к/графу cargo test matrix_real --release -- --ignored --nocapture
 use std::path::Path;
 
 use logtask_lib::core::model::{Graph, Quadrant};
 
-const GRAPH: &str = "/path/to/graph";
-
 #[test]
 #[ignore]
 fn matrix_real_graph() {
+    let Ok(root) = std::env::var("LOGTASK_GRAPH") else {
+        eprintln!("LOGTASK_GRAPH не задан — тест пропущен");
+        return;
+    };
     let mut graph = Graph::default();
-    graph.index_dir(Path::new(GRAPH)).expect("индексация графа");
+    graph.index_dir(Path::new(&root)).expect("индексация графа");
 
     let mut counts = [0usize; 4];
     let mut open = 0usize;

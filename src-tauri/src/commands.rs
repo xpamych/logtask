@@ -121,14 +121,16 @@ fn org_time_to_seconds(s: &str) -> Option<i64> {
 }
 
 /// Индексирует граф и возвращает сводку. Если path не задан — берёт
-/// граф по умолчанию из настроек (пока — ~/Документы/Logseq)
+/// LOGTASK_GRAPH или последний недавний граф; иначе просит выбрать
 #[tauri::command]
 pub async fn graph_load(
     path: Option<String>,
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<GraphSummary, String> {
-    let root = path.unwrap_or_else(default_graph_path);
+    let Some(root) = path.or_else(default_graph_path) else {
+        return Err("граф не выбран — откройте его через диалог выбора графа".into());
+    };
     if !std::path::Path::new(&root).is_dir() {
         return Err(format!("граф не найден: {root}"));
     }
@@ -347,13 +349,16 @@ pub fn backlinks_get(
         .collect())
 }
 
-pub fn default_graph_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let docs = format!("{home}/Документы/Logseq");
-    if std::path::Path::new(&docs).is_dir() {
-        return docs;
+/// Путь к графу по умолчанию: переменная окружения LOGTASK_GRAPH,
+/// иначе последний из недавних графов. None — граф ещё не выбран
+/// (пользователь выбирает его в приложении через диалог).
+pub fn default_graph_path() -> Option<String> {
+    if let Ok(p) = std::env::var("LOGTASK_GRAPH") {
+        if std::path::Path::new(&p).is_dir() {
+            return Some(p);
+        }
     }
-    format!("{home}/Documents/Logseq")
+    crate::recent::list().first().map(|g| g.path.clone())
 }
 
 /// Список всех страниц (для сайдбара), отсортированный

@@ -101,8 +101,7 @@ Rust собирается из корня (workspace) или из `src-tauri/`:
 
 ```bash
 cargo build --workspace
-cargo run --example bench_graph   # бенчмарк индекса (путь к графу захардкожен
-                                  # в examples/bench_graph.rs — поправь под себя)
+LOGTASK_GRAPH=/путь/к/графу cargo run --example bench_graph   # бенчмарк индекса
 ```
 
 ## Тестирование
@@ -118,13 +117,13 @@ cargo test --workspace
   внутри модулей core.
 - Интеграционные тесты — `src-tauri/tests/`:
   - `roundtrip.rs` — parse → serialize даёт байт-в-байт исходник для фикстур
-    из `tests/fixtures/graph/` (реальные файлы графа пользователя, включая
-    кириллицу и пробелы в именах). **Round-trip — критичное требование**:
+    из `tests/fixtures/graph/` (синтетические файлы, включая кириллицу и
+    пробелы в именах). **Round-trip — критичное требование**:
     любые изменения парсера/сериализатора не должны его ломать.
   - `index.rs`, `task_status.rs` — индекс и статусы задач.
   - `import_real.rs`, `status_real.rs`, `matrix_real.rs` — тесты на реальном
-    графе пользователя (путь захардкожен `/path/to/graph`);
-    на другой машине эти тесты пропусти или поправь путь.
+    графе; путь задаётся переменной окружения `LOGTASK_GRAPH`, без неё тесты
+    пропускаются (они и так `#[ignore]`).
 
 У фронтенда тестов нет. Проверка фронтенда — типизация: `npm run typecheck`
 (запускается и внутри `npm run build`).

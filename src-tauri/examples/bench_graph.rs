@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 fn main() {
-    let root = PathBuf::from("/path/to/graph");
+    // путь к графу — только через переменную окружения
+    let root = PathBuf::from(std::env::var("LOGTASK_GRAPH").expect(
+        "задайте путь к графу: LOGTASK_GRAPH=/путь/к/графу cargo run --example bench_graph",
+    ));
     // прогрев
     let mut g = Graph::default();
     let _ = g.index_dir(&root);

@@ -28,7 +28,10 @@ const QUIET_MS: u64 = 350;
 /// прерывалось преждевременным дропом.
 pub fn spawn_for_current(app: &AppHandle) -> Result<(), String> {
     let root: Option<PathBuf> = app.state::<AppState>().root.read().clone();
-    let root = root.unwrap_or_else(|| PathBuf::from(default_graph_path()));
+    let root = match root.or_else(|| default_graph_path().map(PathBuf::from)) {
+        Some(r) => r,
+        None => return Err("граф не выбран — watcher не запущен".into()),
+    };
     if !root.is_dir() {
         return Err(format!("граф не найден: {}", root.display()));
     }

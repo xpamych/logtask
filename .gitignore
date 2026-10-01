@@ -5,3 +5,5 @@ node_modules/
 *.log
 .vite/
 target/release/bundle/
+src-tauri/gen/
+docs/superpowers/
