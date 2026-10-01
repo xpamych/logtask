@@ -614,12 +614,15 @@ pub async fn task_set_quadrant(
     let root = root.ok_or("граф не загружен")?;
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
 
-    let urgency = urgency.and_then(|s| parse_level(&s));
-    let importance = importance.and_then(|s| parse_level(&s));
+    let parse = |v: Option<String>, name: &str| -> Result<Option<Level>, String> {
+        v.map(|s| parse_level(&s).ok_or_else(|| format!("недопустимый уровень {name}: {s:?}")))
+            .transpose()
+    };
+    let urgency = parse(urgency, "urgency")?;
+    let importance = parse(importance, "importance")?;
     if urgency.is_none() && importance.is_none() {
         return Err("нужно указать хотя бы одно свойство".into());
     }
-    let _ = Level::default();
 
     let page = {
         let mut graph = state.graph.write();
@@ -978,15 +981,17 @@ pub async fn task_set_priority(
     let root = state.root.read().clone();
     let root = root.ok_or("граф не загружен")?;
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
-    let prio = priority
-        .as_deref()
-        .map(|p| match p {
-            "A" => Some(Priority::A),
-            "B" => Some(Priority::B),
-            "C" => Some(Priority::C),
-            _ => None,
-        })
-        .unwrap_or(None);
+    let prio = match priority.as_deref() {
+        None => None,
+        Some("A") => Some(Priority::A),
+        Some("B") => Some(Priority::B),
+        Some("C") => Some(Priority::C),
+        Some(other) => {
+            return Err(format!(
+                "недопустимый приоритет: {other:?} (ожидалось A/B/C или null)"
+            ))
+        }
+    };
 
     let page = {
         let mut graph = state.graph.write();
