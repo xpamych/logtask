@@ -15,6 +15,7 @@ pub struct GraphSummary {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlockDto {
     pub uuid: String,
     pub status: Option<String>,
@@ -382,6 +383,7 @@ fn is_journal_name(name: &str) -> bool {
 
 /// Задача для UI: блок + страница-источник
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskDto {
     pub uuid: String,
     pub page: String,

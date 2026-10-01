@@ -87,8 +87,6 @@ export interface TaskDto {
   scheduled: string | null;
   tags: string[];
   done: boolean;
-  clockRunning: boolean;
-  clockTotal: string | null;
 }
 
 export interface TaskColumn {
