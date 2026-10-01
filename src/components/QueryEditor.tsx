@@ -106,7 +106,7 @@ export function QueryEditor(props: {
             <span class="settings-label">Страница (точно)</span>
             <input
               class="status-label-input"
-              placeholder="PPDB - TODO"
+              placeholder="Пример - TODO"
               value={draft().filter.page ?? ""}
               onInput={(e) =>
                 setDraft((d) => ({
@@ -121,7 +121,7 @@ export function QueryEditor(props: {
             <span class="settings-label">Префикс страницы</span>
             <input
               class="status-label-input"
-              placeholder="Gitea -"
+              placeholder="Проект -"
               value={draft().filter.pagePrefix ?? ""}
               onInput={(e) =>
                 setDraft((d) => ({
@@ -136,7 +136,7 @@ export function QueryEditor(props: {
             <span class="settings-label">Кроме страницы</span>
             <input
               class="status-label-input"
-              placeholder="Пример - TODO"
+              placeholder="Проекты - TODO"
               value={draft().filter.excludePage ?? ""}
               onInput={(e) =>
                 setDraft((d) => ({

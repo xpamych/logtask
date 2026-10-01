@@ -69,7 +69,7 @@ fn roundtrip_journal_many_clocks() {
 
 #[test]
 fn roundtrip_page_with_links_and_props() {
-    roundtrip_check("pages/PPDB - TODO.md");
+    roundtrip_check("pages/Пример - TODO.md");
 }
 
 #[test]

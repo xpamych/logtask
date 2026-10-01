@@ -42,11 +42,11 @@ fn builds_backlinks() {
     let mut graph = Graph::default();
     graph.index_dir(&fixture_graph()).unwrap();
 
-    // из PPDB - TODO.md есть [[Gitea - Plemya-x - TODO]] и [[DevOps]]
-    let bl = graph.backlinks_of("Gitea - Plemya-x - TODO");
+    // из Пример - TODO.md есть [[Связанная страница]] и [[DevOps]]
+    let bl = graph.backlinks_of("Связанная страница");
     assert!(
         !bl.is_empty(),
-        "обратные ссылки на Gitea - Plemya-x - TODO должны быть"
+        "обратные ссылки на Связанная страница должны быть"
     );
     let bl_devops = graph.backlinks_of("DevOps");
     assert!(!bl_devops.is_empty(), "обратные ссылки на DevOps");
@@ -58,7 +58,7 @@ fn page_of_block_and_names() {
     graph.index_dir(&fixture_graph()).unwrap();
 
     let names = graph.all_page_names();
-    assert!(names.iter().any(|n| n == "PPDB - TODO"));
+    assert!(names.iter().any(|n| n == "Пример - TODO"));
     assert!(names.iter().any(|n| n == "Arch Linux"));
 
     // каждый блок знает свою страницу
@@ -75,7 +75,7 @@ fn kind_journal_detected() {
 
     let j = graph.pages.get("2026_09_11").expect("журнал 2026_09_11");
     assert_eq!(j.kind, PageKind::Journal);
-    let p = graph.pages.get("PPDB - TODO").expect("страница PPDB");
+    let p = graph.pages.get("Пример - TODO").expect("страница Пример");
     assert_eq!(p.kind, PageKind::Page);
 }
 
@@ -87,18 +87,18 @@ fn query_filters_by_page() {
     graph.index_dir(&fixture_graph()).unwrap();
 
     let q = SavedQuery {
-        title: "PPDB".into(),
+        title: "Пример".into(),
         filter: TaskFilter {
-            page: Some("PPDB - TODO".into()),
+            page: Some("Пример - TODO".into()),
             ..Default::default()
         },
         sort: vec![],
         collapsed: false,
     };
     let res = graph.query(&q);
-    assert!(!res.is_empty(), "запрос по странице PPDB пуст");
+    assert!(!res.is_empty(), "запрос по странице Пример пуст");
     for (id, _) in &res {
-        assert_eq!(graph.page_of_block(id), "PPDB - TODO");
+        assert_eq!(graph.page_of_block(id), "Пример - TODO");
     }
 }
 
@@ -139,6 +139,6 @@ fn search_finds_blocks() {
     let mut graph = Graph::default();
     graph.index_dir(&fixture_graph()).unwrap();
 
-    let hits = graph.search("Gitea", 10);
-    assert!(!hits.is_empty(), "поиск Gitea пуст");
+    let hits = graph.search("матриц", 10);
+    assert!(!hits.is_empty(), "поиск «матриц» пуст");
 }

@@ -680,7 +680,7 @@ pub fn queries_save(
 }
 
 /// Импорт `:default-queries` из logseq/config.edn (разовый при первом старте):
-/// переносит «Сейчас / Работа / PPDB / Gitea / Остальные дела»
+/// переносит группы запросов (например, «Сейчас / Проекты / Остальные дела»)
 #[tauri::command]
 pub fn import_logseq_queries(state: tauri::State<'_, AppState>) -> Result<usize, String> {
     let root = state.root.read().clone();

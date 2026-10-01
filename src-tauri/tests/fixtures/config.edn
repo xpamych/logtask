@@ -1,0 +1,78 @@
+{:meta/version 1
+
+ ;; Синтетический конфиг для тестов импорта (структура как у реального
+ ;; logseq/config.edn, но без личных данных).
+
+ :preferred-workflow :todo
+ :hidden []
+ :default-templates
+ {:journals ""}
+
+ :ui/enable-tooltip? true
+ :ui/show-full-blocks? false
+ :ui/auto-expand-block-refs? true
+ :feature/enable-block-timestamps? false
+
+ :query/result-transforms
+ {:sort-by-priority
+  (fn [result] (sort-by (fn [h] (get h :block/priority "Z")) result))}
+
+ :default-queries
+{:journals
+ [{:title "Сейчас"
+   :query [:find (pull ?h [*])
+           :where
+           [?h :block/marker ?marker]
+           [(contains? #{"NOW" "DOING"} ?marker)]
+           [?h :block/page ?p]]
+   :result-transform (fn [result]
+                       (sort-by (fn [h]
+                                  [(get h :block/priority "Z")
+                                   (or (get h :block/created-at) 999999999999999)]) result))
+   :collapsed? false}
+  {:title "Проекты"
+   :query [:find (pull ?h [:db/id :block/uuid :block/content :block/marker :block/priority])
+           :where
+           [?p :block/original-name ?name]
+           [(contains? #{"Проекты - TODO"} ?name)]
+           [?h :block/marker ?marker]
+           [(contains? #{"NOW" "DOING" "TODO"} ?marker)]
+           [?h :block/page ?p]
+           [?p :block/journal? false]]
+   :result-transform (fn [result]
+                       (sort-by (fn [h]
+                                  [(get h :block/priority "Z")
+                                   (or (get h :block/created-at) 999999999999999)]) result))
+   :collapsed? true}
+  {:title "Остальные дела"
+   :query [:find (pull ?h [*])
+           :in $ ?start ?today
+           :where
+           [?p :block/original-name ?name]
+           (not [(contains? #{"Проекты - TODO"} ?name)])
+           [?h :block/marker ?marker]
+           [(contains? #{"NOW" "DOING" "TODO"} ?marker)]
+           [?h :block/page ?p]
+           [?p :block/journal-day ?d]
+           [(>= ?d ?start)]
+           [(<= ?d ?today)]]
+   :inputs [:999999d :today]
+   :result-transform (fn [result]
+                       (sort-by (fn [h]
+                                  [(get h :block/priority "Z")
+                                   (get-in h [:block/page :block/journal-day] 99999999)]) result))
+   :collapsed? true}]
+}
+
+ :commands []
+ :outliner/block-title-collapse-enabled? false
+ :macros {}
+ :ref/default-open-blocks-level 2
+ :ref/linked-references-collapsed-threshold 50
+ :favorites ["Пример - TODO"]
+ :property-pages/enabled? true
+ :file/name-format :triple-lowbar
+ :ui/show-brackets? false
+ :journal/page-title-format "do MMM yyyy"
+ :graph/settings {:orphan-pages? true}
+ :editor/logical-outdenting? true}

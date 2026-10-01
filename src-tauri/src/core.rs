@@ -51,13 +51,13 @@ mod tests {
 
     #[test]
     fn parses_props_and_links() {
-        let text = "- TODO [#C] #feature #ppdb Задача [[PPDB - TODO]]\n  source-id:: ppdb-225\n";
+        let text = "- TODO [#C] #feature #demo Задача [[Пример - TODO]]\n  source-id:: demo-225\n";
         let doc = parse_document(text);
         let b = &doc.blocks[0];
-        assert_eq!(b.props.get("source-id"), Some(&"ppdb-225".to_string()));
+        assert_eq!(b.props.get("source-id"), Some(&"demo-225".to_string()));
         assert!(b.links.iter().any(|l| matches!(
             l,
-            model::LinkTarget::Page(n) if n == "PPDB - TODO"
+            model::LinkTarget::Page(n) if n == "Пример - TODO"
         )));
         assert!(b.links.iter().any(|l| matches!(
             l,
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn roundtrip_logbook_and_props() {
-        let text = "- DOING [#B] Вебхук\n  source-id:: ppdb-225\n  :LOGBOOK:\n  CLOCK: [2026-09-11 Fri 16:17:05]--[2026-09-16 Wed 14:47:53] =>  118:30:48\n  :END:\n";
+        let text = "- DOING [#B] Вебхук\n  source-id:: demo-225\n  :LOGBOOK:\n  CLOCK: [2026-09-11 Fri 16:17:05]--[2026-09-16 Wed 14:47:53] =>  118:30:48\n  :END:\n";
         assert_eq!(roundtrip(text), text);
     }
 }

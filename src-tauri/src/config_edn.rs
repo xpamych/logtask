@@ -151,8 +151,14 @@ fn extract_sets(text: &str) -> Vec<(Vec<String>, String, bool)> {
     while let Some(rel) = text[search_from..].find("contains?") {
         let pos = search_from + rel;
         let rest = &text[pos..];
-        // negation: ищем "(not" перед этим вхождением в пределах ~40 символов
-        let before = &text[pos.saturating_sub(60)..pos];
+        // negation: ищем "(not" перед этим вхождением (до ~60 символов назад)
+        let before_start = text[..pos]
+            .char_indices()
+            .rev()
+            .nth(59)
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        let before = &text[before_start..pos];
         let negated = before.rfind("(not").is_some();
 
         let Some(brace) = rest.find("#{") else {
@@ -252,20 +258,20 @@ mod tests {
             [(contains? #{"NOW" "DOING"} ?marker)]]
     :result-transform (fn [result] (sort-by (fn [h] [(get h :block/priority "Z")]) result))
     :collapsed? false}
-   {:title "Работа"
+   {:title "Проекты"
     :query [:find (pull ?h [:db/id])
             :where
             [?p :block/original-name ?name]
-            [(contains? #{"Пример - TODO"} ?name)]
+            [(contains? #{"Проекты - TODO"} ?name)]
             [?h :block/marker ?marker]
             [(contains? #{"NOW" "DOING" "TODO"} ?marker)]
             [?p :block/journal? false]]
     :collapsed? true}
-   {:title "Gitea"
+   {:title "Репозитории"
     :query [:find (pull ?h [*])
             :where
             [?p :block/original-name ?name]
-            [(clojure.string/starts-with? ?name "Gitea -")]
+            [(clojure.string/starts-with? ?name "Репозиторий -")]
             [?h :block/marker ?marker]
             [(contains? #{"NOW" "DOING" "TODO"} ?marker)]]
     :collapsed? true}
@@ -274,7 +280,7 @@ mod tests {
             :in $ ?start ?today
             :where
             [?p :block/original-name ?name]
-            (not [(contains? #{"Пример - TODO"} ?name)])
+            (not [(contains? #{"Проекты - TODO"} ?name)])
             [?h :block/marker ?marker]
             [(contains? #{"NOW" "DOING" "TODO"} ?marker)]
             [?p :block/journal-day ?d]
@@ -292,15 +298,18 @@ mod tests {
         assert_eq!(queries[0].title, "Сейчас");
         assert!(queries[0].filter.status.contains(&Status::Doing));
         assert!(!queries[0].collapsed);
-        assert_eq!(queries[1].title, "Работа");
-        assert_eq!(queries[1].filter.page.as_deref(), Some("Пример - TODO"));
+        assert_eq!(queries[1].title, "Проекты");
+        assert_eq!(queries[1].filter.page.as_deref(), Some("Проекты - TODO"));
         assert!(queries[1].collapsed);
-        assert_eq!(queries[2].title, "Gitea");
-        assert_eq!(queries[2].filter.page_prefix.as_deref(), Some("Gitea -"));
+        assert_eq!(queries[2].title, "Репозитории");
+        assert_eq!(
+            queries[2].filter.page_prefix.as_deref(),
+            Some("Репозиторий -")
+        );
         assert_eq!(queries[3].title, "Остальные дела");
         assert_eq!(
             queries[3].filter.exclude_page.as_deref(),
-            Some("Пример - TODO")
+            Some("Проекты - TODO")
         );
     }
 
