@@ -1172,3 +1172,42 @@ body.panel-resizing {
 .btn.danger-btn {
   color: #e06666;
 }
+
+/* Приветственный экран при невыбранном графе */
+.welcome {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  padding: 40px;
+}
+.welcome-logo {
+  width: 96px;
+  height: 96px;
+}
+.welcome-title {
+  margin: 0;
+  font-size: 28px;
+}
+.welcome-text {
+  margin: 0;
+  max-width: 420px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+.welcome-pick {
+  margin-top: 8px;
+  padding: 12px 28px;
+  font-size: 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.welcome-pick:hover {
+  filter: brightness(1.1);
+}

@@ -6,6 +6,7 @@ import {
   graphSummary,
   journalList,
   pageList,
+  pickGraphDir,
   ping,
   settingsGet,
   settingsSave,
@@ -18,6 +19,7 @@ import PanelResizer from "~/components/PanelResizer";
 import { Queries } from "~/components/Queries";
 import { SettingsModal } from "~/components/SettingsModal";
 import { Sidebar } from "~/components/Sidebar";
+import Welcome from "~/components/Welcome";
 
 const TABS = ["Канбан", "Матрица", "Запросы"] as const;
 type Tab = (typeof TABS)[number];
@@ -151,7 +153,17 @@ const App: Component = () => {
     }
   };
 
+  // первый запуск: граф не выбран — показываем приветственный экран
+  const graphNotChosen = () =>
+    !summary() && (error() ?? "").includes("граф не выбран");
+
+  const pickGraph = async () => {
+    const path = await pickGraphDir();
+    if (path) await openGraph(path);
+  };
+
   return (
+    <Show when={!graphNotChosen()} fallback={<Welcome onPick={pickGraph} />}>
     <div
       class="app"
       style={{ "grid-template-columns": `${sidebarW()}px 5px 1fr 5px ${panelW()}px` }}
@@ -228,6 +240,7 @@ const App: Component = () => {
         />
       </Show>
     </div>
+    </Show>
   );
 };
 
