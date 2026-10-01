@@ -1,7 +1,14 @@
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { PageDto } from "~/lib/api";
-import { backlinksGet, journalList, journalPrev, pageGet } from "~/lib/api";
+import {
+  backlinksGet,
+  blockDelete,
+  journalList,
+  journalPrev,
+  pageGet,
+  taskSetStatus,
+} from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
 import { BlockView } from "./BlockView";
 
@@ -64,6 +71,24 @@ export function JournalTape(props: {
     await appendDays(journals.slice(0, PAGE_SIZE));
   };
 
+  const onStatusChange = async (uuid: string, marker: string) => {
+    try {
+      await taskSetStatus(uuid, marker);
+      await reload();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const onDelete = async (uuid: string) => {
+    try {
+      await blockDelete(uuid);
+      await reload();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   onMount(reload);
 
   // перезагрузка при изменении графа (watcher)
@@ -89,7 +114,13 @@ export function JournalTape(props: {
                 <>
                   <For each={page().blocks}>
                     {(block) => (
-                      <BlockView block={block} onOpenPage={props.onOpenPage} />
+                      <BlockView
+                        block={block}
+                        onOpenPage={props.onOpenPage}
+                        onChanged={reload}
+                        onStatusChange={onStatusChange}
+                        onDelete={onDelete}
+                      />
                     )}
                   </For>
                   <Show when={page().blocks.length === 0}>
