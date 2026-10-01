@@ -7,7 +7,9 @@ export interface TextSegment {
 }
 
 const LINK_RE = /\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g;
-const TAG_RE = /#(\[\[[^\]]+\]\]|\[[^\]]+\]|[^\s#\[)\]]+)/g;
+// простые теги обрываются по той же пунктуации, что и в ядре
+// (src-tauri/src/core/parser.rs, extract_links)
+const TAG_RE = /#(\[\[[^\]]+\]\]|\[[^\]]+\]|[^\s#\[)\],.;:!?("«»]+)/g;
 
 export function parseSegments(input: string): TextSegment[] {
   const segments: TextSegment[] = [];

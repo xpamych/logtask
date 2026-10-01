@@ -93,16 +93,24 @@ export function PageView(props: {
     }
   };
 
+  // последний сфокусированный блок: повторный скролл к нему не нужен
+  let lastFocused: string | null = null;
+
   createEffect(() => {
     void props.name;
+    lastFocused = null;
     void load();
   });
 
-  // фокус на блоке: читаем props.focusUuid в отдельном эффекте, чтобы
-  // повторный клик по карточке той же страницы тоже прокручивал к блоку
+  // фокус на блоке: только при смене props.focusUuid; перезагрузка
+  // страницы по graph-changed повторный скролл не вызывает
   createEffect(() => {
     const id = props.focusUuid;
-    if (id && page()) queueMicrotask(() => focusBlock(id));
+    if (!id || id === lastFocused) return;
+    // страница ещё грузится — эффект перезапустится на setPage
+    if (!page()) return;
+    lastFocused = id;
+    queueMicrotask(() => focusBlock(id));
   });
 
   // перезагрузка при изменении графа (watcher): во время редактирования
