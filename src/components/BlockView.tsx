@@ -1,5 +1,6 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
+import { editingBlock, setEditingBlock } from "~/lib/editState";
 import { parseSegments } from "~/lib/text";
 import type { BlockDto } from "~/lib/api";
 import {
@@ -114,19 +115,32 @@ export function BlockView(props: {
   const startEdit = () => {
     setDraft(b.content);
     setEditing(true);
+    setEditingBlock(b.uuid);
     queueMicrotask(() => textareaEl?.focus());
   };
+
+  /// выход из режима редактирования: сброс локального и общего состояния
+  const stopEdit = () => {
+    setEditing(false);
+    if (editingBlock() === b.uuid) setEditingBlock(null);
+  };
+
+  // размонтирование во время редактирования не должно блокировать
+  // отложенные перезагрузки по graph-changed
+  onCleanup(() => {
+    if (editingBlock() === b.uuid) setEditingBlock(null);
+  });
 
   const save = async () => {
     const text = draft().trim();
     if (!text || text === b.content) {
-      setEditing(false);
+      stopEdit();
       return;
     }
     setSaving(true);
     try {
       await blockUpdateText(b.uuid, text);
-      setEditing(false);
+      stopEdit();
       props.onChanged?.();
     } catch (e) {
       console.error("ошибка сохранения:", e);
@@ -136,7 +150,7 @@ export function BlockView(props: {
   };
 
   const cancel = () => {
-    setEditing(false);
+    stopEdit();
     setDraft(b.content);
   };
 

@@ -10,6 +10,7 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
+import { refreshGuarded } from "~/lib/editState";
 import { BlockView } from "./BlockView";
 
 export function PageView(props: {
@@ -96,8 +97,18 @@ export function PageView(props: {
 
   createEffect(() => {
     void props.name;
-    void props.refreshKey;
     void load();
+  });
+
+  // перезагрузка при изменении графа (watcher): во время редактирования
+  // блока откладывается, чтобы не затирать черновик
+  const guardedLoad = refreshGuarded(() => void load());
+  let lastKey = props.refreshKey;
+  createEffect(() => {
+    if (props.refreshKey !== lastKey) {
+      lastKey = props.refreshKey;
+      guardedLoad();
+    }
   });
 
   return (

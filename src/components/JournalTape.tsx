@@ -10,6 +10,7 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
+import { refreshGuarded } from "~/lib/editState";
 import { BlockView } from "./BlockView";
 
 const PAGE_SIZE = 5;
@@ -91,12 +92,14 @@ export function JournalTape(props: {
 
   onMount(reload);
 
-  // перезагрузка при изменении графа (watcher)
+  // перезагрузка при изменении графа (watcher): во время редактирования
+  // блока откладывается, чтобы не затирать черновик
+  const guardedReload = refreshGuarded(() => void reload());
   let lastKey = -1;
   createEffect(() => {
     if (props.refreshKey !== lastKey) {
       lastKey = props.refreshKey;
-      if (lastKey > 0) void reload();
+      if (lastKey > 0) guardedReload();
     }
   });
 
