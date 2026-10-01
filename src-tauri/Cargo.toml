@@ -14,7 +14,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 notify = { version = "7", features = ["serde"] }
@@ -22,11 +21,9 @@ uuid = { version = "1", features = ["v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 parking_lot = "0.12"
-dashmap = "6"
-rayon = "1"
 log = "0.4"
-tauri-plugin-dialog = "2.0.0-rc.8"
-tauri-plugin-log = "2.0.0-rc.2"
+tauri-plugin-dialog = "2"
+tauri-plugin-log = "2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

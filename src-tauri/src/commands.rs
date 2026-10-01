@@ -123,7 +123,7 @@ fn org_time_to_seconds(s: &str) -> Option<i64> {
 /// Индексирует граф и возвращает сводку. Если path не задан — берёт
 /// граф по умолчанию из настроек (пока — ~/Документы/Logseq)
 #[tauri::command]
-pub fn graph_load(
+pub async fn graph_load(
     path: Option<String>,
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
@@ -202,7 +202,7 @@ pub fn graph_summary(state: tauri::State<'_, AppState>) -> Result<GraphSummary, 
 
 /// Список журналов (имена), последние n
 #[tauri::command]
-pub fn journal_list(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+pub async fn journal_list(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
     Ok(sorted_journals(graph))
@@ -210,7 +210,7 @@ pub fn journal_list(state: tauri::State<'_, AppState>) -> Result<Vec<String>, St
 
 /// N журналов, идущих перед указанной датой (для ленты при скролле вниз)
 #[tauri::command]
-pub fn journal_prev(
+pub async fn journal_prev(
     before: String,
     n: usize,
     state: tauri::State<'_, AppState>,
@@ -228,7 +228,7 @@ pub fn journal_prev(
 
 /// Возвращает страницу (журнал или обычную) с блоками
 #[tauri::command]
-pub fn page_get(name: String, state: tauri::State<'_, AppState>) -> Result<PageDto, String> {
+pub async fn page_get(name: String, state: tauri::State<'_, AppState>) -> Result<PageDto, String> {
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
     page_get_impl(graph, &name)
@@ -250,7 +250,10 @@ pub fn follow_link(
 
 /// Поиск по блокам и страницам
 #[tauri::command]
-pub fn search(query: String, state: tauri::State<'_, AppState>) -> Result<Vec<SearchHit>, String> {
+pub async fn search(
+    query: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<SearchHit>, String> {
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
     let query = query.trim();
@@ -441,7 +444,7 @@ fn task_dto(graph: &Graph, id: uuid::Uuid, block: &Block) -> TaskDto {
 
 /// Канбан: все задачи, сгруппированные по 6 статусам
 #[tauri::command]
-pub fn kanban(state: tauri::State<'_, AppState>) -> Result<Vec<TaskColumn>, String> {
+pub async fn kanban(state: tauri::State<'_, AppState>) -> Result<Vec<TaskColumn>, String> {
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
 
@@ -528,7 +531,7 @@ pub struct MatrixQuadrant {
 
 /// Матрица Эйзенхауэра: открытые задачи по 4 квадрантам
 #[tauri::command]
-pub fn matrix(state: tauri::State<'_, AppState>) -> Result<Vec<MatrixQuadrant>, String> {
+pub async fn matrix(state: tauri::State<'_, AppState>) -> Result<Vec<MatrixQuadrant>, String> {
     use crate::core::model::{level_str, Level, Quadrant};
 
     let graph = state.graph.read();
@@ -673,7 +676,7 @@ pub fn queries_save(
     std::fs::create_dir_all(&dir).map_err(|e| format!("{e}"))?;
     let path = dir.join("queries.json");
     let text = serde_json::to_string_pretty(&queries).map_err(|e| format!("{e}"))?;
-    std::fs::write(&path, text).map_err(|e| format!("{e}"))
+    crate::core::fswrite::atomic_write(&path, &text).map_err(|e| e.to_string())
 }
 
 /// Импорт `:default-queries` из logseq/config.edn (разовый при первом старте):
@@ -695,7 +698,7 @@ pub fn import_logseq_queries(state: tauri::State<'_, AppState>) -> Result<usize,
     std::fs::create_dir_all(&dir).map_err(|e| format!("{e}"))?;
     let path = dir.join("queries.json");
     let text = serde_json::to_string_pretty(&imported).map_err(|e| format!("{e}"))?;
-    std::fs::write(&path, text).map_err(|e| format!("{e}"))?;
+    crate::core::fswrite::atomic_write(&path, &text).map_err(|e| e.to_string())?;
     Ok(imported.len())
 }
 
@@ -840,7 +843,7 @@ fn ensure_today_journal(root: &std::path::Path, graph: &mut Graph) {
     }
     // Logseq добавляет заголовок-дату первой строкой
     let title = format!("- {}\n", journal_title(&name));
-    if let Err(e) = std::fs::write(&path, &title) {
+    if let Err(e) = crate::core::fswrite::atomic_write(&path, &title) {
         log::warn!("не удалось создать {path:?}: {e}");
         return;
     }

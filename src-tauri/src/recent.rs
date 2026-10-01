@@ -68,7 +68,7 @@ fn save(items: &[RecentGraph]) -> std::io::Result<()> {
     }
     let text = serde_json::to_string_pretty(items)
         .map_err(|e| std::io::Error::other(format!("сериализация: {e}")))?;
-    std::fs::write(&path, text)
+    crate::core::fswrite::atomic_write(&path, &text)
 }
 
 fn now_iso() -> String {
