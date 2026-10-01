@@ -5,15 +5,20 @@ import { pickGraphDir, recentGraphs } from "~/lib/api";
 
 export function Sidebar(props: {
   summary: GraphSummary | null;
-  journals: string[];
-  pages: string[];
+  /** активный пункт навигации: лента журнала / все страницы / открытая страница */
+  view: "journal" | "pages" | "page";
+  favorites: string[];
+  recentPages: string[];
   onOpenPage: (name: string) => void;
+  onShowJournal: () => void;
+  onShowAllPages: () => void;
   onOpenSettings: () => void;
   onOpenGraph: (path: string) => void;
 }): JSX.Element {
-  const [showPages, setShowPages] = createSignal(true);
   const [recents, setRecents] = createSignal<RecentGraph[]>([]);
   const [graphMenu, setGraphMenu] = createSignal(false);
+  const [showFavorites, setShowFavorites] = createSignal(true);
+  const [showRecent, setShowRecent] = createSignal(true);
 
   const graphName = () => {
     const root = props.summary?.root;
@@ -91,50 +96,65 @@ export function Sidebar(props: {
         </div>
       </Show>
 
-      <Show when={props.summary}>
-        {(s) => (
-          <div class="stats">
-            <div class="stat"><span class="stat-num">{s().journals}</span> журналов</div>
-            <div class="stat"><span class="stat-num">{s().pages}</span> страниц</div>
-            <div class="stat"><span class="stat-num">{s().tasks}</span> задач</div>
-            <div class="stat"><span class="stat-num">{s().backlinks}</span> ссылок</div>
-          </div>
-        )}
-      </Show>
-
-      <Show when={props.summary?.root} keyed>
-        {(root) => <div class="graph-path" title={root}>{root}</div>}
-      </Show>
-
       <nav class="sidebar-section">
-        <button class="sidebar-collapse" onClick={() => setShowPages((v) => !v)}>
-          <span class="sidebar-title">Страницы ({props.pages.length})</span>
-          <span class="caret">{showPages() ? "▾" : "▸"}</span>
-        </button>
-        <Show when={showPages()}>
-          <div class="scroll-list">
-            <For each={props.pages.slice(0, 300)}>
-              {(name) => (
-                <button class="page-item" onClick={() => props.onOpenPage(name)}>
-                  {name}
-                </button>
-              )}
-            </For>
-          </div>
-        </Show>
-      </nav>
-      <nav class="sidebar-section">
-        <div class="sidebar-title">Журналы ({props.journals.length})</div>
-        <div class="scroll-list">
-          <For each={props.journals.slice(0, 40)}>
-            {(name) => (
-              <button class="journal-item" onClick={() => props.onOpenPage(name)}>
-                {name}
-              </button>
-            )}
-          </For>
+        <div class="sidebar-title">Навигация</div>
+        <div class="nav-list">
+          <button
+            class="nav-item"
+            classList={{ active: props.view === "journal" }}
+            onClick={props.onShowJournal}
+          >
+            📅 Журналы
+          </button>
+          <button
+            class="nav-item"
+            classList={{ active: props.view === "pages" }}
+            onClick={props.onShowAllPages}
+          >
+            📄 Все страницы
+          </button>
         </div>
       </nav>
+
+      <Show when={props.favorites.length > 0}>
+        <nav class="sidebar-section">
+          <button class="sidebar-collapse" onClick={() => setShowFavorites((v) => !v)}>
+            <span class="sidebar-title">Избранное</span>
+            <span class="caret">{showFavorites() ? "▾" : "▸"}</span>
+          </button>
+          <Show when={showFavorites()}>
+            <div class="scroll-list">
+              <For each={props.favorites}>
+                {(name) => (
+                  <button class="page-item" onClick={() => props.onOpenPage(name)}>
+                    {name}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </nav>
+      </Show>
+
+      <Show when={props.recentPages.length > 0}>
+        <nav class="sidebar-section">
+          <button class="sidebar-collapse" onClick={() => setShowRecent((v) => !v)}>
+            <span class="sidebar-title">Недавнее</span>
+            <span class="caret">{showRecent() ? "▾" : "▸"}</span>
+          </button>
+          <Show when={showRecent()}>
+            <div class="scroll-list">
+              <For each={props.recentPages}>
+                {(name) => (
+                  <button class="page-item" onClick={() => props.onOpenPage(name)}>
+                    {name}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </nav>
+      </Show>
     </aside>
   );
 }

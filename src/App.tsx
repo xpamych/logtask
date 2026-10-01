@@ -4,26 +4,28 @@ import type { GraphSummary, Settings } from "~/lib/api";
 import {
   graphLoad,
   graphSummary,
-  journalList,
   pageList,
   pickGraphDir,
   ping,
   settingsGet,
   settingsSave,
 } from "~/lib/api";
+import { AllPages } from "~/components/AllPages";
 import { JournalTape } from "~/components/JournalTape";
 import { Kanban } from "~/components/Kanban";
 import { Matrix } from "~/components/Matrix";
 import { PageView } from "~/components/PageView";
 import PanelResizer from "~/components/PanelResizer";
 import { Queries } from "~/components/Queries";
-import { SearchBar } from "~/components/SearchBar";
 import { SettingsModal } from "~/components/SettingsModal";
 import { Sidebar } from "~/components/Sidebar";
+import { Topbar } from "~/components/Topbar";
 import Welcome from "~/components/Welcome";
 
 const TABS = ["Канбан", "Матрица", "Запросы"] as const;
 type Tab = (typeof TABS)[number];
+
+const RECENT_PAGES_KEY = "logtask:recentPages";
 
 const DEFAULT_SETTINGS: Settings = {
   theme: "system",
@@ -32,6 +34,8 @@ const DEFAULT_SETTINGS: Settings = {
   kanbanLimit: 50,
   sidebarWidth: 240,
   taskpanelWidth: 320,
+  favorites: [],
+  systemTitlebar: false,
   statuses: [
     { marker: "LATER", label: "Бэклог", color: "#888888", visible: true, shortcut: null },
     { marker: "TODO", label: "К выполнению", color: "#09bec8", visible: true, shortcut: null },
@@ -42,19 +46,32 @@ const DEFAULT_SETTINGS: Settings = {
   ],
 };
 
+function loadRecentPages(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_PAGES_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((p) => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 const App: Component = () => {
   const [summary, setSummary] = createSignal<GraphSummary | null>(null);
-  const [journals, setJournals] = createSignal<string[]>([]);
   const [pages, setPages] = createSignal<string[]>([]);
   const [error, setError] = createSignal<string | null>(null);
   const [refreshKey, setRefreshKey] = createSignal(0);
   const [current, setCurrent] = createSignal<string | null>(null);
   const [focusUuid, setFocusUuid] = createSignal<string | null>(null);
+  const [showAllPages, setShowAllPages] = createSignal(false);
   const [tab, setTab] = createSignal<Tab>("Канбан");
   const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = createSignal(false);
   const [sidebarW, setSidebarW] = createSignal(DEFAULT_SETTINGS.sidebarWidth);
   const [panelW, setPanelW] = createSignal(DEFAULT_SETTINGS.taskpanelWidth);
+  const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
+  const [panelCollapsed, setPanelCollapsed] = createSignal(false);
+  const [recentPages, setRecentPages] = createSignal<string[]>(loadRecentPages());
 
   const applySettings = (s: Settings) => {
     setSettings(s);
@@ -72,19 +89,39 @@ const App: Component = () => {
   const openPage = (name: string, uuid?: string) => {
     if (!name) return;
     setFocusUuid(uuid ?? null);
+    setShowAllPages(false);
     setCurrent(name);
+    // недавние страницы (свежие первыми, максимум 10)
+    const list = [name, ...recentPages().filter((p) => p !== name)].slice(0, 10);
+    setRecentPages(list);
+    localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(list));
   };
 
-  const backToJournal = () => setCurrent(null);
+  const showJournal = () => {
+    setCurrent(null);
+    setShowAllPages(false);
+  };
+
+  const toggleFavorite = (name: string) => {
+    const s = settings();
+    const favorites = s.favorites.includes(name)
+      ? s.favorites.filter((f) => f !== name)
+      : [...s.favorites, name];
+    const next = { ...s, favorites };
+    setSettings(next);
+    void settingsSave(next).catch((e) => console.error("settings save:", e));
+  };
+
+  // активный пункт навигации сайдбара
+  const navView = (): "journal" | "pages" | "page" =>
+    current() ? "page" : showAllPages() ? "pages" : "journal";
 
   onMount(async () => {
     try {
       await ping();
       const s = await graphLoad();
       setSummary(s);
-      const [js, ps] = await Promise.all([journalList(), pageList()]);
-      setJournals(js);
-      setPages(ps);
+      setPages(await pageList());
       applySettings(await settingsGet());
       void listenGraphChanged();
     } catch (e) {
@@ -114,6 +151,19 @@ const App: Component = () => {
     document.documentElement.style.fontSize = `${s.fontScale * 14}px`;
   });
 
+  // системная рамка окна вкл/выкл (применяется на лету)
+  createEffect(() => {
+    const sys = settings().systemTitlebar;
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().setDecorations(sys);
+      } catch {
+        // фронт вне Tauri — рамкой управляет браузер
+      }
+    })();
+  });
+
   let unlistenGraph: (() => void) | undefined;
   onCleanup(() => unlistenGraph?.());
 
@@ -125,9 +175,7 @@ const App: Component = () => {
         void graphSummary()
           .then(async (s) => {
             setSummary(s);
-            const [js, ps] = await Promise.all([journalList(), pageList()]);
-            setJournals(js);
-            setPages(ps);
+            setPages(await pageList());
           })
           .catch((e) => console.error("graph-changed: не обновить сводку:", e));
       });
@@ -143,11 +191,10 @@ const App: Component = () => {
       const s = await graphLoad(path);
       setSummary(s);
       setCurrent(null);
+      setShowAllPages(false);
       setTab("Канбан");
       applySettings(await settingsGet());
-      const [js, ps] = await Promise.all([journalList(), pageList()]);
-      setJournals(js);
-      setPages(ps);
+      setPages(await pageList());
       setRefreshKey((k) => k + 1);
     } catch (e) {
       setError(String(e));
@@ -163,87 +210,119 @@ const App: Component = () => {
     if (path) await openGraph(path);
   };
 
+  const gridCols = () =>
+    `${sidebarCollapsed() ? 0 : sidebarW()}px ${sidebarCollapsed() ? 0 : 5}px 1fr ` +
+    `${panelCollapsed() ? 0 : 5}px ${panelCollapsed() ? 0 : panelW()}px`;
+
   return (
     <Show when={!graphNotChosen()} fallback={<Welcome onPick={pickGraph} />}>
-    <div
-      class="app"
-      style={{ "grid-template-columns": `${sidebarW()}px 5px 1fr 5px ${panelW()}px` }}
-    >
-      <Sidebar
-        summary={summary()}
-        journals={journals()}
-        pages={pages()}
-        onOpenPage={openPage}
-        onOpenSettings={() => setShowSettings(true)}
-        onOpenGraph={openGraph}
-      />
-      <PanelResizer side="left" start={sidebarW} onResize={setSidebarW} onCommit={commitWidths} />
-      <div class="center-col">
-        <SearchBar onOpenPage={openPage} />
-        <Show
-          when={current()}
-          fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
-        >
-          {(name) => (
-            <PageView
-              name={name()}
+      <div class="shell">
+        <Topbar
+          onOpenPage={openPage}
+          sidebarCollapsed={sidebarCollapsed()}
+          panelCollapsed={panelCollapsed()}
+          onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+          onTogglePanel={() => setPanelCollapsed((v) => !v)}
+          systemTitlebar={settings().systemTitlebar}
+        />
+        <div class="app" style={{ "grid-template-columns": gridCols() }}>
+          <Show when={!sidebarCollapsed()}>
+            <Sidebar
+              summary={summary()}
+              view={navView()}
+              favorites={settings().favorites}
+              recentPages={recentPages()}
               onOpenPage={openPage}
-              refreshKey={refreshKey()}
-              focusUuid={focusUuid()}
-              settings={settings()}
+              onShowJournal={showJournal}
+              onShowAllPages={() => {
+                setCurrent(null);
+                setShowAllPages(true);
+              }}
+              onOpenSettings={() => setShowSettings(true)}
+              onOpenGraph={openGraph}
             />
-          )}
-        </Show>
-      </div>
-      <PanelResizer side="right" start={panelW} onResize={setPanelW} onCommit={commitWidths} />
-      <aside class="taskpanel">
-        <div class="tabs">
-          <For each={TABS}>
-            {(t) => (
-              <button
-                class="tab"
-                classList={{ active: tab() === t }}
-                onClick={() => setTab(t)}
-              >
-                {t}
-              </button>
-            )}
-          </For>
-        </div>
-        <div class="taskpanel-body">
-          <Show when={current()}>
-            <button class="back-to-journal" onClick={backToJournal}>
-              ← К ленте журнала
-            </button>
+            <PanelResizer side="left" start={sidebarW} onResize={setSidebarW} onCommit={commitWidths} />
           </Show>
           <Show
-            when={tab() === "Канбан"}
+            when={current()}
             fallback={
               <Show
-                when={tab() === "Запросы"}
-                fallback={<Matrix refreshKey={refreshKey()} onOpenPage={openPage} />}
+                when={showAllPages()}
+                fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
               >
-                <Queries refreshKey={refreshKey()} onOpenPage={openPage} />
+                <AllPages
+                  pages={pages()}
+                  favorites={settings().favorites}
+                  onOpenPage={openPage}
+                  onToggleFavorite={toggleFavorite}
+                />
               </Show>
             }
           >
-            <Kanban
-              refreshKey={refreshKey()}
-              onOpenPage={openPage}
+            {(name) => (
+              <PageView
+                name={name()}
+                onOpenPage={openPage}
+                refreshKey={refreshKey()}
+                focusUuid={focusUuid()}
+                settings={settings()}
+                favorite={settings().favorites.includes(name())}
+                onToggleFavorite={() => toggleFavorite(name())}
+              />
+            )}
+          </Show>
+          <Show when={!panelCollapsed()}>
+            <PanelResizer side="right" start={panelW} onResize={setPanelW} onCommit={commitWidths} />
+            <aside class="taskpanel">
+              <div class="tabs">
+                <For each={TABS}>
+                  {(t) => (
+                    <button
+                      class="tab"
+                      classList={{ active: tab() === t }}
+                      onClick={() => setTab(t)}
+                    >
+                      {t}
+                    </button>
+                  )}
+                </For>
+              </div>
+              <div class="taskpanel-body">
+                <Show when={current()}>
+                  <button class="back-to-journal" onClick={showJournal}>
+                    ← К ленте журнала
+                  </button>
+                </Show>
+                <Show
+                  when={tab() === "Канбан"}
+                  fallback={
+                    <Show
+                      when={tab() === "Запросы"}
+                      fallback={<Matrix refreshKey={refreshKey()} onOpenPage={openPage} />}
+                    >
+                      <Queries refreshKey={refreshKey()} onOpenPage={openPage} />
+                    </Show>
+                  }
+                >
+                  <Kanban
+                    refreshKey={refreshKey()}
+                    onOpenPage={openPage}
+                    settings={settings()}
+                  />
+                </Show>
+                <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>
+              </div>
+            </aside>
+          </Show>
+          <Show when={showSettings()}>
+            <SettingsModal
               settings={settings()}
+              onClose={() => setShowSettings(false)}
+              onSaved={setSettings}
             />
           </Show>
-          <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>
         </div>
-      </aside>
-      <Show when={showSettings()}>
-        <SettingsModal
-          settings={settings()}
-          onClose={() => setShowSettings(false)}
-          onSaved={setSettings}
-        />
-      </Show>
-    </div>
+      </div>
     </Show>
   );
 };

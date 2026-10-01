@@ -127,6 +127,17 @@ export function SettingsModal(props: {
             </select>
           </label>
 
+          <label class="settings-row">
+            <span class="settings-label">Системная рамка окна</span>
+            <input
+              type="checkbox"
+              checked={draft().systemTitlebar}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, systemTitlebar: e.currentTarget.checked }))
+              }
+            />
+          </label>
+
           <div class="settings-section">Статусы канбана</div>
           <For each={draft().statuses}>
             {(st, i) => (

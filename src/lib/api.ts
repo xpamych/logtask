@@ -195,6 +195,8 @@ export interface Settings {
   kanbanLimit: number;
   sidebarWidth: number;
   taskpanelWidth: number;
+  favorites: string[];
+  systemTitlebar: boolean;
   statuses: StatusConfig[];
 }
 

@@ -45,10 +45,70 @@ body {
   overflow: hidden;
 }
 
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
 .app {
   display: grid;
   /* колонки задаются инлайн из настроек: sidebar 5px центр 5px taskpanel */
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
+}
+
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-search {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.topbar-search .searchbar {
+  width: min(560px, 100%);
+}
+
+.topbar-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--fg-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.topbar-btn:hover {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+
+.topbar-btn.active {
+  color: var(--accent);
+}
+
+.win-controls {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.win-close:hover {
+  background: var(--danger);
+  color: #fff;
 }
 
 .panel-resizer {
@@ -1293,24 +1353,9 @@ body.panel-resizing {
   filter: brightness(1.1);
 }
 
-/* Центральная колонка: поиск сверху + контент */
-.center-col {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-}
-.center-col > .journal {
-  flex: 1;
-  min-height: 0;
-}
-
+/* Строка поиска (в верхней полосе) */
 .searchbar {
   position: relative;
-  flex: none;
-  padding: 10px 32px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
 }
 
 .searchbar input {
@@ -1319,7 +1364,7 @@ body.panel-resizing {
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--fg);
-  padding: 7px 10px;
+  padding: 6px 10px;
   outline: none;
 }
 
@@ -1330,8 +1375,8 @@ body.panel-resizing {
 .searchbar-results {
   position: absolute;
   top: 100%;
-  left: 32px;
-  right: 32px;
+  left: 0;
+  right: 0;
   z-index: 30;
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -1348,4 +1393,69 @@ body.panel-resizing {
   padding: 10px;
   color: var(--fg-muted);
   font-size: 13px;
+}
+
+/* Навигация в сайдбаре */
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 6px;
+}
+
+.nav-item {
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: var(--bg-alt);
+}
+
+.nav-item.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Звёздочка избранного */
+.star-btn {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.star-btn:hover {
+  color: var(--warning);
+}
+
+.star-btn.active {
+  color: var(--warning);
+}
+
+/* Вид «Все страницы» */
+.allpages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.allpages-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.allpages-link {
+  flex: 1;
+  text-align: left;
 }

@@ -19,6 +19,8 @@ export function PageView(props: {
   refreshKey: number;
   focusUuid?: string | null;
   settings?: Settings | null;
+  favorite?: boolean;
+  onToggleFavorite?: () => void;
 }): JSX.Element {
   const [page, setPage] = createSignal<PageDto | null>(null);
   const [backlinks, setBacklinks] = createSignal<[string, string][]>([]);
@@ -134,6 +136,16 @@ export function PageView(props: {
           <section class="day">
             <h2 class="day-title">
               {p().kind === "journal" ? formatJournalName(p().name) : p().name}
+              <Show when={props.onToggleFavorite}>
+                <button
+                  class="star-btn"
+                  classList={{ active: props.favorite ?? false }}
+                  title={props.favorite ? "Убрать из избранного" : "В избранное"}
+                  onClick={() => props.onToggleFavorite?.()}
+                >
+                  {props.favorite ? "★" : "☆"}
+                </button>
+              </Show>
             </h2>
             <For each={p().blocks}>
               {(block) => (
