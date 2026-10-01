@@ -72,17 +72,5 @@ fn save(items: &[RecentGraph]) -> std::io::Result<()> {
 }
 
 fn now_iso() -> String {
-    use crate::core::model::days_to_ymd;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let (y, m, d) = days_to_ymd(now / 86400);
-    let secs = now % 86400;
-    format!(
-        "{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}",
-        secs / 3600,
-        (secs % 3600) / 60,
-        secs % 60
-    )
+    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
 }

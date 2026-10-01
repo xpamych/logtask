@@ -38,13 +38,19 @@ pub fn parse_level(v: &str) -> Option<Level> {
     }
 }
 
-/// Текущее время в формате Org-mode/Logseq: "2026-09-30 Wed 10:00:05"
-pub fn org_timestamp_now() -> String {
+/// Секунды от эпохи в локальном поясе (для org_timestamp и дат журнала)
+fn local_epoch_secs() -> i64 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    org_timestamp(now)
+    let offset = chrono::Local::now().offset().local_minus_utc() as i64;
+    now + offset
+}
+
+/// Текущее локальное время в формате Org-mode/Logseq: "2026-09-30 Wed 10:00:05"
+pub fn org_timestamp_now() -> String {
+    org_timestamp(local_epoch_secs())
 }
 
 /// Секунды от эпохи → Org timestamp
@@ -148,11 +154,7 @@ fn parse_date(s: &str) -> Option<i64> {
 }
 
 fn now_days() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64 / 86400)
-        .unwrap_or(0)
+    local_epoch_secs() / 86400
 }
 
 /// Приоритет Logseq: [#A] > [#B] > [#C]

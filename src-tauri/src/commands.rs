@@ -863,14 +863,7 @@ fn ensure_today_journal(root: &std::path::Path, graph: &mut Graph) {
 
 /// Имя сегодняшнего журнала: "2026_09_30"
 fn today_journal_name() -> String {
-    use crate::core::model::days_to_ymd;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let days = now / 86400;
-    let (y, m, d) = days_to_ymd(days);
-    format!("{y:04}_{m:02}_{d:02}")
+    chrono::Local::now().format("%Y_%m_%d").to_string()
 }
 
 /// Заголовок журнала как в Logseq: "Sep 30th, 2026"
