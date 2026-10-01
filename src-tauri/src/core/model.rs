@@ -54,7 +54,7 @@ pub fn org_timestamp(secs: i64) -> String {
     let (h, m, sec) = (s / 3600, (s % 3600) / 60, s % 60);
     let (y, mo, d) = days_to_ymd(days);
     let dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    let dow_idx = ((days % 7) + 4) % 7; // 1970-01-01 = Thursday
+    let dow_idx = (days + 4).rem_euclid(7); // 1970-01-01 = Thursday
     format!(
         "{y:04}-{mo:02}-{d:02} {} {h:02}:{m:02}:{sec:02}",
         dow[dow_idx as usize]
@@ -86,8 +86,12 @@ fn parse_org_time(s: &str) -> Option<i64> {
     let mo: u32 = date_part.get(5..7)?.parse().ok()?;
     let d: u32 = date_part.get(8..10)?.parse().ok()?;
 
-    // пропускаем день недели
-    let time = rest.split_whitespace().nth(1).unwrap_or("00:00:00");
+    // пропускаем день недели, но если его нет — берём время из первого токена
+    let time = rest
+        .split_whitespace()
+        .nth(1)
+        .or_else(|| rest.split_whitespace().next())
+        .unwrap_or("00:00:00");
     let mut tp = time.split(':');
     let h: i64 = tp.next()?.parse().ok()?;
     let m: i64 = tp.next().unwrap_or("0").parse().ok()?;
@@ -598,11 +602,6 @@ impl Block {
     /// Меняет текст блока (без маркера/приоритета)
     pub fn set_content(&mut self, content: &str) {
         self.content = content.to_string();
-    }
-
-    /// Удаляет себя из детей родителя
-    pub fn detach(&mut self) {
-        self.children.clear();
     }
 
     /// Идёт ли сейчас отсчёт времени (есть CLOCK без конца)

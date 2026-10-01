@@ -147,6 +147,15 @@ mod tests {
         assert_eq!(g.search("ПРОЕКТ", 10).len(), 1);
     }
 
+    #[test]
+    fn org_timestamp_before_epoch() {
+        // отрицательные секунды не должны паниковать на индексе дня недели
+        assert_eq!(model::org_timestamp(-86400), "1969-12-31 Wed 00:00:00");
+        assert_eq!(model::org_timestamp(0), "1970-01-01 Thu 00:00:00");
+        // days % 7 = -5: старая формула давала отрицательный индекс → panic
+        assert_eq!(model::org_timestamp(-5 * 86400), "1969-12-27 Sat 00:00:00");
+    }
+
     #[cfg(unix)]
     #[test]
     fn atomic_write_keeps_permissions_and_leaves_no_tmp() {

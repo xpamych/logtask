@@ -93,7 +93,7 @@ impl Graph {
                     }
                     SortField::Importance => level_key(a.effective_importance())
                         .cmp(&level_key(b.effective_importance())),
-                    SortField::CreatedAt => std::cmp::Ordering::Equal,
+                    SortField::CreatedAt => std::cmp::Ordering::Equal, // пока no-op: created_at у блоков нет
                 };
                 if cmp != std::cmp::Ordering::Equal {
                     return cmp;

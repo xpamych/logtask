@@ -21,13 +21,13 @@ pub(crate) fn logical_indent(line: &str) -> u8 {
     for ch in line.chars() {
         match ch {
             '\t' => {
-                level += 1;
+                level = level.saturating_add(1);
                 spaces = 0;
             }
             ' ' => {
                 spaces += 1;
                 if spaces == 2 {
-                    level += 1;
+                    level = level.saturating_add(1);
                     spaces = 0;
                 }
             }
@@ -353,7 +353,7 @@ pub fn parse_document(text: &str) -> ParsedFile {
     let mut rest = text;
     let mut trailing_blank: u16 = 0;
     while rest.ends_with('\n') {
-        trailing_blank += 1;
+        trailing_blank = trailing_blank.saturating_add(1);
         rest = &rest[..rest.len() - 1];
     }
     // serialize_page пишет '\n' после последнего блока —
