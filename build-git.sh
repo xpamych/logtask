@@ -13,6 +13,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# параллелизм сборки: все ядра минус одно (система остаётся отзывчивой),
+# переопределяется через LOGTASK_JOBS
+JOBS=$(($(nproc) - 1))
+[ "$JOBS" -lt 1 ] && JOBS=1
+export CARGO_BUILD_JOBS="${LOGTASK_JOBS:-$JOBS}"
+
 COUNT=$(git rev-list --count HEAD)
 HASH=$(git rev-parse --short HEAD)
 VERSION="${COUNT}.0.0+${HASH}"
@@ -21,7 +27,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 export TAURI_CONFIG="{\"version\": \"${VERSION}\"}"
 
-echo "▶ Сборка Logtask ${VERSION}"
+echo "▶ Сборка Logtask ${VERSION} (потоков: ${CARGO_BUILD_JOBS})"
 
 if [ "${1:-}" = "--bundle" ]; then
     # tauri build сам соберёт фронтенд (beforeBuildCommand) и бинарник
