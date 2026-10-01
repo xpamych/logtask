@@ -28,7 +28,7 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
-    /// "dark" | "light"
+    /// "system" | "dark" | "light"
     #[serde(default = "default_theme")]
     pub theme: String,
     /// масштаб шрифта: 0.85 … 1.4
@@ -40,13 +40,19 @@ pub struct Settings {
     /// сколько задач показывать в колонке канбана
     #[serde(default = "default_kanban_limit")]
     pub kanban_limit: usize,
+    /// ширина левой панели (px)
+    #[serde(default = "default_sidebar_width")]
+    pub sidebar_width: u32,
+    /// ширина правой панели задач (px)
+    #[serde(default = "default_taskpanel_width")]
+    pub taskpanel_width: u32,
     /// статусы канбана: набор/цвета/порядок
     #[serde(default = "default_statuses")]
     pub statuses: Vec<StatusConfig>,
 }
 
 fn default_theme() -> String {
-    "dark".to_string()
+    "system".to_string()
 }
 
 fn default_font_scale() -> f64 {
@@ -61,41 +67,49 @@ fn default_kanban_limit() -> usize {
     50
 }
 
+fn default_sidebar_width() -> u32 {
+    240
+}
+
+fn default_taskpanel_width() -> u32 {
+    320
+}
+
 /// Дефолтный набор статусов (порядок канбана)
 pub fn default_statuses() -> Vec<StatusConfig> {
     vec![
         StatusConfig {
             marker: "LATER".into(),
             label: "Бэклог".into(),
-            color: "#8ba8b5".into(),
+            color: "#888888".into(),
             visible: true,
             shortcut: None,
         },
         StatusConfig {
             marker: "TODO".into(),
             label: "К выполнению".into(),
-            color: "#106ba3".into(),
+            color: "#09bec8".into(),
             visible: true,
             shortcut: None,
         },
         StatusConfig {
             marker: "DOING".into(),
             label: "В работе".into(),
-            color: "#d9822b".into(),
+            color: "#ff9800".into(),
             visible: true,
             shortcut: None,
         },
         StatusConfig {
             marker: "REVIEW".into(),
             label: "На проверке".into(),
-            color: "#8a6d3b".into(),
+            color: "#9b59b6".into(),
             visible: true,
             shortcut: None,
         },
         StatusConfig {
             marker: "DONE".into(),
             label: "Выполнено".into(),
-            color: "#3d8a4e".into(),
+            color: "#4caf50".into(),
             visible: true,
             shortcut: None,
         },
@@ -116,6 +130,8 @@ impl Default for Settings {
             font_scale: default_font_scale(),
             week_start: default_week_start(),
             kanban_limit: default_kanban_limit(),
+            sidebar_width: default_sidebar_width(),
+            taskpanel_width: default_taskpanel_width(),
             statuses: default_statuses(),
         }
     }
@@ -150,7 +166,9 @@ mod tests {
         assert_eq!(s.statuses.len(), 6);
         assert_eq!(s.statuses[0].marker, "LATER");
         assert_eq!(s.statuses[2].label, "В работе");
-        assert_eq!(s.theme, "dark");
+        assert_eq!(s.theme, "system");
+        assert_eq!(s.sidebar_width, 240);
+        assert_eq!(s.taskpanel_width, 320);
     }
 
     #[test]
@@ -160,6 +178,8 @@ mod tests {
         let s = Settings {
             theme: "light".into(),
             font_scale: 1.2,
+            sidebar_width: 300,
+            taskpanel_width: 400,
             statuses: {
                 let mut st = default_statuses();
                 st[0].visible = false;
@@ -172,6 +192,8 @@ mod tests {
         let loaded = load(&dir);
         assert_eq!(loaded.theme, "light");
         assert_eq!(loaded.font_scale, 1.2);
+        assert_eq!(loaded.sidebar_width, 300);
+        assert_eq!(loaded.taskpanel_width, 400);
         assert!(!loaded.statuses[0].visible);
         assert_eq!(loaded.statuses.len(), 6);
     }
@@ -181,6 +203,7 @@ mod tests {
         let dir = std::env::temp_dir().join("logtask_settings_missing");
         let _ = std::fs::remove_dir_all(&dir);
         let s = load(&dir);
-        assert_eq!(s.theme, "dark");
+        assert_eq!(s.theme, "system");
+        assert_eq!(s.sidebar_width, 240);
     }
 }
