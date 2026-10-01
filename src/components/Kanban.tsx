@@ -32,6 +32,7 @@ export function Kanban(props: {
 }): JSX.Element {
   const [columns, setColumns] = createSignal<TaskColumn[]>([]);
   const [loading, setLoading] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
   const [dragOver, setDragOver] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [filter, setFilter] = createSignal<KanbanFilter>(loadFilter());
@@ -86,6 +87,9 @@ export function Kanban(props: {
     setLoading(true);
     try {
       setColumns(await kanban());
+      setError(null);
+    } catch (e) {
+      setError(String(e));
     } finally {
       setLoading(false);
     }
@@ -105,7 +109,13 @@ export function Kanban(props: {
             .flatMap((c) => c.tasks)
             .find((t) => t.uuid === uuid);
           if (!found || col.tasks.some((t) => t.uuid === uuid)) return col;
-          return { ...col, tasks: [...col.tasks, { ...found, status: marker }] };
+          return {
+            ...col,
+            tasks: [
+              ...col.tasks,
+              { ...found, status: marker, done: CLOSED_MARKERS.includes(marker) },
+            ],
+          };
         }
         return { ...col, tasks: col.tasks.filter((t) => t.uuid !== uuid) };
       }),
@@ -161,6 +171,9 @@ export function Kanban(props: {
           <span>скрыть выполненные</span>
         </label>
       </div>
+      <Show when={error()}>
+        {(e) => <div class="error">{e()}</div>}
+      </Show>
       <Show when={loading() && columns().length === 0}>
         <div class="muted">Загрузка задач…</div>
       </Show>

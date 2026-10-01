@@ -28,8 +28,11 @@ export function Queries(props: {
       setQueries(qs);
       for (const q of qs) {
         const tasks = await tasksByFilter(q.filter);
-        setResults((prev) => ({ ...prev, [q.title]: tasks as never }));
-        setCollapsed((prev) => ({ ...prev, [q.title]: q.collapsed }));
+        setResults((prev) => ({ ...prev, [q.title]: tasks }));
+        // не перезаписываем ручную свёртку при перезагрузке по graph-changed
+        setCollapsed((prev) =>
+          q.title in prev ? prev : { ...prev, [q.title]: q.collapsed },
+        );
       }
     } catch (e) {
       setError(String(e));

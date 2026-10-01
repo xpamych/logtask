@@ -22,6 +22,7 @@ export function Matrix(props: {
 }): JSX.Element {
   const [quadrants, setQuadrants] = createSignal<MatrixQuadrant[]>([]);
   const [loading, setLoading] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
   const [dragOver, setDragOver] = createSignal<string | null>(null);
   const [limits, setLimits] = createSignal<Record<string, number>>({});
   const [busy, setBusy] = createSignal(false);
@@ -30,6 +31,9 @@ export function Matrix(props: {
     setLoading(true);
     try {
       setQuadrants(await matrix());
+      setError(null);
+    } catch (e) {
+      setError(String(e));
     } finally {
       setLoading(false);
     }
@@ -75,12 +79,16 @@ export function Matrix(props: {
 
   return (
     <div class="matrix">
+      <Show when={error()}>
+        {(e) => <div class="error">{e()}</div>}
+      </Show>
       <Show when={loading() && quadrants().length === 0}>
         <div class="muted">Загрузка задач…</div>
       </Show>
       <For each={quadrants()}>
         {(q) => {
-          const meta = QUADRANT_META[q.key];
+          // неизвестный ключ квадранта не должен ронять рендер
+          const meta = QUADRANT_META[q.key] ?? { color: "#6b7a85", hint: "" };
           const limit = () => limits()[q.key] ?? PAGE_SIZE;
           const visible = () => q.tasks.slice(0, limit());
           return (

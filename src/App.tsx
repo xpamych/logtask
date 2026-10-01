@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { For, Show, createEffect, createSignal, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { GraphSummary, Settings } from "~/lib/api";
 import {
   graphLoad,
@@ -8,7 +8,8 @@ import {
   pageList,
   ping,
   settingsGet,
-} from "~/lib/api";import { JournalTape } from "~/components/JournalTape";
+} from "~/lib/api";
+import { JournalTape } from "~/components/JournalTape";
 import { Kanban } from "~/components/Kanban";
 import { Matrix } from "~/components/Matrix";
 import { PageView } from "~/components/PageView";
@@ -77,17 +78,27 @@ const App: Component = () => {
     document.documentElement.style.fontSize = `${s.fontScale * 14}px`;
   });
 
+  let unlistenGraph: (() => void) | undefined;
+  onCleanup(() => unlistenGraph?.());
+
   const listenGraphChanged = async () => {
-    const { listen } = await import("@tauri-apps/api/event");
-    void listen("graph-changed", () => {
-      setRefreshKey((k) => k + 1);
-      void graphSummary().then(async (s) => {
-        setSummary(s);
-        const [js, ps] = await Promise.all([journalList(), pageList()]);
-        setJournals(js);
-        setPages(ps);
+    try {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlistenGraph = await listen("graph-changed", () => {
+        setRefreshKey((k) => k + 1);
+        void graphSummary()
+          .then(async (s) => {
+            setSummary(s);
+            const [js, ps] = await Promise.all([journalList(), pageList()]);
+            setJournals(js);
+            setPages(ps);
+          })
+          .catch((e) => console.error("graph-changed: не обновить сводку:", e));
       });
-    });
+    } catch (e) {
+      // фронт запущен вне Tauri (npm run dev) — live-обновления недоступны
+      console.warn("слушатель graph-changed не подключён:", e);
+    }
   };
 
   const openGraph = async (path: string) => {

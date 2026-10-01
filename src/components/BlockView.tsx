@@ -91,8 +91,14 @@ export function BlockView(props: {
       setAcOpen(false);
       return;
     }
-    if (allPages === null) {
-      allPages = await pageList();
+    // перечитываем список страниц при каждом открытии автодополнения — дёшево
+    // и не даёт кэшу устареть
+    if (!acOpen() || allPages === null) {
+      try {
+        allPages = await pageList();
+      } catch {
+        allPages = [];
+      }
     }
     const lq = q.toLowerCase();
     const hits = allPages
@@ -139,6 +145,8 @@ export function BlockView(props: {
   });
 
   const save = async () => {
+    // Enter прячет textarea → WebKit шлёт blur → повторный save: пропускаем
+    if (saving()) return;
     const text = draft().trim();
     if (!text || text === b.content) {
       stopEdit();
@@ -162,6 +170,8 @@ export function BlockView(props: {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    // IME-композиция: Enter подтверждает ввод, а не сохранение
+    if (e.isComposing) return;
     // навигация по автодополнению
     if (acOpen()) {
       if (e.key === "ArrowDown") {
@@ -305,7 +315,11 @@ export function BlockView(props: {
             onInput={(e) => void onEditInput(e.currentTarget)}
             onKeyDown={onKeyDown}
             onBlur={() => void save()}
-            rows={Math.max(1, Math.ceil(draft().length / 60))}
+            rows={Math.max(
+              1,
+              draft().split("\n").length,
+              Math.ceil(draft().length / 60),
+            )}
           />
           <Show when={acOpen()}>
             <div class="ac-list">

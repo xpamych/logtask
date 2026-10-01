@@ -65,7 +65,13 @@ export function JournalTape(props: {
     setDays([]);
     setPages({});
     setDone(false);
-    const journals = await journalList();
+    let journals: string[];
+    try {
+      journals = await journalList();
+    } catch (e) {
+      setError(String(e));
+      return;
+    }
     if (journals.length === 0) {
       setError("журналов не найдено");
       return;

@@ -1,4 +1,4 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import type { GraphSummary, RecentGraph, SearchHit } from "~/lib/api";
 import { pickGraphDir, recentGraphs, search } from "~/lib/api";
@@ -17,6 +17,12 @@ export function Sidebar(props: {
   const [recents, setRecents] = createSignal<RecentGraph[]>([]);
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  // поколение запроса: устаревший in-flight search не перезапишет свежие hits
+  let searchGen = 0;
+
+  onCleanup(() => {
+    if (searchTimer !== undefined) clearTimeout(searchTimer);
+  });
 
   const loadRecents = async () => {
     try {
@@ -35,15 +41,17 @@ export function Sidebar(props: {
   const onQuery = (value: string) => {
     setQuery(value);
     if (searchTimer !== undefined) clearTimeout(searchTimer);
+    const gen = ++searchGen;
     if (!value.trim()) {
       setHits([]);
       return;
     }
     searchTimer = setTimeout(async () => {
       try {
-        setHits(await search(value));
+        const found = await search(value);
+        if (gen === searchGen) setHits(found);
       } catch {
-        setHits([]);
+        if (gen === searchGen) setHits([]);
       }
     }, 120);
   };

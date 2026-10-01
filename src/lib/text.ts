@@ -77,6 +77,11 @@ export function formatJournalName(name: string): string {
   const that = new Date(date);
   that.setHours(0, 0, 0, 0);
   const days = Math.round((today.getTime() - that.getTime()) / 86_400_000);
-  const rel = days === 0 ? "сегодня" : days === 1 ? "вчера" : `${days} дн. назад`;
+  let rel: string;
+  if (days === 0) rel = "сегодня";
+  else if (days === 1) rel = "вчера";
+  else if (days === -1) rel = "завтра";
+  else if (days > 1) rel = `${days} дн. назад`;
+  else rel = `через ${-days} дн.`;
   return `${date.getDate()} ${months[date.getMonth()]} ${y} · ${rel}`;
 }
