@@ -159,11 +159,14 @@ pub fn graph_load(
     *state.graph.write() = Some(graph);
     *state.root.write() = Some(std::path::PathBuf::from(root));
 
-    // (пере)запускаем наблюдатель за файлами — только если ещё не активен
-    if state.watcher.read().is_none() {
-        if let Err(e) = crate::watcher::spawn_for_current(&app) {
-            log::warn!("watcher не запущен: {e}");
-        }
+    // перезапускаем наблюдатель под новый граф: старый дропаем
+    // (поток коалесцирования завершится сам при закрытии канала)
+    {
+        let mut w = state.watcher.write();
+        *w = None;
+    }
+    if let Err(e) = crate::watcher::spawn_for_current(&app) {
+        log::warn!("watcher не запущен: {e}");
     }
     Ok(summary)
 }

@@ -94,7 +94,7 @@ pub fn reindex_and_emit(app: &AppHandle) {
                 stats.pages,
                 stats.tasks
             );
-            let summary = graph_summary_from(&root, &stats);
+            let summary = graph_summary_from(&root, &stats, graph.backlinks.len());
             {
                 let state = app.state::<AppState>();
                 *state.graph.write() = Some(graph);
@@ -107,13 +107,17 @@ pub fn reindex_and_emit(app: &AppHandle) {
     }
 }
 
-fn graph_summary_from(root: &std::path::Path, stats: &IndexStats) -> crate::commands::GraphSummary {
+fn graph_summary_from(
+    root: &std::path::Path,
+    stats: &IndexStats,
+    backlinks: usize,
+) -> crate::commands::GraphSummary {
     crate::commands::GraphSummary {
         pages: stats.pages,
         journals: stats.journals,
         blocks: stats.blocks,
         tasks: stats.tasks,
-        backlinks: 0,
+        backlinks,
         root: Some(root.display().to_string()),
     }
 }
