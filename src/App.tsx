@@ -119,7 +119,7 @@ const App: Component = () => {
       />
       <Show
         when={current()}
-        fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} />}
+        fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
       >
         {(name) => (
           <PageView
@@ -127,6 +127,7 @@ const App: Component = () => {
             onOpenPage={openPage}
             refreshKey={refreshKey()}
             focusUuid={focusUuid()}
+            settings={settings()}
           />
         )}
       </Show>

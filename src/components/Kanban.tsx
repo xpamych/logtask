@@ -41,6 +41,10 @@ export function Kanban(props: {
     return found?.color ?? "#666";
   };
 
+  // подпись колонки из настроек пользователя, иначе — как вернул бэкенд
+  const labelOf = (marker: string, fallback: string): string =>
+    props.settings?.statuses.find((s) => s.marker === marker)?.label ?? fallback;
+
   const limit = () => props.settings?.kanbanLimit ?? 50;
 
   const saveFilter = (f: KanbanFilter) => {
@@ -61,6 +65,7 @@ export function Kanban(props: {
       .filter((col) => !(f.hideClosed && CLOSED_MARKERS.includes(col.marker)))
       .map((col) => ({
         ...col,
+        label: labelOf(col.marker, col.label),
         tasks: col.tasks.filter((t) => {
           if (q && !t.content.toLowerCase().includes(q)) return false;
           if (f.page && t.page !== f.page) return false;

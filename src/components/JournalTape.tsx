@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import type { JSX } from "solid-js";
-import type { PageDto } from "~/lib/api";
+import type { PageDto, Settings } from "~/lib/api";
 import {
   backlinksGet,
   blockDelete,
@@ -18,6 +18,7 @@ const PAGE_SIZE = 5;
 export function JournalTape(props: {
   onOpenPage: (name: string) => void;
   refreshKey: number;
+  settings?: Settings | null;
 }): JSX.Element {
   const [days, setDays] = createSignal<string[]>([]);
   const [pages, setPages] = createSignal<Record<string, PageDto>>({});
@@ -123,6 +124,7 @@ export function JournalTape(props: {
                         onChanged={reload}
                         onStatusChange={onStatusChange}
                         onDelete={onDelete}
+                        settings={props.settings}
                       />
                     )}
                   </For>

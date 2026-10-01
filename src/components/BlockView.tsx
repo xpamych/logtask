@@ -2,7 +2,7 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { editingBlock, setEditingBlock } from "~/lib/editState";
 import { parseSegments } from "~/lib/text";
-import type { BlockDto } from "~/lib/api";
+import type { BlockDto, Settings } from "~/lib/api";
 import {
   blockSetProp,
   blockUpdateText,
@@ -51,9 +51,16 @@ export function BlockView(props: {
   onChanged?: () => void;
   onStatusChange?: (uuid: string, marker: string) => void;
   onDelete?: (uuid: string) => void | Promise<void>;
+  settings?: Settings | null;
 }): JSX.Element {
   const b = props.block;
   const onOpen = props.onOpenPage;
+
+  // подпись статуса: из настроек пользователя, иначе дефолт
+  const statusLabel = (marker: string): string =>
+    props.settings?.statuses.find((s) => s.marker === marker)?.label ??
+    MARKER_LABELS[marker] ??
+    marker;
 
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal("");
@@ -263,7 +270,7 @@ export function BlockView(props: {
           background: b.status ? (STATUS_COLORS[b.status] ?? "#666") : "transparent",
           visibility: b.status ? "visible" : "hidden",
         }}
-        title={b.statusLabel ?? b.status ?? ""}
+        title={b.status ? statusLabel(b.status) : ""}
       />
       <div class="block-content">
         <Show
@@ -385,7 +392,7 @@ export function BlockView(props: {
                     props.onStatusChange?.(b.uuid, m);
                   }}
                 >
-                  {MARKER_LABELS[m]}
+                  {statusLabel(m)}
                 </button>
               )}
             </For>

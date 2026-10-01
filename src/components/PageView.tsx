@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
-import type { PageDto } from "~/lib/api";
+import type { PageDto, Settings } from "~/lib/api";
 import {
   backlinksGet,
   blockCreate,
@@ -18,6 +18,7 @@ export function PageView(props: {
   onOpenPage: (name: string) => void;
   refreshKey: number;
   focusUuid?: string | null;
+  settings?: Settings | null;
 }): JSX.Element {
   const [page, setPage] = createSignal<PageDto | null>(null);
   const [backlinks, setBacklinks] = createSignal<[string, string][]>([]);
@@ -43,9 +44,6 @@ export function PageView(props: {
       }
       setPage(p);
       setBacklinks(await backlinksGet(props.name));
-      if (props.focusUuid) {
-        queueMicrotask(() => focusBlock(props.focusUuid!));
-      }
     } catch (e) {
       setError(String(e));
     }
@@ -100,6 +98,13 @@ export function PageView(props: {
     void load();
   });
 
+  // фокус на блоке: читаем props.focusUuid в отдельном эффекте, чтобы
+  // повторный клик по карточке той же страницы тоже прокручивал к блоку
+  createEffect(() => {
+    const id = props.focusUuid;
+    if (id && page()) queueMicrotask(() => focusBlock(id));
+  });
+
   // перезагрузка при изменении графа (watcher): во время редактирования
   // блока откладывается, чтобы не затирать черновик
   const guardedLoad = refreshGuarded(() => void load());
@@ -130,6 +135,7 @@ export function PageView(props: {
                   onChanged={load}
                   onStatusChange={onStatusChange}
                   onDelete={onDelete}
+                  settings={props.settings}
                 />
               )}
             </For>
