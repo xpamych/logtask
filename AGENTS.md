@@ -27,13 +27,15 @@ Logtask — десктоп-приложение: лёгкая замена Logse
    - `parser.rs` — парсер Logseq-совместимого outliner-markdown (bullet-блоки,
      отступы tab/2+ пробелов, маркеры статусов, приоритеты `[#A..C]`, свойства
      `key:: value`, `:LOGBOOK:` + `CLOCK:`, `[[вики-ссылки]]`, `#теги`).
-   - `model.rs` — `Page`, `Block`, `Task`, `Link`, `Graph`, `Status`, `Priority`,
-     `Level`, `Quadrant`.
+   - `model.rs` — `Page`, `Block`, `LinkTarget`, `Graph`, `Status`, `Priority`,
+     `Level`, `Quadrant` (отдельного `struct Task` нет: задача — это `Block`
+     с `is_task()`).
    - `index.rs` — in-memory индекс: страницы, теги, обратные ссылки, поиск.
    - `query.rs` — фильтры и сортировки для канбана/матрицы/запросов.
    - `serializer.rs` — round-trip сериализация (parse → serialize = те же байты).
-   - `fswrite.rs` — запись в файлы: атомарная (tmp + fsync + rename), только
-     затронутых строк; перед записью сверяется mtime (защита от конфликтов
+   - `fswrite.rs` — запись в файлы: атомарная (tmp + fsync + rename); страница
+     перезаписывается целиком (round-trip сериализация сохраняет остальное
+     байт-в-байт); перед записью сверяется mtime (защита от конфликтов
      с Syncthing).
 2. **Хост-приложение (Tauri 2)** — `src-tauri/src/`:
    - `commands.rs` — все IPC-команды (`tauri::generate_handler!` в `lib.rs`).
@@ -41,13 +43,14 @@ Logtask — десктоп-приложение: лёгкая замена Logse
      изменения → переиндексация → событие `graph-changed` во фронтенд.
      События доступа фильтруются, коалесцируются окном тишины 350 мс.
    - `settings.rs` — настройки графа в `.logtask/settings.json`.
-   - `config_edn.rs` — одноразовый импорт настроек из `logseq/config.edn`.
+   - `config_edn.rs` — одноразовый импорт `:default-queries` из
+     `logseq/config.edn`.
    - `recent.rs` — список недавних графов; `state.rs` — `AppState`
      (`RwLock<Option<Graph>>`).
 3. **Интерфейс (SolidJS + TypeScript + Vite)** — `src/`:
    - `App.tsx` — корневой layout: сайдбар, центр (лента журнала или страница),
      правая панель (Канбан / Матрица / Запросы).
-   - `components/` — `JournalTape`, `PageView`, `BlockView` (contenteditable
+   - `components/` — `JournalTape`, `PageView`, `BlockView` (textarea
      редактирование блоков), `Kanban`, `Matrix`, `Queries`, `QueryEditor`,
      `Sidebar`, `SettingsModal`, `TaskCard`.
    - `lib/api.ts` — типизированные обёртки над `invoke()` для каждой
@@ -145,14 +148,18 @@ cargo test --workspace
 ## Правила работы с md-файлами (важно, docs/02-format.md)
 
 - md-файлы — единственный источник истины; никакой БД/кэша на диске не плодить.
-- Запись — только затронутых строк, атомарно (tmp + fsync + rename); перед
-  записью сверять mtime с прочитанным.
+- Запись: страница сериализуется и перезаписывается целиком, атомарно
+  (tmp + fsync + rename); round-trip сохраняет нетронутое байт-в-байт;
+  перед записью сверять mtime с прочитанным.
 - Статусы — маркеры блока как у Logseq: `LATER`/`TODO`/`DOING`/`REVIEW`/`DONE`/`CANCELED`.
 - Срочность/важность — свойства `urgency::` / `importance::` (low/medium/high);
   приоритет `[#A]` мапится на важность high, `[#B]` — medium.
-- Новые блоки писать с отступом tab (как Logseq); при чтении поддерживаются
-  tab и 2+ пробела.
-- Имя файла страницы: `pages/<title>.md`, `/` → `___`, кириллица/пробелы — как есть.
+- Новые блоки писать с отступом tab (как Logseq); prop/clock-строки — с
+  отступом «отступ блока + 2 пробела» (как Logseq). При чтении
+  поддерживаются tab и 2+ пробела.
+- Имя файла страницы: `pages/<title>.md`, кириллица/пробелы — как есть.
+  Маппинг `/` → `___` пока не поддерживается (namespaced-страницы
+  показываются как `Foo___Bar`).
 - **Ничего не писать** в `logseq/` графа пользователя, не трогать `.transit`
   и SQLite Logseq. Свои настройки — только в `.logtask/settings.json`.
 
