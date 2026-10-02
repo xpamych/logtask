@@ -133,6 +133,14 @@ fn parse_prop(rest: &str) -> Option<(String, String, String)> {
     Some((key.trim().to_string(), format!("::{sp}"), value.to_string()))
 }
 
+/// Признак строки-свойства `key:: value` (без учёта отступа)
+pub fn is_prop_line(line: &str) -> bool {
+    match parse_prop(line.trim_start()) {
+        Some((key, _, _)) => !key.is_empty() && !key.contains(char::is_whitespace),
+        None => false,
+    }
+}
+
 fn parse_clock(line: &str) -> Option<Clock> {
     // CLOCK: [2026-01-18 Sun 19:08:08]--[2026-01-19 Mon 17:35:18] =>  22:27:10
     let body = line.trim_start().strip_prefix("CLOCK:")?.trim();

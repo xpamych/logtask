@@ -36,6 +36,9 @@ pub struct BlockDto {
     pub clock_total: Option<String>,
     pub deadline: Option<String>,
     pub scheduled: Option<String>,
+    /// строки-продолжения блока без маркера (параграфы, код, списки) —
+    /// для отображения; в файле живут в raw.trailing
+    pub extra: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -43,6 +46,8 @@ pub struct PageDto {
     pub name: String,
     pub kind: String,
     pub blocks: Vec<BlockDto>,
+    /// преамбула страницы без page-props (заголовки/параграфы до первого блока)
+    pub preamble: Vec<String>,
 }
 
 impl From<&Block> for BlockDto {
@@ -72,6 +77,15 @@ impl From<&Block> for BlockDto {
             clock_total,
             deadline: b.props.get("deadline").cloned(),
             scheduled: b.props.get("scheduled").cloned(),
+            extra: b
+                .raw
+                .trailing
+                .iter()
+                .filter_map(|t| match t {
+                    crate::core::model::Trailing::Raw { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect(),
         }
     }
 }
@@ -219,7 +233,9 @@ pub async fn journal_list(state: tauri::State<'_, AppState>) -> Result<Vec<Strin
     Ok(sorted_journals(graph))
 }
 
-/// N журналов, идущих перед указанной датой (для ленты при скролле вниз)
+/// N журналов, идущих перед указанной датой (для ленты при скролле вниз).
+/// sorted_journals отсортирован от новых к старым, поэтому «перед датой»
+/// (более старые) — это элементы ПОСЛЕ позиции before.
 #[tauri::command]
 pub async fn journal_prev(
     before: String,
@@ -229,12 +245,18 @@ pub async fn journal_prev(
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
     let journals = sorted_journals(graph);
+    Ok(prev_journals_slice(&journals, &before, n))
+}
+
+/// Срез журналов старше даты before (journals отсортированы от новых к старым)
+fn prev_journals_slice(journals: &[String], before: &str, n: usize) -> Vec<String> {
     let pos = journals
         .iter()
-        .position(|j| *j == before)
+        .position(|j| j == before)
         .unwrap_or(journals.len());
-    let start = pos.saturating_sub(n);
-    Ok(journals[start..pos].to_vec())
+    let start = (pos + 1).min(journals.len());
+    let end = (start + n).min(journals.len());
+    journals[start..end].to_vec()
 }
 
 /// Возвращает страницу (журнал или обычную) с блоками
@@ -320,6 +342,13 @@ fn page_get_impl(graph: &Graph, name: &str) -> Result<PageDto, String> {
             PageKind::Page => "page".into(),
         },
         blocks,
+        // преамбулу показываем без служебных page-props и пустых строк
+        preamble: page
+            .preamble
+            .iter()
+            .filter(|l| !l.trim().is_empty() && !crate::core::parser::is_prop_line(l))
+            .cloned()
+            .collect(),
     })
 }
 
@@ -422,6 +451,8 @@ pub struct TaskDto {
     pub scheduled: Option<String>,
     pub tags: Vec<String>,
     pub done: bool,
+    /// свойства блока (source-id, author, url…), отсортированные по ключу
+    pub props: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -440,6 +471,12 @@ fn task_dto(graph: &Graph, id: uuid::Uuid, block: &Block) -> TaskDto {
             _ => None,
         })
         .collect();
+    let mut props: Vec<(String, String)> = block
+        .props
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    props.sort();
     TaskDto {
         uuid: id.to_string(),
         page: graph.page_of_block(&id),
@@ -453,6 +490,7 @@ fn task_dto(graph: &Graph, id: uuid::Uuid, block: &Block) -> TaskDto {
         scheduled: block.props.get("scheduled").cloned(),
         tags,
         done: block.status.map(|s| s.is_done()).unwrap_or(false),
+        props,
     }
 }
 
@@ -1106,4 +1144,183 @@ fn default_queries() -> Vec<crate::core::query::SavedQuery> {
 #[tauri::command]
 pub fn ping() -> &'static str {
     "logtask-core: ok"
+}
+
+/// Резолв пути ассета внутри графа. Logseq пишет ссылки на картинки
+/// относительно md-файла (`../assets/x.png` из journals/ и pages/),
+/// поэтому ведущие `..`/`./` отбрасываются и путь ищется от корня графа
+/// (ассеты всегда лежат в корне). Выход за пределы графа запрещён.
+fn resolve_asset_path(root: &std::path::Path, path: &str) -> Result<std::path::PathBuf, String> {
+    use std::path::{Component, Path, PathBuf};
+
+    let root_canon = root
+        .canonicalize()
+        .map_err(|e| format!("корень графа: {e}"))?;
+    let p = Path::new(path);
+    let joined = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        let stripped: PathBuf = p
+            .components()
+            .skip_while(|c| matches!(c, Component::ParentDir | Component::CurDir))
+            .collect();
+        root_canon.join(stripped)
+    };
+    let canon = joined
+        .canonicalize()
+        .map_err(|e| format!("файл не найден: {path}: {e}"))?;
+    if !canon.starts_with(&root_canon) {
+        return Err(format!("путь за пределами графа: {path}"));
+    }
+    Ok(canon)
+}
+
+/// Картинка из графа как data-URL (для <img> в webview).
+#[tauri::command]
+pub async fn asset_data_url(
+    path: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let canon = resolve_asset_path(&root, &path)?;
+    let data = std::fs::read(&canon).map_err(|e| format!("чтение {path}: {e}"))?;
+    let mime = match canon
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        _ => "application/octet-stream",
+    };
+    Ok(format!("data:{mime};base64,{}", base64_encode(&data)))
+}
+
+/// Минимальный base64 без внешних зависимостей
+fn base64_encode(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[(n >> 18) as usize & 63] as char);
+        out.push(T[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 {
+            T[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            T[n as usize & 63] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{base64_encode, prev_journals_slice};
+
+    #[test]
+    fn base64_rfc4648_vectors() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    }
+
+    fn js(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn prev_returns_older_days() {
+        let j = js(&[
+            "2026_10_02",
+            "2026_10_01",
+            "2026_09_30",
+            "2026_09_29",
+            "2026_09_28",
+        ]);
+        assert_eq!(
+            prev_journals_slice(&j, "2026_10_01", 2),
+            js(&["2026_09_30", "2026_09_29"])
+        );
+    }
+
+    #[test]
+    fn prev_from_first_day() {
+        let j = js(&["2026_10_02", "2026_10_01", "2026_09_30"]);
+        assert_eq!(
+            prev_journals_slice(&j, "2026_10_02", 5),
+            js(&["2026_10_01", "2026_09_30"])
+        );
+    }
+
+    #[test]
+    fn prev_at_oldest_returns_empty() {
+        let j = js(&["2026_10_02", "2026_10_01"]);
+        assert!(prev_journals_slice(&j, "2026_10_01", 5).is_empty());
+    }
+
+    #[test]
+    fn prev_unknown_date_returns_empty() {
+        let j = js(&["2026_10_02"]);
+        assert!(prev_journals_slice(&j, "2020_01_01", 5).is_empty());
+    }
+
+    /// Временный мини-граф: journals/ + assets/pic.png
+    fn temp_graph(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("logtask-asset-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("journals")).unwrap();
+        std::fs::create_dir_all(dir.join("assets")).unwrap();
+        std::fs::write(dir.join("assets/pic.png"), b"\x89PNG").unwrap();
+        dir
+    }
+
+    #[test]
+    fn asset_plain_relative_path() {
+        let root = temp_graph("plain");
+        let got = super::resolve_asset_path(&root, "assets/pic.png").unwrap();
+        assert!(got.ends_with("assets/pic.png"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn asset_dotdot_from_journal_resolves_to_root() {
+        // Logseq пишет ../assets/x.png относительно файла в journals/
+        let root = temp_graph("dotdot");
+        let got = super::resolve_asset_path(&root, "../assets/pic.png").unwrap();
+        assert!(got.ends_with("assets/pic.png"));
+        assert!(got.starts_with(root.canonicalize().unwrap()));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn asset_missing_file_errors() {
+        let root = temp_graph("missing");
+        assert!(super::resolve_asset_path(&root, "../assets/nope.png").is_err());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn asset_escape_outside_root_forbidden() {
+        let root = temp_graph("escape");
+        assert!(super::resolve_asset_path(&root, "/etc/hostname").is_err());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }

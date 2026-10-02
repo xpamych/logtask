@@ -23,6 +23,7 @@ thiserror = "2"
 parking_lot = "0.12"
 log = "0.4"
 tauri-plugin-dialog = { version = "2", default-features = false, features = ["xdg-portal"] }
+tauri-plugin-opener = "2"
 tauri-plugin-log = "2"
 
 [features]
