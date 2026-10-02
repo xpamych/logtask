@@ -87,3 +87,156 @@ export function formatJournalName(name: string): string {
   else rel = `через ${-days} дн.`;
   return `${date.getDate()} ${months[date.getMonth()]} ${y} · ${rel}`;
 }
+
+/** Заголовок-дата, который Logtask пишет первой строкой в новый файл журнала
+ *  (как Logseq): "2026_09_30" → "Sep 30th, 2026". Зеркалит journal_title
+ *  в src-tauri/src/commands.rs. */
+export function journalLogseqTitle(name: string): string {
+  const match = /^(\d{4})_(\d{2})_(\d{2})$/.exec(name);
+  if (!match) return "";
+  const [, y, mo, d] = match;
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  const day = Number(d);
+  let suffix = "th";
+  if (day % 10 === 1 && day !== 11) suffix = "st";
+  else if (day % 10 === 2 && day !== 12) suffix = "nd";
+  else if (day % 10 === 3 && day !== 13) suffix = "rd";
+  return `${months[Number(mo) - 1]} ${day}${suffix}, ${y}`;
+}
+
+/** Инлайн-сегмент markdown для отображения без разметки */
+export interface InlineSegment {
+  type:
+    | "text"
+    | "link"
+    | "tag"
+    | "bold"
+    | "italic"
+    | "strike"
+    | "code"
+    | "highlight"
+    | "image";
+  text: string;
+  target?: string;
+  children?: InlineSegment[];
+}
+
+// порядок альтернатив важен: картинки раньше [[ссылок]], ** раньше *
+const INLINE_RE =
+  /(!\[\[[^\]]+\]\])|(!\[[^\]]*\]\([^)]+\))|(\[\[[^\]|]+(?:\|[^\]]*)?\]\])|(#(?:\[\[[^\]]+\]\]|\[[^\]]+\]|[^\s#\[)\],.;:!?("«»]+))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(`[^`]+`)|(\^\^[^^]+\^\^)/g;
+
+/** Разбирает инлайн-markdown: [[ссылки]], #теги, **жирный**, *курсив*,
+ *  ~~зачёркнутый~~, `код`, ^^подсветка^^. Вложенность — внутри
+ *  bold/italic/strike/highlight (код — литерал). */
+export function parseInline(input: string): InlineSegment[] {
+  const segments: InlineSegment[] = [];
+  let pos = 0;
+  // локальный экземпляр: рекурсия (bold/italic/…) не должна сбивать
+  // lastIndex общего регэкспа — иначе внешний цикл бесконечен
+  const re = new RegExp(INLINE_RE.source, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(input)) !== null) {
+    if (m.index > pos) {
+      segments.push({ type: "text", text: input.slice(pos, m.index) });
+    }
+    const [full, imgEmbed, imgMd, link, tag, bold, italic, strike, code, highlight] = m;
+    if (imgEmbed !== undefined) {
+      // logseq-вставка: ![[../assets/x.png]]
+      const path = imgEmbed.slice(3, -2).trim();
+      segments.push({ type: "image", text: path, target: path });
+    } else if (imgMd !== undefined) {
+      // markdown-картинка: ![alt](path)
+      const inner = /!\[([^\]]*)\]\(([^)]+)\)/.exec(imgMd);
+      segments.push({
+        type: "image",
+        text: inner?.[1] ?? "",
+        target: (inner?.[2] ?? "").trim(),
+      });
+    } else if (link !== undefined) {
+      const inner = link.slice(2, -2);
+      const pipe = inner.indexOf("|");
+      const target = (pipe === -1 ? inner : inner.slice(0, pipe)).trim();
+      const label = (pipe === -1 ? inner : inner.slice(pipe + 1)).trim();
+      segments.push({ type: "link", text: label, target });
+    } else if (tag !== undefined) {
+      let target = tag.slice(1);
+      if (target.startsWith("[[") && target.endsWith("]]")) {
+        target = target.slice(2, -2);
+      }
+      segments.push({ type: "tag", text: tag, target: target.trim() });
+    } else if (bold !== undefined) {
+      segments.push({
+        type: "bold",
+        text: bold,
+        children: parseInline(bold.slice(2, -2)),
+      });
+    } else if (italic !== undefined) {
+      segments.push({
+        type: "italic",
+        text: italic,
+        children: parseInline(italic.slice(1, -1)),
+      });
+    } else if (strike !== undefined) {
+      segments.push({
+        type: "strike",
+        text: strike,
+        children: parseInline(strike.slice(2, -2)),
+      });
+    } else if (code !== undefined) {
+      segments.push({ type: "code", text: code.slice(1, -1) });
+    } else if (highlight !== undefined) {
+      segments.push({
+        type: "highlight",
+        text: highlight,
+        children: parseInline(highlight.slice(2, -2)),
+      });
+    }
+    pos = m.index + full.length;
+  }
+  if (pos < input.length) {
+    segments.push({ type: "text", text: input.slice(pos) });
+  }
+  return segments;
+}
+
+/** Блочная структура текста блока: заголовки (#..######), блоки кода ```,
+ *  остальные строки — обычные */
+export type MdBlock =
+  | { kind: "code"; text: string }
+  | { kind: "heading"; level: number; text: string }
+  | { kind: "line"; text: string };
+
+export function splitMdBlocks(text: string): MdBlock[] {
+  const blocks: MdBlock[] = [];
+  let inCode = false;
+  let buf: string[] = [];
+  for (const line of text.split("\n")) {
+    if (line.trim().startsWith("```")) {
+      if (inCode) {
+        blocks.push({ kind: "code", text: buf.join("\n") });
+        buf = [];
+        inCode = false;
+      } else {
+        inCode = true;
+      }
+      continue;
+    }
+    if (inCode) {
+      buf.push(line);
+      continue;
+    }
+    const h = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (h) {
+      blocks.push({ kind: "heading", level: h[1].length, text: h[2] });
+    } else {
+      blocks.push({ kind: "line", text: line });
+    }
+  }
+  if (buf.length > 0) {
+    blocks.push({ kind: "code", text: buf.join("\n") });
+  }
+  return blocks;
+}

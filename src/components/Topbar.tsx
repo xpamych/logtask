@@ -13,6 +13,11 @@ export function Topbar(props: {
   onToggleSidebar: () => void;
   onTogglePanel: () => void;
   systemTitlebar: boolean;
+  canBack: boolean;
+  canForward: boolean;
+  onBack: () => void;
+  onForward: () => void;
+  onHome: () => void;
 }): JSX.Element {
   const [win, setWin] = createSignal<Win | null>(null);
 
@@ -34,6 +39,25 @@ export function Topbar(props: {
         onClick={props.onToggleSidebar}
       >
         ◧
+      </button>
+      <button
+        class="topbar-btn"
+        title="Назад"
+        disabled={!props.canBack}
+        onClick={props.onBack}
+      >
+        ←
+      </button>
+      <button
+        class="topbar-btn"
+        title="Вперёд"
+        disabled={!props.canForward}
+        onClick={props.onForward}
+      >
+        →
+      </button>
+      <button class="topbar-btn" title="К журналам" onClick={props.onHome}>
+        ⌂
       </button>
       <div class="topbar-search">
         <SearchBar onOpenPage={props.onOpenPage} />

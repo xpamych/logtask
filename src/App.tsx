@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { GraphSummary, Settings } from "~/lib/api";
 import {
   graphClose,
@@ -13,18 +13,13 @@ import {
 } from "~/lib/api";
 import { AllPages } from "~/components/AllPages";
 import { JournalTape } from "~/components/JournalTape";
-import { Kanban } from "~/components/Kanban";
-import { Matrix } from "~/components/Matrix";
 import { PageView } from "~/components/PageView";
 import PanelResizer from "~/components/PanelResizer";
-import { Queries } from "~/components/Queries";
 import { SettingsModal } from "~/components/SettingsModal";
 import { Sidebar } from "~/components/Sidebar";
+import { TasksPage } from "~/components/TasksPage";
 import { Topbar } from "~/components/Topbar";
 import Welcome from "~/components/Welcome";
-
-const TABS = ["Канбан", "Матрица", "Запросы"] as const;
-type Tab = (typeof TABS)[number];
 
 const RECENT_PAGES_KEY = "logtask:recentPages";
 
@@ -65,7 +60,7 @@ const App: Component = () => {
   const [current, setCurrent] = createSignal<string | null>(null);
   const [focusUuid, setFocusUuid] = createSignal<string | null>(null);
   const [showAllPages, setShowAllPages] = createSignal(false);
-  const [tab, setTab] = createSignal<Tab>("Канбан");
+  const [showTasks, setShowTasks] = createSignal(false);
   const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = createSignal(false);
   const [sidebarW, setSidebarW] = createSignal(DEFAULT_SETTINGS.sidebarWidth);
@@ -89,21 +84,74 @@ const App: Component = () => {
     void settingsSave(s).catch((e) => console.error("settings save:", e));
   };
 
+  // история навигации для кнопок назад/вперёд/домой
+  type View =
+    | { kind: "journal" }
+    | { kind: "tasks" }
+    | { kind: "pages" }
+    | { kind: "page"; name: string };
+
+  const currentView = (): View =>
+    current()
+      ? { kind: "page", name: current()! }
+      : showTasks()
+        ? { kind: "tasks" }
+        : showAllPages()
+          ? { kind: "pages" }
+          : { kind: "journal" };
+
+  const [backStack, setBackStack] = createSignal<View[]>([]);
+  const [fwdStack, setFwdStack] = createSignal<View[]>([]);
+
+  const applyView = (v: View) => {
+    setFocusUuid(null);
+    setCurrent(v.kind === "page" ? v.name : null);
+    setShowTasks(v.kind === "tasks");
+    setShowAllPages(v.kind === "pages");
+  };
+
+  const navigate = (v: View) => {
+    const cur = currentView();
+    if (JSON.stringify(cur) !== JSON.stringify(v)) {
+      setBackStack((s) => [...s.slice(-49), cur]);
+      setFwdStack([]);
+    }
+    applyView(v);
+  };
+
+  const goBack = () => {
+    const stack = backStack();
+    if (stack.length === 0) return;
+    const prev = stack[stack.length - 1];
+    setBackStack(stack.slice(0, -1));
+    setFwdStack((s) => [...s, currentView()]);
+    applyView(prev);
+  };
+
+  const goForward = () => {
+    const stack = fwdStack();
+    if (stack.length === 0) return;
+    const next = stack[stack.length - 1];
+    setFwdStack(stack.slice(0, -1));
+    setBackStack((s) => [...s, currentView()]);
+    applyView(next);
+  };
+
   const openPage = (name: string, uuid?: string) => {
     if (!name) return;
+    navigate({ kind: "page", name });
     setFocusUuid(uuid ?? null);
-    setShowAllPages(false);
-    setCurrent(name);
     // недавние страницы (свежие первыми, максимум 10)
     const list = [name, ...recentPages().filter((p) => p !== name)].slice(0, 10);
     setRecentPages(list);
     localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(list));
   };
 
-  const showJournal = () => {
-    setCurrent(null);
-    setShowAllPages(false);
-  };
+  const showJournal = () => navigate({ kind: "journal" });
+
+  const showTasksPage = () => navigate({ kind: "tasks" });
+
+  const showAllPagesView = () => navigate({ kind: "pages" });
 
   const toggleFavorite = (name: string) => {
     const s = settings();
@@ -116,8 +164,8 @@ const App: Component = () => {
   };
 
   // активный пункт навигации сайдбара
-  const navView = (): "journal" | "pages" | "page" =>
-    current() ? "page" : showAllPages() ? "pages" : "journal";
+  const navView = (): "journal" | "pages" | "page" | "tasks" =>
+    current() ? "page" : showTasks() ? "tasks" : showAllPages() ? "pages" : "journal";
 
   onMount(async () => {
     try {
@@ -196,7 +244,9 @@ const App: Component = () => {
       setGraphClosed(false);
       setCurrent(null);
       setShowAllPages(false);
-      setTab("Канбан");
+      setShowTasks(false);
+      setBackStack([]);
+      setFwdStack([]);
       applySettings(await settingsGet());
       setPages(await pageList());
       setRefreshKey((k) => k + 1);
@@ -216,6 +266,9 @@ const App: Component = () => {
     setPages([]);
     setCurrent(null);
     setShowAllPages(false);
+    setShowTasks(false);
+    setBackStack([]);
+    setFwdStack([]);
     setError(null);
     setGraphClosed(true);
   };
@@ -243,6 +296,11 @@ const App: Component = () => {
           onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
           onTogglePanel={() => setPanelCollapsed((v) => !v)}
           systemTitlebar={settings().systemTitlebar}
+          canBack={backStack().length > 0}
+          canForward={fwdStack().length > 0}
+          onBack={goBack}
+          onForward={goForward}
+          onHome={showJournal}
         />
         <div class="app" style={{ "grid-template-columns": gridCols() }}>
           <Show when={!sidebarCollapsed()}>
@@ -253,10 +311,8 @@ const App: Component = () => {
               recentPages={recentPages()}
               onOpenPage={openPage}
               onShowJournal={showJournal}
-              onShowAllPages={() => {
-                setCurrent(null);
-                setShowAllPages(true);
-              }}
+              onShowTasks={showTasksPage}
+              onShowAllPages={showAllPagesView}
               onOpenSettings={() => setShowSettings(true)}
               onOpenGraph={openGraph}
               onCloseGraph={() => void closeGraph()}
@@ -268,14 +324,25 @@ const App: Component = () => {
               when={current()}
               fallback={
                 <Show
-                  when={showAllPages()}
-                  fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+                  when={showTasks()}
+                  fallback={
+                    <Show
+                      when={showAllPages()}
+                      fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+                    >
+                      <AllPages
+                        pages={pages()}
+                        favorites={settings().favorites}
+                        onOpenPage={openPage}
+                        onToggleFavorite={toggleFavorite}
+                      />
+                    </Show>
+                  }
                 >
-                  <AllPages
-                    pages={pages()}
-                    favorites={settings().favorites}
+                  <TasksPage
+                    refreshKey={refreshKey()}
+                    settings={settings()}
                     onOpenPage={openPage}
-                    onToggleFavorite={toggleFavorite}
                   />
                 </Show>
               }
@@ -297,43 +364,10 @@ const App: Component = () => {
             <PanelResizer side="right" start={panelW} onResize={setPanelW} onCommit={commitWidths} />
             <aside class="taskpanel">
               <div class="tabs">
-                <For each={TABS}>
-                  {(t) => (
-                    <button
-                      class="tab"
-                      classList={{ active: tab() === t }}
-                      onClick={() => setTab(t)}
-                    >
-                      {t}
-                    </button>
-                  )}
-                </For>
+                <button class="tab active">Оглавление</button>
               </div>
               <div class="taskpanel-body">
-                <Show when={current()}>
-                  <button class="back-to-journal" onClick={showJournal}>
-                    ← К ленте журнала
-                  </button>
-                </Show>
-                <Show when={summary()}>
-                  <Show
-                    when={tab() === "Канбан"}
-                    fallback={
-                      <Show
-                        when={tab() === "Запросы"}
-                        fallback={<Matrix refreshKey={refreshKey()} onOpenPage={openPage} />}
-                      >
-                        <Queries refreshKey={refreshKey()} onOpenPage={openPage} />
-                      </Show>
-                    }
-                  >
-                    <Kanban
-                      refreshKey={refreshKey()}
-                      onOpenPage={openPage}
-                      settings={settings()}
-                    />
-                  </Show>
-                </Show>
+                <div class="placeholder">Скоро: оглавление текущей страницы</div>
                 <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>
               </div>
             </aside>

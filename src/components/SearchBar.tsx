@@ -2,6 +2,7 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import type { SearchHit } from "~/lib/api";
 import { search } from "~/lib/api";
+import { RichText } from "./RichText";
 
 /** Строка поиска по страницам и блокам — вверху центрального окна */
 export function SearchBar(props: {
@@ -65,7 +66,9 @@ export function SearchBar(props: {
             {(hit) => (
               <button class="search-hit" onClick={() => pick(hit.page)}>
                 <span class="search-hit-page">{hit.page}</span>
-                <span class="search-hit-text">{hit.text.trim().slice(0, 90)}</span>
+                <span class="search-hit-text">
+                  <RichText text={hit.text.trim().slice(0, 90)} />
+                </span>
               </button>
             )}
           </For>

@@ -5,12 +5,13 @@ import { pickGraphDir, recentGraphs, recentRemove } from "~/lib/api";
 
 export function Sidebar(props: {
   summary: GraphSummary | null;
-  /** активный пункт навигации: лента журнала / все страницы / открытая страница */
-  view: "journal" | "pages" | "page";
+  /** активный пункт навигации: лента журнала / задачи / все страницы / открытая страница */
+  view: "journal" | "pages" | "page" | "tasks";
   favorites: string[];
   recentPages: string[];
   onOpenPage: (name: string) => void;
   onShowJournal: () => void;
+  onShowTasks: () => void;
   onShowAllPages: () => void;
   onOpenSettings: () => void;
   onOpenGraph: (path: string) => void;
@@ -124,6 +125,13 @@ export function Sidebar(props: {
             onClick={props.onShowJournal}
           >
             📅 Журналы
+          </button>
+          <button
+            class="nav-item"
+            classList={{ active: props.view === "tasks" }}
+            onClick={props.onShowTasks}
+          >
+            ✓ Задачи
           </button>
           <button
             class="nav-item"

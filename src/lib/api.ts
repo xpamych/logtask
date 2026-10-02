@@ -24,12 +24,14 @@ export interface BlockDto {
   clockTotal: string | null;
   deadline: string | null;
   scheduled: string | null;
+  extra: string[];
 }
 
 export interface PageDto {
   name: string;
   kind: string;
   blocks: BlockDto[];
+  preamble: string[];
 }
 
 export interface SearchHit {
@@ -91,6 +93,7 @@ export interface TaskDto {
   scheduled: string | null;
   tags: string[];
   done: boolean;
+  props: [string, string][];
 }
 
 export interface TaskColumn {
@@ -246,4 +249,15 @@ export async function pickGraphDir(): Promise<string | null> {
 
 export async function search(query: string): Promise<SearchHit[]> {
   return invoke<SearchHit[]>("search", { query });
+}
+
+/** Открывает внешнюю ссылку в системном браузере (tauri-plugin-opener) */
+export async function openExternal(url: string): Promise<void> {
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl(url);
+}
+
+/** Картинка из графа как data-URL (для <img>) */
+export async function assetDataUrl(path: string): Promise<string> {
+  return invoke<string>("asset_data_url", { path });
 }

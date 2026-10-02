@@ -1,7 +1,7 @@
 import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { editingBlock, setEditingBlock } from "~/lib/editState";
-import { parseSegments } from "~/lib/text";
+import { RichText } from "./RichText";
 import type { BlockDto, Settings } from "~/lib/api";
 import {
   blockSetProp,
@@ -71,8 +71,6 @@ export function BlockView(props: {
   const [acIndex, setAcIndex] = createSignal(0);
   let textareaEl: HTMLTextAreaElement | undefined;
   let allPages: string[] | null = null;
-
-  const segments = () => parseSegments(b.content.trim());
 
   /// автодополнение: найти незакрытое [[ в тексте
   const autocompleteQuery = (text: string): string | null => {
@@ -286,24 +284,13 @@ export function BlockView(props: {
         <Show
           when={editing()}
           fallback={
-            <span class="block-text" onDblClick={startEdit}>
-              {segments().map((seg) => {
-                if (seg.type === "link" || seg.type === "tag") {
-                  return (
-                    <button
-                      class={seg.type === "link" ? "wikilink" : "hashtag"}
-                      title={`Открыть «${seg.target}»`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpen?.(seg.target ?? "");
-                      }}
-                    >
-                      {seg.type === "link" ? `[[${seg.text}]]` : seg.text}
-                    </button>
-                  );
-                }
-                return <span>{seg.text}</span>;
-              })}
+            <span class="block-text" onClick={startEdit}>
+              <RichText text={b.content} onOpenPage={onOpen} />
+              <Show when={b.extra.length > 0}>
+                <span class="block-extra">
+                  <RichText text={b.extra.join("\n")} onOpenPage={onOpen} />
+                </span>
+              </Show>
             </span>
           }
         >
@@ -364,14 +351,16 @@ export function BlockView(props: {
           <button class="block-action" title="Редактировать" onClick={startEdit}>
             ✎
           </button>
-          <button
-            class="block-action"
-            classList={{ active: b.clockRunning }}
-            title={b.clockRunning ? "Остановить таймер" : "Начать учёт времени"}
-            onClick={onClockToggle}
-          >
-            {b.clockRunning ? "⏹" : "▶"}
-          </button>
+          <Show when={b.task || b.clockRunning}>
+            <button
+              class="block-action"
+              classList={{ active: b.clockRunning }}
+              title={b.clockRunning ? "Остановить таймер" : "Начать учёт времени"}
+              onClick={onClockToggle}
+            >
+              {b.clockRunning ? "⏹" : "▶"}
+            </button>
+          </Show>
           <button
             class="block-action"
             title="Меню задачи (mod+enter)"

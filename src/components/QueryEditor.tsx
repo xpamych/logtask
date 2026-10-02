@@ -1,18 +1,17 @@
 import { For, Show, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
-import type { SavedQuery } from "~/lib/api";
+import type { SavedQuery, Settings } from "~/lib/api";
 
-const ALL_MARKERS = [
-  { marker: "LATER", label: "Бэклог" },
-  { marker: "TODO", label: "К выполнению" },
-  { marker: "DOING", label: "В работе" },
-  { marker: "REVIEW", label: "На проверке" },
-  { marker: "DONE", label: "Выполнено" },
-  { marker: "CANCELED", label: "Отменено" },
+const QUADRANTS = [
+  { key: "do", label: "Сделать (срочно и важно)" },
+  { key: "schedule", label: "Запланировать (важно, не срочно)" },
+  { key: "delegate", label: "Делегировать (срочно, не важно)" },
+  { key: "drop", label: "Отбросить (ни то, ни другое)" },
 ];
 
 export function QueryEditor(props: {
   query: SavedQuery | null;
+  settings?: Settings | null;
   onClose: () => void;
   onSave: (q: SavedQuery) => void;
   onDelete: (title: string) => void;
@@ -24,7 +23,7 @@ export function QueryEditor(props: {
       : {
           title: "",
           filter: {
-            open: false,
+            open: true,
             status: [],
             page: null,
             pagePrefix: null,
@@ -36,6 +35,23 @@ export function QueryEditor(props: {
           collapsed: false,
         },
   );
+
+  // текстовое поле тегов ↔ массив фильтра
+  const [tagsText, setTagsText] = createSignal(
+    (props.query?.filter.tags ?? []).join(", "),
+  );
+
+  const statuses = () =>
+    props.settings?.statuses.length
+      ? props.settings.statuses
+      : [
+          { marker: "LATER", label: "Бэклог" },
+          { marker: "TODO", label: "К выполнению" },
+          { marker: "DOING", label: "В работе" },
+          { marker: "REVIEW", label: "На проверке" },
+          { marker: "DONE", label: "Выполнено" },
+          { marker: "CANCELED", label: "Отменено" },
+        ];
 
   const toggleStatus = (marker: string) => {
     setDraft((d) => {
@@ -49,6 +65,10 @@ export function QueryEditor(props: {
   const save = () => {
     const q = draft();
     if (!q.title.trim()) return;
+    const tags = tagsText()
+      .split(/[,\s]+/)
+      .map((t) => t.replace(/^#/, "").trim())
+      .filter(Boolean);
     // пустые строки → null
     const clean: SavedQuery = {
       ...q,
@@ -57,6 +77,7 @@ export function QueryEditor(props: {
         page: q.filter.page?.trim() || null,
         pagePrefix: q.filter.pagePrefix?.trim() || null,
         excludePage: q.filter.excludePage?.trim() || null,
+        tags,
       },
     };
     props.onSave(clean);
@@ -68,7 +89,7 @@ export function QueryEditor(props: {
       <div class="modal" onClick={(e) => e.stopPropagation()}>
         <header class="modal-head">
           <span class="modal-title">
-            {isNew() ? "Новый запрос" : `Запрос «${props.query!.title}»`}
+            {isNew() ? "Новая подборка" : `Подборка «${props.query!.title}»`}
           </span>
           <button class="modal-close" onClick={props.onClose}>
             ✕
@@ -80,7 +101,7 @@ export function QueryEditor(props: {
             <span class="settings-label">Название</span>
             <input
               class="status-label-input"
-              placeholder="Сейчас"
+              placeholder="Сейчас в работе"
               value={draft().title}
               onInput={(e) =>
                 setDraft((d) => ({ ...d, title: e.currentTarget.value }))
@@ -88,8 +109,10 @@ export function QueryEditor(props: {
             />
           </label>
 
+          <div class="settings-section">Какие задачи показывать</div>
+
           <label class="settings-row">
-            <span class="settings-label">Только открытые</span>
+            <span class="settings-label">Только незавершённые</span>
             <input
               type="checkbox"
               checked={draft().filter.open}
@@ -102,54 +125,9 @@ export function QueryEditor(props: {
             />
           </label>
 
-          <label class="settings-row">
-            <span class="settings-label">Страница (точно)</span>
-            <input
-              class="status-label-input"
-              placeholder="Пример - TODO"
-              value={draft().filter.page ?? ""}
-              onInput={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  filter: { ...d.filter, page: e.currentTarget.value },
-                }))
-              }
-            />
-          </label>
-
-          <label class="settings-row">
-            <span class="settings-label">Префикс страницы</span>
-            <input
-              class="status-label-input"
-              placeholder="Проект -"
-              value={draft().filter.pagePrefix ?? ""}
-              onInput={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  filter: { ...d.filter, pagePrefix: e.currentTarget.value },
-                }))
-              }
-            />
-          </label>
-
-          <label class="settings-row">
-            <span class="settings-label">Кроме страницы</span>
-            <input
-              class="status-label-input"
-              placeholder="Проекты - TODO"
-              value={draft().filter.excludePage ?? ""}
-              onInput={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  filter: { ...d.filter, excludePage: e.currentTarget.value },
-                }))
-              }
-            />
-          </label>
-
-          <div class="settings-section">Статусы</div>
+          <div class="settings-section">Статусы (не выбрано — любые)</div>
           <div class="block-menu-row">
-            <For each={ALL_MARKERS}>
+            <For each={statuses()}>
               {(s) => (
                 <button
                   class="block-menu-item"
@@ -165,7 +143,84 @@ export function QueryEditor(props: {
           </div>
 
           <label class="settings-row">
-            <span class="settings-label">Свёрнут по умолчанию</span>
+            <span class="settings-label">Со страницы</span>
+            <input
+              class="status-label-input"
+              placeholder="точное название, например: Проект - TODO"
+              value={draft().filter.page ?? ""}
+              onInput={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  filter: { ...d.filter, page: e.currentTarget.value },
+                }))
+              }
+            />
+          </label>
+
+          <label class="settings-row">
+            <span class="settings-label">Название страницы начинается с…</span>
+            <input
+              class="status-label-input"
+              placeholder="например: Проект -"
+              value={draft().filter.pagePrefix ?? ""}
+              onInput={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  filter: { ...d.filter, pagePrefix: e.currentTarget.value },
+                }))
+              }
+            />
+          </label>
+
+          <label class="settings-row">
+            <span class="settings-label">Скрыть страницу</span>
+            <input
+              class="status-label-input"
+              placeholder="задачи этой страницы не попадут в подборку"
+              value={draft().filter.excludePage ?? ""}
+              onInput={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  filter: { ...d.filter, excludePage: e.currentTarget.value },
+                }))
+              }
+            />
+          </label>
+
+          <label class="settings-row">
+            <span class="settings-label">Теги (через запятую)</span>
+            <input
+              class="status-label-input"
+              placeholder="например: feature, lg"
+              value={tagsText()}
+              onInput={(e) => setTagsText(e.currentTarget.value)}
+            />
+          </label>
+
+          <label class="settings-row">
+            <span class="settings-label">Квадрант матрицы</span>
+            <select
+              class="status-label-input"
+              value={draft().filter.quadrant ?? ""}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  filter: {
+                    ...d.filter,
+                    quadrant: e.currentTarget.value || null,
+                  },
+                }))
+              }
+            >
+              <option value="">любой</option>
+              <For each={QUADRANTS}>
+                {(q) => <option value={q.key}>{q.label}</option>}
+              </For>
+            </select>
+          </label>
+
+          <label class="settings-row">
+            <span class="settings-label">Свёрнута по умолчанию</span>
             <input
               type="checkbox"
               checked={draft().collapsed}
@@ -181,7 +236,7 @@ export function QueryEditor(props: {
             <button
               class="btn danger-btn"
               onClick={() => {
-                if (confirm(`Удалить запрос «${props.query!.title}»?`)) {
+                if (confirm(`Удалить подборку «${props.query!.title}»?`)) {
                   props.onDelete(props.query!.title);
                   props.onClose();
                 }

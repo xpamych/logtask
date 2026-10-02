@@ -1,6 +1,6 @@
 import { For, Show, createSignal, createEffect } from "solid-js";
 import type { JSX } from "solid-js";
-import type { SavedQuery, TaskDto } from "~/lib/api";
+import type { SavedQuery, Settings, TaskDto, TaskFilter } from "~/lib/api";
 import {
   importLogseqQueries,
   queriesList,
@@ -10,8 +10,75 @@ import {
 import { QueryEditor } from "./QueryEditor";
 import { TaskCard } from "./TaskCard";
 
+const EMPTY_FILTER: TaskFilter = {
+  open: false,
+  status: [],
+  page: null,
+  pagePrefix: null,
+  excludePage: null,
+  tags: [],
+  quadrant: null,
+};
+
+/** Шаблоны для пустого состояния: типовые подборки одним кликом */
+const TEMPLATES: { title: string; hint: string; filter: TaskFilter }[] = [
+  {
+    title: "Сейчас в работе",
+    hint: "статусы «В работе» и «На проверке»",
+    filter: { ...EMPTY_FILTER, open: true, status: ["DOING", "REVIEW"] },
+  },
+  {
+    title: "Бэклог",
+    hint: "отложенные задачи со статусом «Бэклог»",
+    filter: { ...EMPTY_FILTER, open: true, status: ["LATER"] },
+  },
+  {
+    title: "Всё открытое",
+    hint: "все незавершённые задачи графа",
+    filter: { ...EMPTY_FILTER, open: true },
+  },
+];
+
+const QUADRANT_LABELS: Record<string, string> = {
+  do: "Сделать",
+  schedule: "Запланировать",
+  delegate: "Делегировать",
+  drop: "Отбросить",
+};
+
+/** Склонение: 1 задача / 2 задачи / 5 задач */
+function pluralTasks(n: number): string {
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+  if (mod100 >= 11 && mod100 <= 14) return `${n} задач`;
+  if (mod10 === 1) return `${n} задача`;
+  if (mod10 >= 2 && mod10 <= 4) return `${n} задачи`;
+  return `${n} задач`;
+}
+
+/** Человекочитаемое описание фильтра: «открытые · В работе · #проект» */
+export function filterSummary(q: SavedQuery, settings?: Settings | null): string {
+  const parts: string[] = [q.filter.open ? "открытые" : "все статусы"];
+  const labelOf = (marker: string) =>
+    settings?.statuses.find((s) => s.marker === marker)?.label ?? marker;
+  if (q.filter.status.length > 0) {
+    parts.push(q.filter.status.map(labelOf).join(", "));
+  }
+  if (q.filter.page) parts.push(`страница «${q.filter.page}»`);
+  if (q.filter.pagePrefix) parts.push(`страница начинается с «${q.filter.pagePrefix}»`);
+  if (q.filter.excludePage) parts.push(`кроме «${q.filter.excludePage}»`);
+  if (q.filter.tags.length > 0) {
+    parts.push(q.filter.tags.map((t) => `#${t}`).join(" "));
+  }
+  if (q.filter.quadrant) {
+    parts.push(`квадрант «${QUADRANT_LABELS[q.filter.quadrant] ?? q.filter.quadrant}»`);
+  }
+  return parts.join(" · ");
+}
+
 export function Queries(props: {
   refreshKey: number;
+  settings?: Settings | null;
   onOpenPage: (name: string) => void;
 }): JSX.Element {
   const [queries, setQueries] = createSignal<SavedQuery[]>([]);
@@ -48,7 +115,7 @@ export function Queries(props: {
     try {
       const n = await importLogseqQueries();
       await load();
-      setError(n > 0 ? `Импортировано запросов: ${n}` : "Запросы не найдены в config.edn");
+      setError(n > 0 ? `Импортировано подборок: ${n}` : "Подборки не найдены в config.edn");
     } catch (e) {
       setError(String(e));
     }
@@ -88,17 +155,49 @@ export function Queries(props: {
     setEditorOpen(true);
   };
 
+  const applyTemplate = (t: (typeof TEMPLATES)[number]) => {
+    void persist([
+      ...queries(),
+      { title: t.title, filter: { ...t.filter }, sort: [], collapsed: false },
+    ]);
+  };
+
   return (
     <div class="queries">
       <div class="queries-toolbar">
         <button class="queries-import" onClick={newQuery}>
-          ＋ новый запрос
+          ＋ Новая подборка
         </button>
-        <button class="queries-import" onClick={doImport} title="Импорт из logseq/config.edn">
-          ⤓ импорт из config.edn
+        <button
+          class="queries-import"
+          onClick={doImport}
+          title="Импорт :default-queries из logseq/config.edn"
+        >
+          ⤓ Импорт из Logseq
         </button>
       </div>
       <Show when={error()}>{(e) => <div class="queries-note">{e()}</div>}</Show>
+
+      <Show when={queries().length === 0}>
+        <div class="queries-empty">
+          <p class="queries-empty-text">
+            Подборка — это сохранённый фильтр: она всегда показывает актуальный
+            список задач по заданным условиям (статусы, страница, теги).
+            Начните с шаблона или создайте свою:
+          </p>
+          <div class="queries-templates">
+            <For each={TEMPLATES}>
+              {(t) => (
+                <button class="queries-template" onClick={() => applyTemplate(t)}>
+                  <span class="queries-template-title">{t.title}</span>
+                  <span class="queries-template-hint">{t.hint}</span>
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
+
       <For each={queries()}>
         {(q) => (
           <section class="query">
@@ -110,10 +209,13 @@ export function Queries(props: {
             >
               <span class="caret">{collapsed()[q.title] ? "▸" : "▾"}</span>
               <span class="query-title">{q.title}</span>
-              <span class="query-count">{results()[q.title]?.length ?? 0}</span>
+              <span class="query-summary">{filterSummary(q, props.settings)}</span>
+              <span class="query-count">
+                {pluralTasks(results()[q.title]?.length ?? 0)}
+              </span>
               <span
                 class="query-edit"
-                title="Редактировать запрос"
+                title="Настроить подборку"
                 onClick={(e) => {
                   e.stopPropagation();
                   editQuery(q);
@@ -126,11 +228,11 @@ export function Queries(props: {
               <div class="query-body">
                 <For each={results()[q.title] ?? []}>
                   {(task) => (
-                    <TaskCard task={task} onOpenPage={props.onOpenPage} />
+                    <TaskCard task={task} detailed onOpenPage={props.onOpenPage} />
                   )}
                 </For>
                 <Show when={(results()[q.title]?.length ?? 0) === 0}>
-                  <div class="kanban-empty">нет задач</div>
+                  <div class="kanban-empty">нет задач по этим условиям</div>
                 </Show>
               </div>
             </Show>
@@ -140,6 +242,7 @@ export function Queries(props: {
       <Show when={editorOpen()}>
         <QueryEditor
           query={editing()}
+          settings={props.settings}
           onClose={() => setEditorOpen(false)}
           onSave={onSaveQuery}
           onDelete={onDeleteQuery}
