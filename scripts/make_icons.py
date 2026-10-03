@@ -1,32 +1,36 @@
 #!/usr/bin/env python3
-"""Генератор PNG-иконок для Tauri (нужен PIL: pip install pillow)."""
-import os
-from PIL import Image, ImageDraw
+"""Генератор PNG-иконок для Tauri из SVG-мастера src-tauri/icons/icon.svg.
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "src-tauri", "icons")
-os.makedirs(OUT, exist_ok=True)
+Нужен inkscape в PATH. Правьте icon.svg и перезапускайте скрипт.
+"""
+import os
+import subprocess
+
+ICONS = os.path.join(os.path.dirname(__file__), "..", "src-tauri", "icons")
+SRC = os.path.join(ICONS, "icon.svg")
+
+# (выходной файл, размер стороны в px)
+TARGETS = [
+    ("32x32.png", 32),
+    ("128x128.png", 128),
+    ("128x128@2x.png", 256),
+]
 
 
 def make(size: int, path: str) -> None:
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    pad = size // 6
-    # корпус — тёмно-бирюзовый квадрат как у логсека, только проще
-    d.rounded_rectangle([pad, pad, size - pad, size - pad],
-                        radius=size // 7, fill=(2, 54, 67, 255))
-    # «пуля» журнала и галка задачи
-    bp = size // 3
-    d.ellipse([bp - size // 14, bp + size // 24, bp + size // 14, bp + size // 8],
-              fill=(232, 237, 242, 255))
-    lw = max(2, size // 10)
-    d.line([size // 3, size * 5 // 12, size * 9 // 20, size * 5 // 8],
-           fill=(16, 107, 163, 255), width=lw)
-    d.line([size * 9 // 20, size * 5 // 8, size * 5 // 6, size // 3],
-           fill=(16, 107, 163, 255), width=lw)
-    img.save(path)
+    subprocess.run(
+        ["inkscape", SRC, "-w", str(size), "-h", str(size), "-o", path],
+        check=True,
+    )
     print(path)
 
 
-for s in (32, 128):
-    make(s, os.path.join(OUT, f"{s}x{s}.png"))
-make(256, os.path.join(OUT, "128x128@2x.png"))
+def main() -> None:
+    for name, size in TARGETS:
+        make(size, os.path.join(ICONS, name))
+    # иконка для фронтенда (index.html)
+    make(128, os.path.join(os.path.dirname(__file__), "..", "public", "icon.png"))
+
+
+if __name__ == "__main__":
+    main()

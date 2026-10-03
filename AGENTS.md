@@ -81,7 +81,8 @@ src-tauri/            — Rust-крейт logtask (lib: logtask_lib, bin: main.r
                         окно main, dialog:allow-open)
   tauri.conf.json     — окно 1280x800, identifier ru.logtask.app,
                         бандлы: appimage/rpm/deb
-scripts/make_icons.py — генератор PNG-иконок (нужен pillow)
+scripts/make_icons.py — генератор PNG-иконок из SVG-мастера
+                        src-tauri/icons/icon.svg (нужен inkscape)
 ```
 
 ## Команды сборки и запуска

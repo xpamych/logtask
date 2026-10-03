@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Мастер-иконка Logtask: строки журнала (лог), последняя переходит в галочку (таск).
+     PNG для Tauri генерируются из этого файла скриптом scripts/make_icons.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- корпус: тёмно-бирюзовый скруглённый квадрат -->
+  <rect x="86" y="86" width="340" height="340" rx="72" fill="#023643"/>
+
+  <!-- строки журнала: пуля + строка -->
+  <g stroke="#e8edf2" stroke-width="24" stroke-linecap="round" fill="none">
+    <line x1="190" y1="175" x2="372" y2="175"/>
+    <line x1="190" y1="250" x2="372" y2="250"/>
+  </g>
+  <g fill="#e8edf2">
+    <circle cx="150" cy="175" r="15"/>
+    <circle cx="150" cy="250" r="15"/>
+    <circle cx="150" cy="325" r="15"/>
+  </g>
+
+  <!-- третья строка — задача: уходит вверх галочкой -->
+  <path d="M 195 320 L 240 365 L 370 290"
+        stroke="#0fc3d4" stroke-width="28" stroke-linecap="round"
+        stroke-linejoin="round" fill="none"/>
+</svg>
