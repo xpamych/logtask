@@ -52,6 +52,9 @@ pub struct Settings {
     /// true — системная рамка окна вместо встроенных кнопок управления
     #[serde(default)]
     pub system_titlebar: bool,
+    /// домашний вид: "journal" | "tasks" | "pages" (кнопка ⌂ и старт приложения)
+    #[serde(default = "default_home_view")]
+    pub home_view: String,
     /// статусы канбана: набор/цвета/порядок
     #[serde(default = "default_statuses")]
     pub statuses: Vec<StatusConfig>,
@@ -79,6 +82,10 @@ fn default_sidebar_width() -> u32 {
 
 fn default_taskpanel_width() -> u32 {
     320
+}
+
+fn default_home_view() -> String {
+    "journal".to_string()
 }
 
 /// Дефолтный набор статусов (порядок канбана)
@@ -140,6 +147,7 @@ impl Default for Settings {
             taskpanel_width: default_taskpanel_width(),
             favorites: Vec::new(),
             system_titlebar: false,
+            home_view: default_home_view(),
             statuses: default_statuses(),
         }
     }
@@ -179,6 +187,7 @@ mod tests {
         assert_eq!(s.taskpanel_width, 320);
         assert!(s.favorites.is_empty());
         assert!(!s.system_titlebar);
+        assert_eq!(s.home_view, "journal");
     }
 
     #[test]
@@ -209,6 +218,7 @@ mod tests {
         assert_eq!(loaded.favorites, vec!["Пример - TODO".to_string()]);
         assert!(loaded.system_titlebar);
         assert!(!loaded.statuses[0].visible);
+        assert_eq!(loaded.home_view, "journal");
         assert_eq!(loaded.statuses.len(), 6);
     }
 

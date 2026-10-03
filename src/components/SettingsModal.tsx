@@ -9,6 +9,12 @@ const THEMES = [
   { value: "dark", label: "Тёмная" },
 ];
 
+const HOME_VIEWS = [
+  { value: "journal", label: "Журналы" },
+  { value: "tasks", label: "Задачи" },
+  { value: "pages", label: "Все страницы" },
+];
+
 export function SettingsModal(props: {
   settings: Settings;
   onClose: () => void;
@@ -124,6 +130,21 @@ export function SettingsModal(props: {
             >
               <option value="0">Воскресенье</option>
               <option value="1">Понедельник</option>
+            </select>
+          </label>
+
+          <label class="settings-row">
+            <span class="settings-label">Домашняя страница</span>
+            <select
+              class="settings-select"
+              value={draft().homeView}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, homeView: e.currentTarget.value }))
+              }
+            >
+              <For each={HOME_VIEWS}>
+                {(v) => <option value={v.value}>{v.label}</option>}
+              </For>
             </select>
           </label>
 

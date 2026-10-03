@@ -204,6 +204,7 @@ export interface Settings {
   taskpanelWidth: number;
   favorites: string[];
   systemTitlebar: boolean;
+  homeView: string;
   statuses: StatusConfig[];
 }
 

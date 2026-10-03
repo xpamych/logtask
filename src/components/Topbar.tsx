@@ -56,7 +56,7 @@ export function Topbar(props: {
       >
         →
       </button>
-      <button class="topbar-btn" title="К журналам" onClick={props.onHome}>
+      <button class="topbar-btn" title="Домой" onClick={props.onHome}>
         ⌂
       </button>
       <div class="topbar-search">

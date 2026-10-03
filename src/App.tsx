@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS: Settings = {
   taskpanelWidth: 320,
   favorites: [],
   systemTitlebar: false,
+  homeView: "journal",
   statuses: [
     { marker: "LATER", label: "Бэклог", color: "#888888", visible: true, shortcut: null },
     { marker: "TODO", label: "К выполнению", color: "#09bec8", visible: true, shortcut: null },
@@ -137,6 +138,21 @@ const App: Component = () => {
     applyView(next);
   };
 
+  // боковые кнопки мыши: «назад» (3) / «вперёд» (4) — навигация по истории видов
+  onMount(() => {
+    const onMouseNav = (e: MouseEvent) => {
+      if (e.button === 3) {
+        e.preventDefault();
+        goBack();
+      } else if (e.button === 4) {
+        e.preventDefault();
+        goForward();
+      }
+    };
+    window.addEventListener("mousedown", onMouseNav);
+    onCleanup(() => window.removeEventListener("mousedown", onMouseNav));
+  });
+
   const openPage = (name: string, uuid?: string) => {
     if (!name) return;
     navigate({ kind: "page", name });
@@ -152,6 +168,16 @@ const App: Component = () => {
   const showTasksPage = () => navigate({ kind: "tasks" });
 
   const showAllPagesView = () => navigate({ kind: "pages" });
+
+  // домашний вид из настроек: кнопка «⌂» и стартовый экран графа
+  const homeViewOf = (s: Settings): View =>
+    s.homeView === "tasks"
+      ? { kind: "tasks" }
+      : s.homeView === "pages"
+        ? { kind: "pages" }
+        : { kind: "journal" };
+
+  const showHome = () => navigate(homeViewOf(settings()));
 
   const toggleFavorite = (name: string) => {
     const s = settings();
@@ -173,7 +199,10 @@ const App: Component = () => {
       const s = await graphLoad();
       setSummary(s);
       setPages(await pageList());
-      applySettings(await settingsGet());
+      const st = await settingsGet();
+      applySettings(st);
+      // стартовый вид — домашняя страница из настроек
+      applyView(homeViewOf(st));
       void listenGraphChanged();
     } catch (e) {
       setError(String(e));
@@ -242,12 +271,12 @@ const App: Component = () => {
       const s = await graphLoad(path);
       setSummary(s);
       setGraphClosed(false);
-      setCurrent(null);
-      setShowAllPages(false);
-      setShowTasks(false);
       setBackStack([]);
       setFwdStack([]);
-      applySettings(await settingsGet());
+      const st = await settingsGet();
+      applySettings(st);
+      // стартовый вид графа — домашняя страница из настроек
+      applyView(homeViewOf(st));
       setPages(await pageList());
       setRefreshKey((k) => k + 1);
     } catch (e) {
@@ -300,7 +329,7 @@ const App: Component = () => {
           canForward={fwdStack().length > 0}
           onBack={goBack}
           onForward={goForward}
-          onHome={showJournal}
+          onHome={showHome}
         />
         <div class="app" style={{ "grid-template-columns": gridCols() }}>
           <Show when={!sidebarCollapsed()}>
