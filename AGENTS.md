@@ -87,8 +87,6 @@ scripts/make_icons.py — генератор PNG-иконок из SVG-маст�
 
 ## Команды сборки и запуска
 
-
-
 ```bash
 npm install              # фронтенд-зависимости
 npm run app:dev          # tauri dev: поднимает Vite и открывает окно приложения
