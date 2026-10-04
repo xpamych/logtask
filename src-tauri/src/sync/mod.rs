@@ -2,6 +2,7 @@
 //! Двусторонняя: fetch → merge → запись страниц; push статусов на сервер.
 
 pub mod config;
+pub mod jsonpath;
 pub mod secrets;
 
 /// FNV-1a хэш в hex — для ключей keyring и отпечатков блоков
