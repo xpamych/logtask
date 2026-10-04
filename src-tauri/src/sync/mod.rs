@@ -2,6 +2,7 @@
 //! Двусторонняя: fetch → merge → запись страниц; push статусов на сервер.
 
 pub mod config;
+pub mod secrets;
 
 /// FNV-1a хэш в hex — для ключей keyring и отпечатков блоков
 pub(crate) fn fnv1a_hex(data: &[u8]) -> String {
