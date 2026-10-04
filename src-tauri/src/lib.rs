@@ -4,6 +4,7 @@ pub mod core;
 mod recent;
 mod settings;
 mod state;
+pub mod sync;
 mod watcher;
 
 use state::AppState;

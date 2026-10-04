@@ -58,6 +58,9 @@ pub struct Settings {
     /// статусы канбана: набор/цвета/порядок
     #[serde(default = "default_statuses")]
     pub statuses: Vec<StatusConfig>,
+    /// источники синхронизации задач (раздел «Интеграции»)
+    #[serde(default)]
+    pub integrations: crate::sync::config::IntegrationsConfig,
 }
 
 fn default_theme() -> String {
@@ -149,6 +152,7 @@ impl Default for Settings {
             system_titlebar: false,
             home_view: default_home_view(),
             statuses: default_statuses(),
+            integrations: Default::default(),
         }
     }
 }
