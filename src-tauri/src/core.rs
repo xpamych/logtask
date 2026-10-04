@@ -87,6 +87,98 @@ mod tests {
     }
 
     #[test]
+    fn set_content_reparses_priority_change() {
+        let mut doc = parse_document("- TODO [#B] старый текст\n");
+        let b = &mut doc.blocks[0];
+        b.set_content("[#A] новый текст");
+        assert_eq!(b.priority, Some(model::Priority::A));
+        assert_eq!(b.content, "новый текст");
+        assert_eq!(b.raw.marker_str, "TODO [#A] ");
+    }
+
+    #[test]
+    fn set_content_reparses_priority_removed() {
+        let mut doc = parse_document("- TODO [#B] старый текст\n");
+        let b = &mut doc.blocks[0];
+        b.set_content("просто текст");
+        assert_eq!(b.priority, None);
+        assert_eq!(b.content, "просто текст");
+        assert_eq!(b.raw.marker_str, "TODO ");
+    }
+
+    #[test]
+    fn set_content_reparses_priority_added() {
+        let mut doc = parse_document("- заметка\n");
+        let b = &mut doc.blocks[0];
+        b.set_content("[#C] заметка");
+        assert_eq!(b.priority, Some(model::Priority::C));
+        assert_eq!(b.content, "заметка");
+        assert_eq!(b.raw.marker_str, "[#C] ");
+    }
+
+    #[test]
+    fn set_content_invalid_priority_stays_text() {
+        let mut doc = parse_document("- TODO [#B] старый текст\n");
+        let b = &mut doc.blocks[0];
+        b.set_content("[#Q] текст");
+        assert_eq!(b.priority, None);
+        assert_eq!(b.content, "[#Q] текст");
+        assert_eq!(b.raw.marker_str, "TODO ");
+    }
+
+    #[test]
+    fn edit_source_full_block() {
+        // блок со свойством, логбуком и сырыми строками (код с отступами)
+        let text = "- DOING [#B] Задача\n  urgency:: high\n  :LOGBOOK:\n  CLOCK: [2026-09-11 Fri 16:17:05]--[2026-09-16 Wed 14:47:53] =>  118:30:48\n  :END:\n  ```text\n      глубокая строка\n  ```\n";
+        let doc = parse_document(text);
+        let b = &doc.blocks[0];
+        let src = b.edit_source();
+        assert_eq!(
+            src,
+            "[#B] Задача\nurgency:: high\n:LOGBOOK:\nCLOCK: [2026-09-11 Fri 16:17:05]--[2026-09-16 Wed 14:47:53] =>  118:30:48\n:END:\n```text\n    глубокая строка\n```"
+        );
+        // неприкосновенное сохранение возвращает те же байты
+        let mut doc2 = parse_document(text);
+        doc2.blocks[0].set_source(&src);
+        assert_eq!(doc2.blocks[0].to_markdown(), text);
+    }
+
+    #[test]
+    fn set_source_edits_continuation() {
+        let text = "- TODO заметка\n  ```text\n  line1\n  line2\n  ```\n";
+        let mut doc = parse_document(text);
+        let b = &mut doc.blocks[0];
+        b.set_source("заметка\n```text\nline1\nline2 changed\n```");
+        assert_eq!(b.content, "заметка");
+        assert_eq!(
+            b.to_markdown(),
+            "- TODO заметка\n  ```text\n  line1\n  line2 changed\n  ```\n"
+        );
+    }
+
+    #[test]
+    fn set_source_preserves_trailing_blank() {
+        // пустая строка-разделитель блоков не должна теряться при сохранении
+        let mut doc = parse_document("- первая\n\n- вторая\n");
+        let b = &mut doc.blocks[0];
+        assert_eq!(b.edit_source(), "первая");
+        b.set_source("первая изменена");
+        assert_eq!(b.to_markdown(), "- первая изменена\n\n");
+    }
+
+    #[test]
+    fn set_source_updates_props() {
+        let mut doc = parse_document("- TODO задача\n  urgency:: high\n");
+        let b = &mut doc.blocks[0];
+        assert_eq!(b.urgency, Some(model::Level::High));
+        // удалили строку свойства в редакторе — свойство исчезло
+        b.set_source("задача");
+        assert_eq!(b.props.get("urgency"), None);
+        assert_eq!(b.urgency, None);
+        assert_eq!(b.to_markdown(), "- TODO задача\n");
+    }
+
+    #[test]
     fn deadline_soon_uses_real_dates() {
         // сегодня — срочно; просроченный — срочно; далёкое будущее — нет
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();

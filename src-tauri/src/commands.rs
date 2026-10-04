@@ -39,6 +39,9 @@ pub struct BlockDto {
     /// строки-продолжения блока без маркера (параграфы, код, списки) —
     /// для отображения; в файле живут в raw.trailing
     pub extra: Vec<String>,
+    /// полный редактируемый текст блока (как в Logseq): [#X] + контент +
+    /// все строки-продолжения без базового отступа
+    pub source: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -86,6 +89,7 @@ impl From<&Block> for BlockDto {
                     _ => None,
                 })
                 .collect(),
+            source: b.edit_source(),
         }
     }
 }

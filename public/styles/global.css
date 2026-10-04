@@ -391,7 +391,7 @@ body.panel-resizing {
   height: 10px;
   border-radius: 50%;
   flex: none;
-  transform: translateY(-1px);
+  align-self: center;
 }
 
 .task-badge {
@@ -584,10 +584,83 @@ body.panel-resizing {
   padding-left: 4px;
 }
 
-.priority-badge {
-  color: var(--fg-muted);
-  font-size: 11px;
+.status-prio-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
   flex: none;
+  /* прижат к первой строке блока (даже если ниже код/продолжение):
+     центр первой строки ≈ 11px, кружок 16px → отступ 3px */
+  align-self: flex-start;
+  margin-top: 3px;
+}
+
+.status-prio-dot.empty {
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+/* приоритет без статуса: полый кружок, значок — цвета приоритета */
+.status-prio-dot.empty.prio-a {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.status-prio-dot.empty.prio-b {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.status-prio-dot.empty.prio-c {
+  color: var(--fg-muted);
+}
+
+.prio-icon {
+  font-weight: 700;
+}
+
+.prio-icon.prio-a {
+  color: var(--danger);
+}
+
+.prio-icon.prio-b {
+  color: var(--success);
+}
+
+.prio-icon.prio-c {
+  color: var(--fg-muted);
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.mini-popup {
+  position: absolute;
+  top: 24px;
+  left: 20px;
+  z-index: 20;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mini-popup .block-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .tape-sentinel {
@@ -620,9 +693,19 @@ body.panel-resizing {
 /* ---- Канбан / Запросы ---- */
 
 .kanban {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  /* адаптив: сколько колонок по ~260px влезает по ширине, столько и рядов;
+     на узкой панели — одна колонка */
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
+  align-items: start;
+}
+
+/* фильтры и служебные строки — на всю ширину доски */
+.kanban > .kanban-filters,
+.kanban > .error,
+.kanban > .muted {
+  grid-column: 1 / -1;
 }
 
 .kanban-col {
@@ -675,6 +758,7 @@ body.panel-resizing {
 }
 
 .task-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -695,6 +779,18 @@ body.panel-resizing {
 
 .task-card.task-done {
   opacity: 0.55;
+}
+
+/* шапка развёрнутой карточки: кружок статуса/приоритета + текст */
+.task-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.task-card-head .task-card-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .task-card-text {
@@ -718,24 +814,20 @@ body.panel-resizing {
   color: var(--accent);
 }
 
-.task-priority {
-  color: var(--warning);
-  font-weight: 600;
+/* страница в шапке развёрнутой карточки: справа на первой строке;
+   не влезает — ужимается до 45% ширины с многоточием */
+.task-card-head .task-page {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  margin-top: 2px;
 }
 
 .task-date {
   color: var(--danger);
-}
-
-.task-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.task-tag {
-  color: var(--accent);
-  font-size: 11px;
 }
 
 .queries {
@@ -1602,20 +1694,7 @@ body.panel-resizing {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
-/* развёрнутая карточка задачи (подборки): чип статуса и свойства */
-.task-status-chip {
-  display: inline-block;
-  background: var(--accent);
-  color: var(--bg);
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 1px 6px;
-  margin-right: 6px;
-  vertical-align: 1px;
-}
-
+/* развёрнутая карточка задачи (подборки): свойства блока */
 .task-props {
   margin-top: 6px;
   padding: 6px 10px;

@@ -175,6 +175,18 @@ pub fn priority_marker(p: Priority) -> &'static str {
     }
 }
 
+/// Строка CLOCK как в .md (без отступа): "CLOCK: [start]--[end] =>  dur"
+fn clock_source_line(c: &Clock) -> String {
+    let mut s = format!("CLOCK: [{}]", c.start);
+    if let Some(end) = &c.end {
+        s.push_str(&format!("--[{end}]"));
+    }
+    if let Some(d) = &c.duration {
+        s.push_str(&format!(" =>  {d}"));
+    }
+    s
+}
+
 impl Priority {
     /// [#A] → high, [#B] → medium, [#C] → low
     pub fn importance(self) -> Level {
@@ -601,9 +613,169 @@ impl Block {
         self.importance = self.props.get("importance").and_then(|v| parse_level(v));
     }
 
-    /// Меняет текст блока (без маркера/приоритета)
+    /// Меняет текст блока. Ведущий маркер приоритета `[#A]/[#B]/[#C]`
+    /// (как в Logseq) перепарсивается: уходит в priority и marker_str,
+    /// в content остаётся чистый текст.
     pub fn set_content(&mut self, content: &str) {
-        self.content = content.to_string();
+        let mut text = content;
+        let mut prio = None;
+        if let Some(rest) = text.strip_prefix("[#") {
+            if let Some(end) = rest.find(']') {
+                prio = match &rest[..end] {
+                    "A" => Some(Priority::A),
+                    "B" => Some(Priority::B),
+                    "C" => Some(Priority::C),
+                    _ => None,
+                };
+                if prio.is_some() {
+                    text = rest[end + 1..].trim_start();
+                }
+            }
+        }
+        if prio != self.priority {
+            self.set_priority(prio);
+        }
+        self.content = text.to_string();
+    }
+
+    /// Базовый отступ строк-продолжений: отступ блока + 2 пробела (как Logseq)
+    fn base_indent(&self) -> String {
+        format!("{}  ", self.raw.indent_str)
+    }
+
+    /// Отступ относительно базового: срезаем префикс base, если он есть
+    fn rel_indent<'a>(indent: &'a str, base: &str) -> &'a str {
+        indent.strip_prefix(base).unwrap_or(indent)
+    }
+
+    /// Строки-продолжения блока как редактируемый текст (без базового
+    /// отступа, в исходном порядке: свойства, :LOGBOOK:/CLOCK, сырые строки).
+    /// Хвостовые пустые строки (разделитель между блоками) не включаются.
+    pub fn source_lines(&self) -> Vec<String> {
+        let base = self.base_indent();
+        let mut lines: Vec<String> = Vec::new();
+        for t in &self.raw.trailing {
+            match t {
+                Trailing::Prop {
+                    indent,
+                    key,
+                    sep,
+                    value,
+                } => lines.push(format!(
+                    "{}{}{}{}",
+                    Self::rel_indent(indent, &base),
+                    key,
+                    sep,
+                    value
+                )),
+                Trailing::LogbookStart(indent) => {
+                    lines.push(format!("{}:LOGBOOK:", Self::rel_indent(indent, &base)))
+                }
+                Trailing::LogbookEnd(indent) => {
+                    lines.push(format!("{}:END:", Self::rel_indent(indent, &base)))
+                }
+                Trailing::Clock { indent, idx } => {
+                    if let Some(c) = self.logbook.get(*idx) {
+                        lines.push(format!(
+                            "{}{}",
+                            Self::rel_indent(indent, &base),
+                            clock_source_line(c)
+                        ));
+                    }
+                }
+                Trailing::Raw { indent, text } => {
+                    lines.push(format!("{}{}", Self::rel_indent(indent, &base), text))
+                }
+                Trailing::Blank => lines.push(String::new()),
+            }
+        }
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+        lines
+    }
+
+    /// Полный редактируемый текст блока (как в Logseq): `[#X] первая строка`
+    /// + строки-продолжения без базового отступа.
+    pub fn edit_source(&self) -> String {
+        let mut s = String::new();
+        if let Some(p) = self.priority {
+            s.push_str(priority_marker(p));
+            s.push(' ');
+        }
+        s.push_str(&self.content);
+        let extra = self.source_lines();
+        if !extra.is_empty() {
+            s.push('\n');
+            s.push_str(&extra.join("\n"));
+        }
+        s
+    }
+
+    /// Заменяет содержимое блока редактируемым текстом: первая строка —
+    /// контент с опциональным `[#X]`, дальше — свойства, :LOGBOOK:/CLOCK
+    /// и сырые строки (отступ = отступ блока + 2 пробела). Хвостовые пустые
+    /// строки-разделители блоков сохраняются.
+    pub fn set_source(&mut self, text: &str) {
+        let tail_blanks = self
+            .raw
+            .trailing
+            .iter()
+            .rev()
+            .take_while(|t| matches!(t, Trailing::Blank))
+            .count();
+
+        let mut lines = text.split('\n');
+        self.set_content(lines.next().unwrap_or(""));
+
+        let base = self.base_indent();
+        self.raw.trailing.clear();
+        self.props.clear();
+        self.logbook.clear();
+
+        for line in lines {
+            if line.trim().is_empty() {
+                self.raw.trailing.push(Trailing::Blank);
+                continue;
+            }
+            let trimmed_end = line.trim_end();
+            if trimmed_end.starts_with(":LOGBOOK:") {
+                self.raw.trailing.push(Trailing::LogbookStart(base.clone()));
+            } else if trimmed_end.starts_with(":END:") {
+                self.raw.trailing.push(Trailing::LogbookEnd(base.clone()));
+            } else if let Some(clock) = super::parser::parse_clock(trimmed_end) {
+                let idx = self.logbook.len();
+                self.logbook.push(clock);
+                self.raw.trailing.push(Trailing::Clock {
+                    indent: base.clone(),
+                    idx,
+                });
+            } else if let Some((key, sep, value)) = super::parser::parse_prop(line) {
+                if !key.is_empty() && !key.contains(char::is_whitespace) {
+                    self.props.insert(key.clone(), value.trim().to_string());
+                    self.raw.trailing.push(Trailing::Prop {
+                        indent: base.clone(),
+                        key,
+                        sep,
+                        value,
+                    });
+                } else {
+                    self.raw.trailing.push(Trailing::Raw {
+                        indent: base.clone(),
+                        text: line.to_string(),
+                    });
+                }
+            } else {
+                self.raw.trailing.push(Trailing::Raw {
+                    indent: base.clone(),
+                    text: line.to_string(),
+                });
+            }
+        }
+        for _ in 0..tail_blanks {
+            self.raw.trailing.push(Trailing::Blank);
+        }
+        self.refresh_levels();
     }
 
     /// Идёт ли сейчас отсчёт времени (есть CLOCK без конца)

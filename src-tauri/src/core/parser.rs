@@ -126,7 +126,7 @@ fn parse_bullet_line(rest: &str) -> (String, String, Option<Status>, Option<Prio
 /// sep — исходный фрагмент от `::` до начала значения, value — сырое
 /// значение после sep (без trim, хвостовые пробелы сохраняются для
 /// байт-точного round-trip).
-fn parse_prop(rest: &str) -> Option<(String, String, String)> {
+pub(crate) fn parse_prop(rest: &str) -> Option<(String, String, String)> {
     let (key, tail) = rest.split_once("::")?;
     let value_start = tail.len() - tail.trim_start().len();
     let (sp, value) = tail.split_at(value_start);
@@ -141,7 +141,7 @@ pub fn is_prop_line(line: &str) -> bool {
     }
 }
 
-fn parse_clock(line: &str) -> Option<Clock> {
+pub(crate) fn parse_clock(line: &str) -> Option<Clock> {
     // CLOCK: [2026-01-18 Sun 19:08:08]--[2026-01-19 Mon 17:35:18] =>  22:27:10
     let body = line.trim_start().strip_prefix("CLOCK:")?.trim();
     let (range, duration) = match body.split_once("=>") {

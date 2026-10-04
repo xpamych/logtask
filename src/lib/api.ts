@@ -25,6 +25,9 @@ export interface BlockDto {
   deadline: string | null;
   scheduled: string | null;
   extra: string[];
+  /** полный редактируемый текст блока (как в Logseq): [#X] + контент +
+   *  все строки-продолжения без базового отступа */
+  source: string;
 }
 
 export interface PageDto {

@@ -1,15 +1,19 @@
 import { For, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import type { TaskDto } from "~/lib/api";
-import { openExternal } from "~/lib/api";
+import type { Settings, TaskDto } from "~/lib/api";
+import { openExternal, taskSetPriority, taskSetStatus } from "~/lib/api";
 import { RichText } from "./RichText";
+import { StatusPrioDot } from "./StatusPrioDot";
 
 export function TaskCard(props: {
   task: TaskDto;
   onOpenPage?: (name: string, uuid?: string) => void;
   draggable?: boolean;
-  /** развёрнутый вид (подборки): чип статуса и свойства блока */
+  /** развёрнутый вид (подборки): + таблица свойств блока */
   detailed?: boolean;
+  settings?: Settings | null;
+  /** вызывается после смены статуса/приоритета из кружка */
+  onChanged?: () => void;
 }): JSX.Element {
   const t = props.task;
 
@@ -19,8 +23,26 @@ export function TaskCard(props: {
     e.dataTransfer.effectAllowed = "move";
   };
 
+  const onStatus = async (marker: string) => {
+    try {
+      await taskSetStatus(t.uuid, marker);
+      props.onChanged?.();
+    } catch (e) {
+      console.error("не удалось сменить статус:", e);
+    }
+  };
+
+  const onPriority = async (prio: string | null) => {
+    try {
+      await taskSetPriority(t.uuid, prio);
+      props.onChanged?.();
+    } catch (e) {
+      console.error("не удалось сменить приоритет:", e);
+    }
+  };
+
   return (
-    <button
+    <div
       class="task-card"
       classList={{
         "task-done": t.done,
@@ -32,13 +54,20 @@ export function TaskCard(props: {
       onDragStart={onDragStart}
       onClick={() => props.onOpenPage?.(t.page, t.uuid)}
     >
-      <div class="task-card-text">
-        <Show when={props.detailed && t.statusLabel}>
-          {(l) => <span class="task-status-chip">{l()}</span>}
-        </Show>
-        {t.content
-          ? <RichText text={t.content} onOpenPage={props.onOpenPage} />
-          : <span class="muted">·</span>}
+      <div class="task-card-head">
+        <StatusPrioDot
+          status={t.status}
+          priority={t.priority}
+          settings={props.settings}
+          onStatus={(m) => void onStatus(m)}
+          onPriority={(p) => void onPriority(p)}
+        />
+        <div class="task-card-text">
+          {t.content
+            ? <RichText text={t.content} onOpenPage={props.onOpenPage} />
+            : <span class="muted">·</span>}
+        </div>
+        <span class="task-page" title={t.page}>{t.page}</span>
       </div>
       <Show when={props.detailed && t.props.length > 0}>
         <div class="task-props">
@@ -67,26 +96,19 @@ export function TaskCard(props: {
           </For>
         </div>
       </Show>
-      <div class="task-card-meta">
-        <span class="task-page">{t.page}</span>
-        <Show when={t.priority}>
-          {(p) => <span class="task-priority">{p()}</span>}
-        </Show>
-        <Show when={t.urgency}>
-          {(u) => <span class="task-flag" title="срочность">⚡{u()}</span>}
-        </Show>
-        <Show when={t.importance}>
-          {(i) => <span class="task-flag" title="важность">★{i()}</span>}
-        </Show>
-        <Show when={t.deadline}>
-          {(d) => <span class="task-date">⏱ {d()}</span>}
-        </Show>
-      </div>
-      <Show when={t.tags.length > 0}>
-        <div class="task-tags">
-          <For each={t.tags.slice(0, 4)}>{(tag) => <span class="task-tag">#{tag}</span>}</For>
+      <Show when={t.urgency || t.importance || t.deadline}>
+        <div class="task-card-meta">
+          <Show when={t.urgency}>
+            {(u) => <span class="task-flag" title="срочность">⚡{u()}</span>}
+          </Show>
+          <Show when={t.importance}>
+            {(i) => <span class="task-flag" title="важность">★{i()}</span>}
+          </Show>
+          <Show when={t.deadline}>
+            {(d) => <span class="task-date">⏱ {d()}</span>}
+          </Show>
         </div>
       </Show>
-    </button>
+    </div>
   );
 }

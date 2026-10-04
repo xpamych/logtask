@@ -1,6 +1,6 @@
 import { For, Show, createSignal, createEffect } from "solid-js";
 import type { JSX } from "solid-js";
-import type { MatrixQuadrant } from "~/lib/api";
+import type { MatrixQuadrant, Settings } from "~/lib/api";
 import { matrix, taskSetQuadrant } from "~/lib/api";
 import { TaskCard } from "./TaskCard";
 
@@ -19,6 +19,7 @@ const PAGE_SIZE = 12;
 export function Matrix(props: {
   refreshKey: number;
   onOpenPage: (name: string, uuid?: string) => void;
+  settings?: Settings | null;
 }): JSX.Element {
   const [quadrants, setQuadrants] = createSignal<MatrixQuadrant[]>([]);
   const [loading, setLoading] = createSignal(false);
@@ -115,6 +116,8 @@ export function Matrix(props: {
                     <TaskCard
                       task={task}
                       draggable
+                      settings={props.settings}
+                      onChanged={() => void load()}
                       onOpenPage={props.onOpenPage}
                     />
                   )}

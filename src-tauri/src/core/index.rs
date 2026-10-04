@@ -330,14 +330,15 @@ impl Graph {
         })
     }
 
-    /// Меняет текст блока
+    /// Меняет текст блока целиком (контент + строки-продолжения, см.
+    /// Block::set_source)
     pub fn set_block_text(
         &mut self,
         id: &Uuid,
         content: &str,
         root: &Path,
     ) -> std::io::Result<Option<String>> {
-        self.mutate_block(id, root, |b| b.set_content(content))
+        self.mutate_block(id, root, |b| b.set_source(content))
     }
 
     /// Удаляет блок и его дочерние блоки

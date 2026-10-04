@@ -228,7 +228,13 @@ export function Queries(props: {
               <div class="query-body">
                 <For each={results()[q.title] ?? []}>
                   {(task) => (
-                    <TaskCard task={task} detailed onOpenPage={props.onOpenPage} />
+                    <TaskCard
+                      task={task}
+                      detailed
+                      settings={props.settings}
+                      onChanged={() => void load()}
+                      onOpenPage={props.onOpenPage}
+                    />
                   )}
                 </For>
                 <Show when={(results()[q.title]?.length ?? 0) === 0}>

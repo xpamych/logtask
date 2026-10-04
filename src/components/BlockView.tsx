@@ -2,6 +2,12 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { editingBlock, setEditingBlock } from "~/lib/editState";
 import { RichText } from "./RichText";
+import {
+  StatusPrioDot,
+  MARKERS,
+  MARKER_LABELS,
+  PRIORITIES,
+} from "./StatusPrioDot";
 import type { BlockDto, Settings } from "~/lib/api";
 import {
   blockSetProp,
@@ -13,31 +19,12 @@ import {
   taskSetQuadrant,
 } from "~/lib/api";
 
-const STATUS_COLORS: Record<string, string> = {
-  LATER: "#888888",
-  TODO: "#09bec8",
-  DOING: "#ff9800",
-  REVIEW: "#9b59b6",
-  DONE: "#4caf50",
-  CANCELED: "#f44336",
-};
-
 const QUADRANT_HINT: Record<string, string> = {
   high: "▲",
   medium: "◆",
   low: "·",
 };
 
-const MARKERS = ["TODO", "DOING", "LATER", "REVIEW", "DONE", "CANCELED"];
-const MARKER_LABELS: Record<string, string> = {
-  LATER: "Бэклог",
-  TODO: "К выполнению",
-  DOING: "В работе",
-  REVIEW: "На проверке",
-  DONE: "Выполнено",
-  CANCELED: "Отменено",
-};
-const PRIORITIES = ["A", "B", "C"];
 const LEVELS = ["low", "medium", "high"];
 const LEVEL_LABELS: Record<string, string> = {
   low: "низкая",
@@ -124,7 +111,8 @@ export function BlockView(props: {
   };
 
   const startEdit = () => {
-    setDraft(b.content);
+    // редактор правит блок целиком (как в Logseq): контент + продолжения
+    setDraft(b.source);
     setEditing(true);
     setEditingBlock(b.uuid);
     queueMicrotask(() => textareaEl?.focus());
@@ -146,7 +134,7 @@ export function BlockView(props: {
     // Enter прячет textarea → WebKit шлёт blur → повторный save: пропускаем
     if (saving()) return;
     const text = draft().trim();
-    if (!text || text === b.content) {
+    if (!text || text === b.source.trim()) {
       stopEdit();
       return;
     }
@@ -164,7 +152,7 @@ export function BlockView(props: {
 
   const cancel = () => {
     stopEdit();
-    setDraft(b.content);
+    setDraft(b.source);
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -193,8 +181,11 @@ export function BlockView(props: {
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey) {
+    // редактор многострочный: Enter — новая строка,
+    // сохранение — blur или mod+Enter (меню блока в редакторе не открываем)
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
+      e.stopPropagation();
       void save();
     } else if (e.key === "Escape") {
       e.preventDefault();
@@ -272,13 +263,12 @@ export function BlockView(props: {
       tabindex={-1}
       onKeyDown={onBlockKeyDown}
     >
-      <span
-        class="status-dot"
-        style={{
-          background: b.status ? (STATUS_COLORS[b.status] ?? "#888888") : "transparent",
-          visibility: b.status ? "visible" : "hidden",
-        }}
-        title={b.status ? statusLabel(b.status) : ""}
+      <StatusPrioDot
+        status={b.status}
+        priority={b.priority}
+        settings={props.settings}
+        onStatus={(m) => props.onStatusChange?.(b.uuid, m)}
+        onPriority={(p) => void onPriority(p)}
       />
       <div class="block-content">
         <Show
@@ -337,7 +327,6 @@ export function BlockView(props: {
           {b.importance && QUADRANT_HINT[b.importance]}
         </span>
       )}
-      {b.priority && <span class="priority-badge">{b.priority}</span>}
       <Show when={b.clockRunning}>
         <span class="clock-running" title="идёт отсчёт времени">
           ●

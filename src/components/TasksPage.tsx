@@ -90,7 +90,11 @@ export function TasksPage(props: {
           <Show
             when={boardView() === "Канбан"}
             fallback={
-              <Matrix refreshKey={props.refreshKey} onOpenPage={props.onOpenPage} />
+              <Matrix
+                refreshKey={props.refreshKey}
+                onOpenPage={props.onOpenPage}
+                settings={props.settings}
+              />
             }
           >
             <Kanban

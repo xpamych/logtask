@@ -199,11 +199,43 @@ fn update_text_preserves_marker_and_props() {
     graph.index_dir(&dir).unwrap();
     let (id, _) = graph.all_tasks().into_iter().next().expect("есть задача");
 
-    graph.set_block_text(&id, "новый текст", &dir).unwrap();
+    // текст — весь блок целиком (как в Logseq): приоритет и свойства —
+    // часть текста, фронтенд шлёт их как есть
+    graph
+        .set_block_text(&id, "[#B] новый текст\nurgency:: high", &dir)
+        .unwrap();
 
     let after = fs::read_to_string(&file).unwrap();
     assert!(after.contains("- TODO [#B] новый текст"), "{after}");
     assert!(after.contains("urgency:: high"), "{after}");
+}
+
+#[test]
+fn update_text_edits_continuation_lines() {
+    let dir = std::env::temp_dir().join("logtask_text_extra_test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("journals")).unwrap();
+    let file = dir.join("journals/2026_10_05.md");
+    fs::write(
+        &file,
+        "- TODO [#B] заметка\n  urgency:: high\n  ```text\n  line1\n  ```\n",
+    )
+    .unwrap();
+
+    let mut graph = Graph::default();
+    graph.index_dir(&dir).unwrap();
+    let (id, _) = graph.all_tasks().into_iter().next().expect("есть задача");
+
+    // правим строки-продолжения: код изменён, свойство удалено
+    graph
+        .set_block_text(&id, "[#B] заметка\n```text\nline1 changed\n```", &dir)
+        .unwrap();
+
+    let after = fs::read_to_string(&file).unwrap();
+    assert_eq!(
+        after,
+        "- TODO [#B] заметка\n  ```text\n  line1 changed\n  ```\n"
+    );
 }
 
 #[test]

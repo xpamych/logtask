@@ -203,6 +203,8 @@ export function Kanban(props: {
                   <TaskCard
                     task={task}
                     draggable
+                    settings={props.settings}
+                    onChanged={() => void load()}
                     onOpenPage={props.onOpenPage}
                   />
                 )}
