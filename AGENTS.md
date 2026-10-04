@@ -50,10 +50,11 @@ Logtask — десктоп-приложение: лёгкая замена Logse
      (`RwLock<Option<Graph>>`).
 3. **Интерфейс (SolidJS + TypeScript + Vite)** — `src/`:
    - `App.tsx` — корневой layout: сайдбар, центр (лента журнала или страница),
-     правая панель (Канбан / Матрица / Запросы).
+     правая панель (Оглавление открытой страницы).
    - `components/` — `JournalTape`, `PageView`, `BlockView` (textarea
-     редактирование блоков), `Kanban`, `Matrix`, `Queries`, `QueryEditor`,
-     `Sidebar`, `SettingsModal`, `TaskCard`.
+     редактирование блока целиком), `Contents` (оглавление правой панели),
+     `StatusPrioDot` (кружок статуса/приоритета с попапом), `TaskCard`,
+     `Kanban`, `Matrix`, `Queries`, `QueryEditor`, `Sidebar`, `SettingsModal`.
    - `lib/api.ts` — типизированные обёртки над `invoke()` для каждой
      IPC-команды. Новую команду добавляй и туда.
    - Стили — один файл `public/styles/global.css` с CSS-переменными и темами

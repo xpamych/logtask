@@ -361,6 +361,64 @@ body.panel-resizing {
   color: var(--fg-muted);
 }
 
+/* ---- Оглавление страницы (правая панель) ---- */
+
+.contents {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.contents-title {
+  font-weight: 600;
+  font-size: 12px;
+  padding: 2px 8px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contents-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-size: 12px;
+  text-align: left;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.contents-item:hover {
+  background: var(--bg-alt);
+}
+
+.contents-h1 .contents-text {
+  font-weight: 600;
+}
+
+.contents-h2 .contents-text {
+  font-weight: 500;
+}
+
+.contents-h4 .contents-text,
+.contents-h5 .contents-text,
+.contents-h6 .contents-text {
+  color: var(--fg-muted);
+}
+
+.contents-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .block {
   position: relative;
   padding: 3px 8px 3px 0;

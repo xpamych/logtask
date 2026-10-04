@@ -63,8 +63,14 @@ export function parseSegments(input: string): TextSegment[] {
   return segments;
 }
 
-/** Имя журнала "2026_09_11" → человекочитаемая дата */
-export function formatJournalName(name: string): string {
+/** Имя страницы сегодняшнего дня: "2026_10_04" */
+export function todayJournalName(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}_${pad(d.getMonth() + 1)}_${pad(d.getDate())}`;
+}
+
+/** Имя журнала "2026_09_11" → человекочитаемая дата */export function formatJournalName(name: string): string {
   const match = /^(\d{4})_(\d{2})_(\d{2})$/.exec(name);
   if (!match) return name;
   const [, y, mo, d] = match;

@@ -12,6 +12,7 @@ import {
   settingsSave,
 } from "~/lib/api";
 import { AllPages } from "~/components/AllPages";
+import { Contents } from "~/components/Contents";
 import { JournalTape } from "~/components/JournalTape";
 import { PageView } from "~/components/PageView";
 import PanelResizer from "~/components/PanelResizer";
@@ -396,7 +397,11 @@ const App: Component = () => {
                 <button class="tab active">Оглавление</button>
               </div>
               <div class="taskpanel-body">
-                <div class="placeholder">Скоро: оглавление текущей страницы</div>
+                <Contents
+                  page={current()}
+                  refreshKey={refreshKey()}
+                  onOpenPage={openPage}
+                />
                 <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>
               </div>
             </aside>
