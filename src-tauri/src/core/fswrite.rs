@@ -44,3 +44,11 @@ pub fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
     }
     result
 }
+
+/// Создаёт пустую структуру графа с нуля: сам каталог + `journals/` +
+/// `pages/`. Идемпотентно: существующие каталоги и файлы не трогаются.
+pub fn scaffold_graph(root: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(root.join("journals"))?;
+    std::fs::create_dir_all(root.join("pages"))?;
+    Ok(())
+}

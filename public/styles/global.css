@@ -1526,8 +1526,15 @@ body.panel-resizing {
   color: var(--fg-muted);
   line-height: 1.5;
 }
-.welcome-pick {
+.welcome-actions {
+  display: flex;
+  gap: 12px;
   margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.welcome-pick {
   padding: 12px 28px;
   font-size: 16px;
   background: var(--accent);
@@ -1536,6 +1543,13 @@ body.panel-resizing {
   border-radius: 8px;
   cursor: pointer;
 }
+
+.welcome-pick.secondary {
+  background: var(--bg-alt);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
 .welcome-pick:hover {
   filter: brightness(1.1);
 }

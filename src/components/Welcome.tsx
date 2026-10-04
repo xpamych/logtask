@@ -1,5 +1,6 @@
 interface Props {
   onPick: () => void;
+  onCreate: () => void;
 }
 
 export default function Welcome(props: Props) {
@@ -39,12 +40,18 @@ export default function Welcome(props: Props) {
         данных — файлы остаются источником истины.
       </p>
       <p class="welcome-text">
-        Для начала выберите папку графа — каталог с файлами Logseq (внутри
-        обычно есть journals/ и pages/).
+        Для начала выберите папку существующего графа — каталог с файлами
+        Logseq (внутри обычно есть journals/ и pages/) — или создайте новый
+        граф с нуля: в выбранной папке появятся пустые journals/ и pages/.
       </p>
-      <button class="welcome-pick" onClick={props.onPick}>
-        Выбрать папку графа
-      </button>
+      <div class="welcome-actions">
+        <button class="welcome-pick" onClick={props.onPick}>
+          Выбрать папку графа
+        </button>
+        <button class="welcome-pick secondary" onClick={props.onCreate}>
+          Создать новый граф
+        </button>
+      </div>
     </div>
   );
 }

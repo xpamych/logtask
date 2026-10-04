@@ -62,6 +62,8 @@ pub fn run() {
             commands::recent_remove,
             commands::asset_data_url,
             commands::pick_graph_dir,
+            commands::graph_create,
+            commands::graph_needs_scaffold,
             commands::ping,
         ])
         .setup(|app| {

@@ -1115,19 +1115,44 @@ pub fn recent_remove(path: String) {
 
 /// Диалог выбора папки графа (нативный)
 #[tauri::command]
-pub async fn pick_graph_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
+pub async fn pick_graph_dir(
+    app: tauri::AppHandle,
+    title: Option<String>,
+) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = std::sync::mpsc::channel();
     app.dialog()
         .file()
-        .set_title("Выбрать папку графа Logseq")
+        .set_title(title.as_deref().unwrap_or("Выбрать папку графа Logseq"))
         .pick_folder(move |folder| {
             let _ = tx.send(folder);
         });
 
     let result = rx.recv().map_err(|e| format!("ошибка диалога: {e}"))?;
     Ok(result.map(|f| f.to_string()))
+}
+
+/// Создаёт пустую структуру графа с нуля (journals/ + pages/)
+/// в выбранной папке. Существующие файлы не трогаются.
+#[tauri::command]
+pub async fn graph_create(path: String) -> Result<(), String> {
+    let root = std::path::Path::new(&path);
+    if root.exists() && !root.is_dir() {
+        return Err(format!("не папка: {path}"));
+    }
+    crate::core::fswrite::scaffold_graph(root).map_err(|e| format!("не удалось создать граф: {e}"))
+}
+
+/// true, если в папке нет ни journals/, ни pages/ — кандидат на создание
+/// нового графа (спросить пользователя перед scaffold)
+#[tauri::command]
+pub async fn graph_needs_scaffold(path: String) -> Result<bool, String> {
+    let root = std::path::Path::new(&path);
+    if !root.is_dir() {
+        return Ok(true);
+    }
+    Ok(!root.join("journals").is_dir() && !root.join("pages").is_dir())
 }
 
 /// Запросы по умолчанию (пока config.edn не импортирован)

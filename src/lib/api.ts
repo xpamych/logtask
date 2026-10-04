@@ -247,8 +247,18 @@ export async function recentRemove(path: string): Promise<void> {
   await invoke<void>("recent_remove", { path });
 }
 
-export async function pickGraphDir(): Promise<string | null> {
-  return invoke<string | null>("pick_graph_dir");
+export async function pickGraphDir(title?: string): Promise<string | null> {
+  return invoke<string | null>("pick_graph_dir", { title: title ?? null });
+}
+
+/** Создаёт пустую структуру графа (journals/ + pages/) в выбранной папке */
+export async function graphCreate(path: string): Promise<void> {
+  return invoke<void>("graph_create", { path });
+}
+
+/** true, если в папке нет ни journals/, ни pages/ — кандидат на новый граф */
+export async function graphNeedsScaffold(path: string): Promise<boolean> {
+  return invoke<boolean>("graph_needs_scaffold", { path });
 }
 
 export async function search(query: string): Promise<SearchHit[]> {

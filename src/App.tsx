@@ -3,7 +3,9 @@ import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { GraphSummary, Settings } from "~/lib/api";
 import {
   graphClose,
+  graphCreate,
   graphLoad,
+  graphNeedsScaffold,
   graphSummary,
   pageList,
   pickGraphDir,
@@ -269,6 +271,14 @@ const App: Component = () => {
   const openGraph = async (path: string) => {
     setError(null);
     try {
+      // папка без journals/ и pages/ — предлагаем создать граф с нуля
+      if (await graphNeedsScaffold(path)) {
+        const ok = confirm(
+          `В папке «${path}» нет journals/ и pages/.\nСоздать здесь новый граф?`,
+        );
+        if (!ok) return;
+        await graphCreate(path);
+      }
       const s = await graphLoad(path);
       setSummary(s);
       setGraphClosed(false);
@@ -312,12 +322,26 @@ const App: Component = () => {
     if (path) await openGraph(path);
   };
 
+  // новый граф с нуля: выбор папки → scaffold (journals/ + pages/) → открытие
+  const createGraph = async () => {
+    const path = await pickGraphDir("Выбрать папку для нового графа");
+    if (!path) return;
+    setError(null);
+    try {
+      await graphCreate(path);
+    } catch (e) {
+      setError(String(e));
+      return;
+    }
+    await openGraph(path);
+  };
+
   const gridCols = () =>
     `${sidebarCollapsed() ? 0 : sidebarW()}px ${sidebarCollapsed() ? 0 : 5}px 1fr ` +
     `${panelCollapsed() ? 0 : 5}px ${panelCollapsed() ? 0 : panelW()}px`;
 
   return (
-    <Show when={!graphNotChosen()} fallback={<Welcome onPick={pickGraph} />}>
+    <Show when={!graphNotChosen()} fallback={<Welcome onPick={pickGraph} onCreate={createGraph} />}>
       <div class="shell">
         <Topbar
           onOpenPage={openPage}
