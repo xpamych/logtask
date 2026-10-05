@@ -197,9 +197,8 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
     {
         let src_state = sync_state.sources.entry(cfg.id.clone()).or_default();
         src_state.last_sync = Some(chrono::Local::now().to_rfc3339());
-        if report.error.is_none() {
-            src_state.last_error = None;
-        }
+        // фиксируем итоговую ошибку (push/merge), иначе save затрёт record_error
+        src_state.last_error = report.error.clone();
     }
     let _ = state::save(&root, &sync_state);
 
