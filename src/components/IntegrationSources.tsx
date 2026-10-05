@@ -95,7 +95,6 @@ export function IntegrationSources(props: {
 
   return (
     <>
-      <div class="settings-section">Интеграции</div>
       <p class="integration-hint">
         Синхронизация задач из внешних источников на страницы графа. Токены
         хранятся в системном хранилище ключей, в настройках — только имена.
