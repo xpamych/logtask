@@ -5,6 +5,7 @@ pub mod config;
 pub mod jsonpath;
 pub mod remote;
 pub mod secrets;
+pub mod state;
 
 /// FNV-1a хэш в hex — для ключей keyring и отпечатков блоков
 pub(crate) fn fnv1a_hex(data: &[u8]) -> String {
