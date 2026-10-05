@@ -2,6 +2,7 @@
 //! Двусторонняя: fetch → merge → запись страниц; push статусов на сервер.
 
 pub mod config;
+pub mod http;
 pub mod jsonpath;
 pub mod remote;
 pub mod secrets;
