@@ -7,6 +7,7 @@ import {
   graphLoad,
   graphNeedsScaffold,
   graphSummary,
+  integrationsSync,
   pageList,
   pickGraphDir,
   ping,
@@ -89,8 +90,8 @@ const App: Component = () => {
 
   const runSync = async () => {
     setSyncing(true);
+    manualSync = true;
     try {
-      const { integrationsSync } = await import("~/lib/api");
       const reports = await integrationsSync();
       const conflicts = reports.reduce((n, r) => n + r.conflicts, 0);
       setSyncConflicts(conflicts);
@@ -110,6 +111,7 @@ const App: Component = () => {
     } catch (e) {
       showToast(`Синхронизация не удалась: ${e}`);
     } finally {
+      manualSync = false;
       setSyncing(false);
     }
   };
@@ -288,7 +290,11 @@ const App: Component = () => {
   });
 
   let unlistenGraph: (() => void) | undefined;
-  onCleanup(() => unlistenGraph?.());
+  const unlistenSync: (() => void)[] = [];
+  onCleanup(() => {
+    unlistenGraph?.();
+    unlistenSync.forEach((u) => u());
+  });
 
   const listenGraphChanged = async () => {
     try {
@@ -309,21 +315,25 @@ const App: Component = () => {
   };
 
   // фоновые синки интеграций (по интервалу/при открытии графа) — прогресс и ошибки
+  // ручной синк (кнопка ⟳) сам показывает итог — его события не дублируем
+  let manualSync = false;
   const listenSyncEvents = async () => {
     try {
       const { listen } = await import("@tauri-apps/api/event");
-      await listen("sync-started", () => setSyncing(true));
-      await listen<{ source: string; conflicts: number; error?: string }>(
-        "sync-finished",
-        (e) => {
-          setSyncing(false);
-          if (e.payload.error) {
-            showToast(`Синхронизация «${e.payload.source}»: ${e.payload.error}`);
-          }
-          if (e.payload.conflicts > 0) {
-            setSyncConflicts((n) => n + e.payload.conflicts);
-          }
-        },
+      unlistenSync.push(await listen("sync-started", () => setSyncing(true)));
+      unlistenSync.push(
+        await listen<{ source: string; conflicts: number; error?: string }>(
+          "sync-finished",
+          (e) => {
+            setSyncing(false);
+            if (!manualSync && e.payload.error) {
+              showToast(`Синхронизация «${e.payload.source}»: ${e.payload.error}`);
+            }
+            if (!manualSync && e.payload.conflicts > 0) {
+              setSyncConflicts((n) => n + e.payload.conflicts);
+            }
+          },
+        ),
       );
     } catch {
       /* вне Tauri */

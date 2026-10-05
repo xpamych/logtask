@@ -113,7 +113,10 @@ export function IntegrationSources(props: {
               />
               <button
                 class="integration-title"
-                onClick={() => setOpenId(openId() === s.id ? null : s.id)}
+                onClick={() => {
+                  setTokenDraft("");
+                  setOpenId(openId() === s.id ? null : s.id);
+                }}
               >
                 {s.name || s.id} <span class="integration-kind">{KIND_LABELS[s.type] ?? s.type}</span>
               </button>
