@@ -1290,6 +1290,7 @@ body.panel-resizing {
 
 .settings-btn {
   flex: none;
+  position: relative;
   width: 30px;
   height: 30px;
   background: var(--bg-alt);
@@ -1956,7 +1957,6 @@ body.panel-resizing {
 
 .settings-btn.spin {
   animation: sync-spin 1s linear infinite;
-  position: relative;
 }
 
 .sync-badge {
