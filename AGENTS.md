@@ -48,6 +48,9 @@ Logtask — десктоп-приложение: лёгкая замена Logse
      `logseq/config.edn`.
    - `recent.rs` — список недавних графов; `state.rs` — `AppState`
      (`RwLock<Option<Graph>>`).
+   - `sync/` — интеграции: синхронизация задач из внешних API и git-форжей
+     (docs/05-integrations.md). Токены — в системном keyring (крейт keyring),
+     в settings.json только имена. Состояние — `.logtask/integrations-state.json`.
 3. **Интерфейс (SolidJS + TypeScript + Vite)** — `src/`:
    - `App.tsx` — корневой layout: сайдбар, центр (лента журнала или страница),
      правая панель (Оглавление открытой страницы).
@@ -73,9 +76,12 @@ tsconfig.json         — strict TS, jsxImportSource: solid-js
 index.html            — точка входа Vite (подключает /styles/global.css)
 src/                  — фронтенд SolidJS
 public/styles/        — global.css (копируется в dist как есть)
-docs/                 — архитектура (01), формат md (02), UI (03), роадмап (04)
+docs/                 — архитектура (01), формат md (02), UI (03), роадмап (04),
+                        интеграции (05)
 src-tauri/            — Rust-крейт logtask (lib: logtask_lib, bin: main.rs)
   src/core/           — ядро (парсер/модель/индекс/query/сериализация/запись)
+  src/sync/           — интеграции: адаптеры generic/форжей, merge, state,
+                        секреты (keyring), HTTP
   tests/              — интеграционные тесты + fixtures/graph (реальные файлы)
   examples/bench_graph.rs — бенчмарк индексации реального графа
   capabilities/default.json — разрешения Tauri (без fs-плагина: core:default,
@@ -124,6 +130,9 @@ cargo test --workspace
   - `import_real.rs`, `status_real.rs`, `matrix_real.rs` — тесты на реальном
     графе; путь задаётся переменной окружения `LOGTASK_GRAPH`, без неё тесты
     пропускаются (они и так `#[ignore]`).
+- Тесты интеграций (`src/sync/`) — HTTP-моки через wiremock (dev-зависимость);
+  секреты в тестах подставляются из `LOGTASK_SECRET_<ИМЯ>` (без системного
+  keyring).
 
 У фронтенда тестов нет. Проверка фронтенда — типизация: `npm run typecheck`
 (запускается и внутри `npm run build`).
@@ -136,6 +145,8 @@ cargo test --workspace
   `cargo fmt --check` и `clippy -D warnings` — перед коммитом прогоняй
   `cargo fmt` и `cargo clippy`. Ошибки команд возвращаются как
   `Result<T, String>` для IPC. Мьютексы — `parking_lot::RwLock`.
+  Зависимости интеграций: HTTP — reqwest (rustls, без OpenSSL), async —
+  tokio, токены — keyring.
 - **TypeScript**: strict (`strict`, `noUnusedLocals`, `noUnusedParameters`,
   `verbatimModuleSyntax`). Импорты через алиас `~/*` → `src/*`.
   SolidJS-идиомы: `createSignal`/`createEffect`, `<For>`/`<Show>`,

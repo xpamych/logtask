@@ -7,6 +7,10 @@
 - **Хост-приложение (Tauri 2, `src-tauri`)**: создание окна, IPC-команды,
   файловый watcher, логирование. webkit2gtk-4.1 (уже установлен).
   Tray и глобальные хоткеи не реализованы — фаза 7.
+  - `sync/` — синхронизация задач с внешними источниками (docs/05-integrations.md):
+    адаптеры generic/gitea/github/gitlab, merge с защитой от конфликтов,
+    состояние в `.logtask/integrations-state.json`, токены в системном keyring.
+    Запись в граф — только через Graph::mutate_block/append_block/delete_block.
 - **Интерфейс (SolidJS + TypeScript, Vite, `src/`)**: лента журнала, канбан,
   матрица, настройки. SolidJS — мелкозернистая реактивность (без Virtual DOM),
   рендерит только то, что изменилось.
@@ -77,11 +81,14 @@ Backlinks — обратный индекс `page-name → ссылающиес�
 - Правки: `task_set_status`, `task_set_quadrant`, `task_set_priority`,
   `block_update_text`, `block_delete`, `block_create`, `block_set_prop`
 - CLOCK: `clock_start`, `clock_stop`
+- Интеграции: `integrations_states`, `integrations_set_secret`,
+  `integrations_test`, `integrations_sync`
 - Настройки/прочее: `settings_get`, `settings_save`, `recent_graphs`,
   `pick_graph_dir`, `ping`
 - Событие: `graph-changed` (payload `GraphSummary` — счётчики
   pages/journals/blocks/tasks/backlinks + root); эмитится после любой
-  переиндексации (watcher и команды записи).
+  переиндексации (watcher и команды записи). Прогресс синка —
+  события `sync-started` / `sync-finished`.
 
 ## Файлы состояния приложения
 - `<граф>/.logtask/settings.json` — настройки графа (`settings.rs`):
@@ -89,6 +96,8 @@ Backlinks — обратный индекс `page-name → ссылающиес�
   `kanbanLimit`, `statuses` (маркер/label/цвет/visible/shortcut, порядок
   канбана).
 - `<граф>/.logtask/queries.json` — сохранённые запросы (вкладка «Запросы»).
+- `<граф>/.logtask/integrations-state.json` — состояние синхронизации
+  интеграций (последний синк/ошибка по источникам, отпечатки задач).
 - `~/.config/logtask/recent.json` — список недавних графов.
 - `~/.config/logtask/logs/` — логи (tauri-plugin-log).
 
@@ -107,4 +116,5 @@ Backlinks — обратный индекс `page-name → ссылающиес�
   и создание — фаза 7
 - tray, глобальные горячие клавиши — фаза 7
 - whiteboards, PDF, flashcards
-- встроенная синхронизация
+- встроенная синхронизация графа между устройствами (используйте Syncthing;
+  синхронизация задач с внешними API — см. docs/05-integrations.md)
