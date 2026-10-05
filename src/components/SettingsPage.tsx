@@ -24,6 +24,9 @@ const HOME_VIEWS = [
   { value: "pages", label: "Все страницы" },
 ];
 
+// кегль в пунктах: база 14px при fontScale 1.0, 1pt = 4/3 px → pt = scale * 10.5
+const fontPt = (scale: number) => Math.round(scale * 10.5 * 2) / 2;
+
 /** Страница настроек: один активный раздел, автосохранение через onChange */
 export function SettingsPage(props: {
   settings: Settings;
@@ -111,15 +114,17 @@ export function SettingsPage(props: {
 
         <label class="settings-row">
           <span class="settings-label">
-            Размер шрифта ({props.settings.fontScale.toFixed(2)})
+            Размер шрифта ({fontPt(props.settings.fontScale)} pt)
           </span>
           <input
             type="range"
-            min="0.85"
-            max="1.4"
-            step="0.05"
-            value={props.settings.fontScale}
-            onInput={(e) => patch({ fontScale: Number(e.currentTarget.value) })}
+            min="9"
+            max="15"
+            step="0.5"
+            value={fontPt(props.settings.fontScale)}
+            onInput={(e) =>
+              patch({ fontScale: Number(e.currentTarget.value) / 10.5 })
+            }
           />
         </label>
 
