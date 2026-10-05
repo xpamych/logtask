@@ -1288,23 +1288,6 @@ body.panel-resizing {
 
 /* ---- Настройки ---- */
 
-.settings-btn {
-  flex: none;
-  position: relative;
-  width: 30px;
-  height: 30px;
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  color: var(--fg-muted);
-  font-size: 15px;
-  cursor: pointer;
-}
-
-.settings-btn:hover {
-  color: var(--fg);
-}
-
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1955,7 +1938,11 @@ body.panel-resizing {
   }
 }
 
-.settings-btn.spin {
+.sync-btn {
+  position: relative;
+}
+
+.sync-btn.spin {
   animation: sync-spin 1s linear infinite;
 }
 

@@ -18,6 +18,10 @@ export function Topbar(props: {
   onBack: () => void;
   onForward: () => void;
   onHome: () => void;
+  /** ручная синхронизация интеграций */
+  onSync: () => void;
+  syncing: boolean;
+  syncConflicts: number;
 }): JSX.Element {
   const [win, setWin] = createSignal<Win | null>(null);
 
@@ -58,6 +62,17 @@ export function Topbar(props: {
       </button>
       <button class="topbar-btn" title="Домой" onClick={props.onHome}>
         ⌂
+      </button>
+      <button
+        class="topbar-btn sync-btn"
+        classList={{ spin: props.syncing }}
+        title="Синхронизировать задачи из интеграций"
+        onClick={props.onSync}
+      >
+        ⟳
+        <Show when={props.syncConflicts > 0}>
+          <span class="sync-badge">{props.syncConflicts}</span>
+        </Show>
       </button>
       <div class="topbar-search">
         <SearchBar onOpenPage={props.onOpenPage} />

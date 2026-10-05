@@ -467,6 +467,9 @@ const App: Component = () => {
           onBack={goBack}
           onForward={goForward}
           onHome={showHome}
+          onSync={() => void runSync()}
+          syncing={syncing()}
+          syncConflicts={syncConflicts()}
         />
         <div class="app" style={{ "grid-template-columns": gridCols() }}>
           <Show when={!sidebarCollapsed()}>
@@ -485,9 +488,6 @@ const App: Component = () => {
               onOpenSettings={showSettingsView}
               onOpenGraph={openGraph}
               onCloseGraph={() => void closeGraph()}
-              onSync={() => void runSync()}
-              syncing={syncing()}
-              syncConflicts={syncConflicts()}
             />
             <PanelResizer side="left" start={sidebarW} onResize={setSidebarW} onCommit={commitWidths} />
           </Show>

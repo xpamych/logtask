@@ -23,9 +23,6 @@ export function Sidebar(props: {
   onOpenSettings: (section: SettingsSection) => void;
   onOpenGraph: (path: string) => void;
   onCloseGraph: () => void;
-  onSync: () => void;
-  syncing: boolean;
-  syncConflicts: number;
 }): JSX.Element {
   const [recents, setRecents] = createSignal<RecentGraph[]>([]);
   const [graphMenu, setGraphMenu] = createSignal(false);
@@ -81,17 +78,6 @@ export function Sidebar(props: {
         >
           <span class="graph-switch-name">{graphName()}</span>
           <span class="caret">{graphMenu() ? "▴" : "▾"}</span>
-        </button>
-        <button
-          class="settings-btn"
-          classList={{ spin: props.syncing }}
-          title="Синхронизировать задачи из интеграций"
-          onClick={props.onSync}
-        >
-          ⟳
-          <Show when={props.syncConflicts > 0}>
-            <span class="sync-badge">{props.syncConflicts}</span>
-          </Show>
         </button>
       </div>
 
