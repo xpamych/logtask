@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onMount } from "solid-js";
+import { createSignal, Index, For, Show, onMount } from "solid-js";
 import type { SourceConfig, SourceState } from "~/lib/api";
 import {
   integrationsSetSecret,
@@ -100,56 +100,58 @@ export function IntegrationSources(props: {
         хранятся в системном хранилище ключей, в настройках — только имена.
       </p>
 
-      <For each={props.sources}>
+      {/* Index, не For: иначе каждая правка (новые объекты источников)
+          пересоздаёт DOM-узлы и сбивает фокус ввода */}
+      <Index each={props.sources}>
         {(s, idx) => (
           <div class="integration">
             <div class="integration-head">
               <input
                 type="checkbox"
-                checked={s.enabled}
+                checked={s().enabled}
                 title="Включён"
-                onChange={(e) => update(idx(), { enabled: e.currentTarget.checked })}
+                onChange={(e) => update(idx, { enabled: e.currentTarget.checked })}
               />
               <button
                 class="integration-title"
                 onClick={() => {
                   setTokenDraft("");
-                  setOpenId(openId() === s.id ? null : s.id);
+                  setOpenId(openId() === s().id ? null : s().id);
                 }}
               >
-                {s.name || s.id} <span class="integration-kind">{KIND_LABELS[s.type] ?? s.type}</span>
+                {s().name || s().id} <span class="integration-kind">{KIND_LABELS[s().type] ?? s().type}</span>
               </button>
-              <Show when={stateOf(s.id)?.lastError}>
-                <span class="integration-error" title={stateOf(s.id)?.lastError ?? ""}>
+              <Show when={stateOf(s().id)?.lastError}>
+                <span class="integration-error" title={stateOf(s().id)?.lastError ?? ""}>
                   ошибка
                 </span>
               </Show>
               <span class="integration-last">
-                {stateOf(s.id)?.lastSync
-                  ? new Date(stateOf(s.id)!.lastSync!).toLocaleString("ru-RU")
+                {stateOf(s().id)?.lastSync
+                  ? new Date(stateOf(s().id)!.lastSync!).toLocaleString("ru-RU")
                   : "ещё не синхронизирован"}
               </span>
             </div>
 
-            <Show when={openId() === s.id}>
+            <Show when={openId() === s().id}>
               <div class="integration-form">
                 <label class="settings-row">
                   <span class="settings-label">Название</span>
                   <input
                     class="settings-select"
-                    value={s.name}
-                    onInput={(e) => update(idx(), { name: e.currentTarget.value })}
+                    value={s().name}
+                    onInput={(e) => update(idx, { name: e.currentTarget.value })}
                   />
                 </label>
 
-                <Show when={s.type === "generic"}>
+                <Show when={s().type === "generic"}>
                   <label class="settings-row">
                     <span class="settings-label">Страница</span>
                     <input
                       class="settings-select"
                       placeholder="PPDB - TODO"
-                      value={s.page}
-                      onInput={(e) => update(idx(), { page: e.currentTarget.value })}
+                      value={s().page}
+                      onInput={(e) => update(idx, { page: e.currentTarget.value })}
                     />
                   </label>
                   <label class="settings-row">
@@ -157,8 +159,8 @@ export function IntegrationSources(props: {
                     <input
                       class="settings-select"
                       placeholder="https://…/api/tasks"
-                      value={s.url}
-                      onInput={(e) => update(idx(), { url: e.currentTarget.value })}
+                      value={s().url}
+                      onInput={(e) => update(idx, { url: e.currentTarget.value })}
                     />
                   </label>
                   <label class="settings-row">
@@ -166,8 +168,8 @@ export function IntegrationSources(props: {
                     <input
                       class="settings-select"
                       placeholder="$.tasks[*]"
-                      value={s.itemsPath}
-                      onInput={(e) => update(idx(), { itemsPath: e.currentTarget.value })}
+                      value={s().itemsPath}
+                      onInput={(e) => update(idx, { itemsPath: e.currentTarget.value })}
                     />
                   </label>
                   <p class="integration-hint">
@@ -177,23 +179,23 @@ export function IntegrationSources(props: {
                   </p>
                 </Show>
 
-                <Show when={s.type !== "generic"}>
+                <Show when={s().type !== "generic"}>
                   <label class="settings-row">
                     <span class="settings-label">Адрес сервера</span>
                     <input
                       class="settings-select"
-                      placeholder={s.type === "github" ? "https://api.github.com" : "https://git.example.com"}
-                      value={s.baseUrl}
-                      onInput={(e) => update(idx(), { baseUrl: e.currentTarget.value })}
+                      placeholder={s().type === "github" ? "https://api.github.com" : "https://git.example.com"}
+                      value={s().baseUrl}
+                      onInput={(e) => update(idx, { baseUrl: e.currentTarget.value })}
                     />
                   </label>
                   <label class="settings-row">
                     <span class="settings-label">Репозитории (owner/repo, через запятую)</span>
                     <input
                       class="settings-select"
-                      value={s.repos.join(", ")}
+                      value={s().repos.join(", ")}
                       onInput={(e) =>
-                        update(idx(), {
+                        update(idx, {
                           repos: e.currentTarget.value
                             .split(",")
                             .map((r) => r.trim())
@@ -207,13 +209,13 @@ export function IntegrationSources(props: {
                     <input
                       class="settings-select"
                       placeholder="gitea-alr"
-                      value={s.tokenRef ?? ""}
-                      onInput={(e) => update(idx(), { tokenRef: e.currentTarget.value || null })}
+                      value={s().tokenRef ?? ""}
+                      onInput={(e) => update(idx, { tokenRef: e.currentTarget.value || null })}
                     />
                   </label>
                   <label class="settings-row">
                     <span class="settings-label">
-                      Токен {stateOf(s.id)?.secretSet ? "(задан)" : "(не задан)"}
+                      Токен {stateOf(s().id)?.secretSet ? "(задан)" : "(не задан)"}
                     </span>
                     <input
                       class="settings-select"
@@ -225,7 +227,7 @@ export function IntegrationSources(props: {
                   </label>
                   <div class="settings-row">
                     <span class="settings-label" />
-                    <button class="btn" onClick={() => saveToken(s)}>
+                    <button class="btn" onClick={() => saveToken(s())}>
                       Сохранить токен
                     </button>
                   </div>
@@ -237,21 +239,21 @@ export function IntegrationSources(props: {
                     class="settings-select"
                     type="number"
                     min="0"
-                    value={s.syncIntervalMin}
+                    value={s().syncIntervalMin}
                     onInput={(e) =>
-                      update(idx(), { syncIntervalMin: Number(e.currentTarget.value) || 0 })
+                      update(idx, { syncIntervalMin: Number(e.currentTarget.value) || 0 })
                     }
                   />
                 </label>
 
                 <div class="integration-actions">
-                  <button class="btn" onClick={() => testConnection(s)}>
+                  <button class="btn" onClick={() => testConnection(s())}>
                     Проверить подключение
                   </button>
-                  <button class="btn" onClick={() => syncOne(s)}>
+                  <button class="btn" onClick={() => syncOne(s())}>
                     Синхронизировать
                   </button>
-                  <button class="btn integration-delete" onClick={() => remove(idx())}>
+                  <button class="btn integration-delete" onClick={() => remove(idx)}>
                     Удалить
                   </button>
                 </div>
@@ -259,7 +261,7 @@ export function IntegrationSources(props: {
             </Show>
           </div>
         )}
-      </For>
+      </Index>
 
       <div class="integration-add">
         <For each={Object.entries(KIND_LABELS)}>

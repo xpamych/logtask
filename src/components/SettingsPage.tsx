@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Index, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
 import { IntegrationSources } from "./IntegrationSources";
@@ -154,47 +154,49 @@ export function SettingsPage(props: {
         </label>
 
         <div class="settings-section">Статусы канбана</div>
-        <For each={props.settings.statuses}>
+        {/* Index, не For: правка статуса создаёт новые объекты, и For
+            пересоздавал бы DOM-узлы, сбивая фокус ввода названия */}
+        <Index each={props.settings.statuses}>
           {(st, i) => (
             <div class="status-row">
               <input
                 type="color"
                 class="status-color"
-                value={st.color}
-                onInput={(e) => setStatus(i(), { color: e.currentTarget.value })}
+                value={st().color}
+                onInput={(e) => setStatus(i, { color: e.currentTarget.value })}
               />
               <input
                 type="checkbox"
-                checked={st.visible}
+                checked={st().visible}
                 onChange={(e) =>
-                  setStatus(i(), { visible: e.currentTarget.checked }, { immediate: true })
+                  setStatus(i, { visible: e.currentTarget.checked }, { immediate: true })
                 }
               />
               <input
                 class="status-label-input"
-                value={st.label}
-                onInput={(e) => setStatus(i(), { label: e.currentTarget.value })}
+                value={st().label}
+                onInput={(e) => setStatus(i, { label: e.currentTarget.value })}
               />
-              <span class="status-marker">{st.marker}</span>
+              <span class="status-marker">{st().marker}</span>
               <button
                 class="status-move"
-                disabled={i() === 0}
-                onClick={() => moveStatus(i(), -1)}
+                disabled={i === 0}
+                onClick={() => moveStatus(i, -1)}
                 title="Выше"
               >
                 ↑
               </button>
               <button
                 class="status-move"
-                disabled={i() === props.settings.statuses.length - 1}
-                onClick={() => moveStatus(i(), 1)}
+                disabled={i === props.settings.statuses.length - 1}
+                onClick={() => moveStatus(i, 1)}
                 title="Ниже"
               >
                 ↓
               </button>
             </div>
           )}
-        </For>
+        </Index>
       </Show>
 
       <Show when={props.section === "integrations"}>
