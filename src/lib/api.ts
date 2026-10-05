@@ -209,6 +209,7 @@ export interface Settings {
   systemTitlebar: boolean;
   homeView: string;
   statuses: StatusConfig[];
+  integrations: IntegrationsConfig;
 }
 
 export async function settingsGet(): Promise<Settings> {
@@ -217,6 +218,99 @@ export async function settingsGet(): Promise<Settings> {
 
 export async function settingsSave(settings: Settings): Promise<void> {
   await invoke<void>("settings_save", { settings });
+}
+
+// ---------- Интеграции ----------
+
+export interface PushConfig {
+  url: string;
+  method: string;
+  bodyTemplate: unknown;
+  statusMapOut: Record<string, string>;
+}
+
+export interface SourceConfig {
+  id: string;
+  type: string; // "generic" | "gitea" | "github" | "gitlab"
+  name: string;
+  enabled: boolean;
+  page: string;
+  pageTemplate: string;
+  baseUrl: string;
+  tokenRef: string | null;
+  repos: string[];
+  state: string | null;
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  itemsPath: string;
+  fields: Record<string, string>;
+  statusMap: Record<string, string>;
+  priorityMap: Record<string, string>;
+  push: PushConfig | null;
+  syncIntervalMin: number;
+}
+
+export interface IntegrationsConfig {
+  sources: SourceConfig[];
+}
+
+export interface SourceState {
+  id: string;
+  lastSync: string | null;
+  lastError: string | null;
+  secretSet: boolean | null;
+}
+
+export interface SyncReport {
+  source: string;
+  added: number;
+  updated: number;
+  pushed: number;
+  conflicts: number;
+  removed: number;
+  error?: string;
+}
+
+/** Новый источник с дефолтами (для кнопки «Добавить») */
+export function newSourceConfig(kind: string): SourceConfig {
+  return {
+    id: "",
+    type: kind,
+    name: "",
+    enabled: true,
+    page: "",
+    pageTemplate: "Gitea - {repo} - TODO",
+    baseUrl: "",
+    tokenRef: null,
+    repos: [],
+    state: "open",
+    url: "",
+    method: "GET",
+    headers: {},
+    itemsPath: "",
+    fields: {},
+    statusMap: {},
+    priorityMap: {},
+    push: null,
+    syncIntervalMin: 0,
+  };
+}
+
+export async function integrationsStates(): Promise<SourceState[]> {
+  return invoke<SourceState[]>("integrations_states");
+}
+
+export async function integrationsSetSecret(name: string, value: string): Promise<void> {
+  await invoke<void>("integrations_set_secret", { name, value });
+}
+
+export async function integrationsTest(source: SourceConfig): Promise<number> {
+  return invoke<number>("integrations_test", { source });
+}
+
+export async function integrationsSync(sourceId?: string): Promise<SyncReport[]> {
+  return invoke<SyncReport[]>("integrations_sync", { sourceId: sourceId ?? null });
 }
 
 export async function taskSetPriority(

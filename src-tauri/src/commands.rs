@@ -1027,6 +1027,92 @@ pub fn settings_save(
     crate::settings::save(&root, &settings).map_err(|e| format!("ошибка: {e}"))
 }
 
+// ---------- Интеграции (синхронизация задач) ----------
+
+/// Состояние источников: последний синк/ошибка (из integrations-state.json)
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceStateDto {
+    pub id: String,
+    pub last_sync: Option<String>,
+    pub last_error: Option<String>,
+    /// задан ли токен в keyring (только если источник его использует)
+    pub secret_set: Option<bool>,
+}
+
+#[tauri::command]
+pub fn integrations_states(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<SourceStateDto>, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    let settings = crate::settings::load(&root);
+    let st = crate::sync::state::load(&root);
+    let gkey = crate::sync::secrets::graph_key(&root);
+    Ok(settings
+        .integrations
+        .sources
+        .iter()
+        .map(|cfg| {
+            let s = st.sources.get(&cfg.id);
+            SourceStateDto {
+                id: cfg.id.clone(),
+                last_sync: s.and_then(|x| x.last_sync.clone()),
+                last_error: s.and_then(|x| x.last_error.clone()),
+                secret_set: cfg
+                    .token_ref
+                    .as_deref()
+                    .map(|t| crate::sync::secrets::is_set(&gkey, t)),
+            }
+        })
+        .collect())
+}
+
+/// Сохраняет секрет (токен) в системное хранилище. В settings.json
+/// попадает только имя (tokenRef / ${secret:имя}).
+#[tauri::command]
+pub fn integrations_set_secret(
+    name: String,
+    value: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    crate::sync::secrets::set(&crate::sync::secrets::graph_key(&root), &name, &value)
+}
+
+/// Проверка подключения: fetch без записи в граф. Возвращает число задач.
+#[tauri::command]
+pub async fn integrations_test(
+    source: crate::sync::config::SourceConfig,
+    state: tauri::State<'_, AppState>,
+) -> Result<usize, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    let client = crate::sync::http::client()?;
+    let tasks =
+        crate::sync::fetch_all(&client, &source, &crate::sync::secrets::graph_key(&root)).await?;
+    Ok(tasks.len())
+}
+
+/// Ручная синхронизация: одного источника (sourceId) или всех включённых
+#[tauri::command]
+pub async fn integrations_sync(
+    source_id: Option<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<crate::sync::SyncReport>, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    let settings = crate::settings::load(&root);
+    let mut reports = vec![];
+    for cfg in settings
+        .integrations
+        .sources
+        .iter()
+        .filter(|s| s.enabled && source_id.as_ref().map(|id| &s.id == id).unwrap_or(true))
+    {
+        reports.push(crate::sync::sync_source(&app, &state, cfg).await);
+    }
+    Ok(reports)
+}
+
 /// Устанавливает приоритет задачи ([#A]/[#B]/[#C] или сброс)
 #[tauri::command]
 pub async fn task_set_priority(

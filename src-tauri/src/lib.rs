@@ -65,6 +65,10 @@ pub fn run() {
             commands::pick_graph_dir,
             commands::graph_create,
             commands::graph_needs_scaffold,
+            commands::integrations_states,
+            commands::integrations_set_secret,
+            commands::integrations_test,
+            commands::integrations_sync,
             commands::ping,
         ])
         .setup(|app| {

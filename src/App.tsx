@@ -44,6 +44,7 @@ const DEFAULT_SETTINGS: Settings = {
     { marker: "DONE", label: "Выполнено", color: "#4caf50", visible: true, shortcut: null },
     { marker: "CANCELED", label: "Отменено", color: "#f44336", visible: true, shortcut: null },
   ],
+  integrations: { sources: [] },
 };
 
 function loadRecentPages(): string[] {
