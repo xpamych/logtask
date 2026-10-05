@@ -785,9 +785,41 @@ pub async fn task_set_status(
         return Err("блок не найден в графе".into());
     };
 
+    // импортированная задача? (source:: + source-id::) — тогда write-back
+    let push_info = {
+        let graph = state.graph.read();
+        graph
+            .as_ref()
+            .and_then(|g| g.blocks.get(&id))
+            .and_then(|b| {
+                let src = b.props.get("source")?.clone();
+                let rid = b.props.get("source-id")?.clone();
+                Some((src, rid))
+            })
+    };
+
     // переиндексируем и оповестим UI
     mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
+
+    if let Some((src, rid)) = push_info {
+        tauri::async_runtime::spawn(async move {
+            let settings = crate::settings::load(std::path::Path::new(&root));
+            let Some(cfg) = settings
+                .integrations
+                .sources
+                .iter()
+                .find(|s| s.id == src && s.enabled)
+            else {
+                return;
+            };
+            let gkey = crate::sync::secrets::graph_key(std::path::Path::new(&root));
+            if let Err(e) = crate::sync::push_status_standalone(cfg, &gkey, &rid, status).await {
+                log::warn!("push статуса {rid} в {src}: {e}");
+                crate::sync::state::record_error(std::path::Path::new(&root), &src, Some(e));
+            }
+        });
+    }
     Ok(page)
 }
 
