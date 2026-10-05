@@ -1861,3 +1861,87 @@ body.panel-resizing {
   color: var(--fg-muted);
   font-size: 12px;
 }
+
+/* ---------- Интеграции (настройки) ---------- */
+
+.integration {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+}
+
+.integration-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.integration-title {
+  background: none;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 0;
+  text-align: left;
+  flex: 1;
+}
+
+.integration-title:hover {
+  color: var(--accent);
+}
+
+.integration-kind {
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  margin-left: 6px;
+}
+
+.integration-last {
+  color: var(--fg-muted);
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.integration-error {
+  color: var(--danger);
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.integration-form {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+.integration-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.integration-delete {
+  margin-left: auto;
+  color: var(--danger);
+}
+
+.integration-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.integration-hint {
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  margin: 4px 0 8px;
+}
+
+.integration-notice {
+  color: var(--accent);
+  font-size: 0.9em;
+  margin-top: 8px;
+}

@@ -2,6 +2,7 @@ import { For, Show, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
 import { settingsSave } from "~/lib/api";
+import { IntegrationSources } from "./IntegrationSources";
 
 const THEMES = [
   { value: "system", label: "Системная" },
@@ -226,6 +227,13 @@ export function SettingsModal(props: {
               </div>
             )}
           </For>
+
+          <IntegrationSources
+            sources={draft().integrations?.sources ?? []}
+            onChange={(sources) =>
+              setDraft((d) => ({ ...d, integrations: { sources } }))
+            }
+          />
         </div>
 
         <footer class="modal-foot">
