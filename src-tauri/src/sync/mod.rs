@@ -41,6 +41,17 @@ fn running() -> &'static Mutex<Vec<String>> {
     R.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+/// RAII-гард: снимает id источника из running() при drop. Фоновая задача
+/// синка может быть прервана через handle.abort() (graph_load/graph_close) —
+/// гард гарантирует освобождение id и в этом случае.
+struct RunningGuard(String);
+
+impl Drop for RunningGuard {
+    fn drop(&mut self) {
+        running().lock().unwrap().retain(|id| id != &self.0);
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncReport {
@@ -115,10 +126,10 @@ pub async fn sync_source(
         }
         r.push(cfg.id.clone());
     }
+    let _guard = RunningGuard(cfg.id.clone());
     let _ = app.emit("sync-started", serde_json::json!({ "source": cfg.id }));
     let report = sync_inner(app, state, cfg).await;
     let _ = app.emit("sync-finished", &report);
-    running().lock().unwrap().retain(|id| id != &cfg.id);
     report
 }
 
@@ -339,6 +350,12 @@ fn page_blocks_with_source(graph: &Graph, page: &str, source: &str) -> Vec<(uuid
         .collect()
 }
 
+/// Однострочное значение: переводы строк из данных сервера сломали бы
+/// структуру md-блока (content и строки свойств)
+fn sanitize(s: &str) -> String {
+    s.replace(['\n', '\r'], " ").trim().to_string()
+}
+
 fn task_props(cfg: &SourceConfig, t: &RemoteTask) -> Vec<(String, String)> {
     let mut v = vec![
         ("source".to_string(), cfg.id.clone()),
@@ -346,22 +363,22 @@ fn task_props(cfg: &SourceConfig, t: &RemoteTask) -> Vec<(String, String)> {
         ("synced-at".to_string(), chrono::Local::now().to_rfc3339()),
     ];
     if let Some(u) = &t.url {
-        v.push(("url".to_string(), u.clone()));
+        v.push(("url".to_string(), sanitize(u)));
     }
     if let Some(a) = &t.assignee {
-        v.push(("assignee".to_string(), a.clone()));
+        v.push(("assignee".to_string(), sanitize(a)));
     }
     if let Some(a) = &t.author {
-        v.push(("author".to_string(), a.clone()));
+        v.push(("author".to_string(), sanitize(a)));
     }
     if let Some(c) = &t.created {
-        v.push(("created".to_string(), c.clone()));
+        v.push(("created".to_string(), sanitize(c)));
     }
     v
 }
 
 fn add_task(graph: &mut Graph, root: &Path, page: &str, cfg: &SourceConfig, t: &RemoteTask) {
-    let Ok(Some(uuid)) = graph.append_block(page, t.title.trim(), Some(t.status), root) else {
+    let Ok(Some(uuid)) = graph.append_block(page, &sanitize(&t.title), Some(t.status), root) else {
         log::warn!("sync: не удалось добавить блок на страницу {page}");
         return;
     };
@@ -386,7 +403,7 @@ fn update_task(
 ) {
     let priority = t.priority;
     let props = task_props(cfg, t);
-    let title = t.title.trim().to_string();
+    let title = sanitize(&t.title);
     let status = t.status;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let _ = graph.mutate_block(uuid, root, |b| {
@@ -514,6 +531,18 @@ mod tests {
         assert_eq!(fnv1a_hex(b"logtask"), fnv1a_hex(b"logtask"));
         assert_ne!(fnv1a_hex(b"a"), fnv1a_hex(b"b"));
         assert_eq!(fnv1a_hex(b"").len(), 16);
+    }
+
+    #[test]
+    fn running_guard_releases_id_on_drop() {
+        let id = format!("guard-test-{}", std::process::id());
+        {
+            running().lock().unwrap().push(id.clone());
+            let _guard = RunningGuard(id.clone());
+            assert!(running().lock().unwrap().contains(&id));
+        }
+        // после drop гарда (в т.ч. при abort задачи) id освобождён
+        assert!(!running().lock().unwrap().contains(&id));
     }
 
     // --- интеграция apply_merge с реальным графом во временной папке ---
@@ -709,6 +738,29 @@ mod tests {
         assert_eq!(report.removed, 1);
         let text = page_text(&root, "PPDB - TODO");
         assert!(!text.contains("ppdb-1"), "файл:\n{text}");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn multiline_remote_fields_are_sanitized() {
+        let root = temp_graph("sanitize");
+        let cfg = test_cfg();
+        let mut st = SourceState::default();
+        let mut t = task("ppdb-1", "Строка 1\nСтрока 2\r\nСтрока 3", Status::Todo);
+        t.assignee = Some("кто-то\nзлой".into());
+        let remote = vec![t];
+
+        let (report, _) = run_merge(&root, &cfg, &remote, &mut st);
+        assert_eq!(report.added, 1);
+
+        let text = page_text(&root, "PPDB - TODO");
+        // блок однострочный: переводы строк заменены на пробелы
+        assert!(
+            text.contains("- TODO [#B] Строка 1 Строка 2  Строка 3"),
+            "файл:\n{text}"
+        );
+        assert!(!text.contains("\nСтрока 2"), "файл:\n{text}");
+        assert!(text.contains("assignee:: кто-то злой"), "файл:\n{text}");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
