@@ -100,7 +100,7 @@ mod tests {
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    fn test_config(url: &str) -> SourceConfig {
+    fn test_config(url: &str, secret_name: &str) -> SourceConfig {
         SourceConfig {
             id: "ppdb".into(),
             kind: "generic".into(),
@@ -108,9 +108,12 @@ mod tests {
             page: "PPDB - TODO".into(),
             url: url.into(),
             method: "GET".into(),
-            headers: [("Authorization".into(), "Bearer ${secret:test-tok}".into())]
-                .into_iter()
-                .collect(),
+            headers: [(
+                "Authorization".into(),
+                format!("Bearer ${{secret:{secret_name}}}"),
+            )]
+            .into_iter()
+            .collect(),
             items_path: "$.tasks[*]".into(),
             fields: [
                 ("id".into(), "$.id".into()),
@@ -154,7 +157,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let cfg = test_config(&format!("{}/api/tasks", server.uri()));
+        let cfg = test_config(&format!("{}/api/tasks", server.uri()), "test-tok");
         let tasks = fetch(&http::client().unwrap(), &cfg, "g").await.unwrap();
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0].id, "347");
@@ -169,20 +172,23 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_http_error_is_reported() {
+        std::env::set_var("LOGTASK_SECRET_TEST_TOK_ERR", "tok-err");
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .respond_with(ResponseTemplate::new(401).set_body_string("unauthorized"))
             .mount(&server)
             .await;
-        let cfg = test_config(&server.uri());
+        let cfg = test_config(&server.uri(), "test-tok-err");
         let err = fetch(&http::client().unwrap(), &cfg, "g")
             .await
             .unwrap_err();
         assert!(err.contains("401"), "ожидался код ошибки: {err}");
+        std::env::remove_var("LOGTASK_SECRET_TEST_TOK_ERR");
     }
 
     #[tokio::test]
     async fn push_substitutes_id_and_status() {
+        std::env::set_var("LOGTASK_SECRET_TEST_TOK_PUSH", "tok-push");
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/api/tasks/ppdb-9/status"))
@@ -190,7 +196,7 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
-        let mut cfg = test_config("http://unused");
+        let mut cfg = test_config("http://unused", "test-tok-push");
         cfg.push = Some(PushConfig {
             url: format!("{}/api/tasks/{{id}}/status", server.uri()),
             method: "POST".into(),
@@ -201,11 +207,12 @@ mod tests {
             .await
             .unwrap();
         // wiremock проверит expect(1) при drop
+        std::env::remove_var("LOGTASK_SECRET_TEST_TOK_PUSH");
     }
 
     #[tokio::test]
     async fn push_without_config_is_noop() {
-        let cfg = test_config("http://unused");
+        let cfg = test_config("http://unused", "unused");
         push_status(&http::client().unwrap(), &cfg, "g", "x", Status::Done)
             .await
             .unwrap();
