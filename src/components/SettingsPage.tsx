@@ -148,7 +148,7 @@ export function SettingsPage(props: {
           />
         </label>
 
-        <div class="settings-subhead">Статусы канбана</div>
+        <div class="settings-section">Статусы канбана</div>
         <For each={props.settings.statuses}>
           {(st, i) => (
             <div class="status-row">
