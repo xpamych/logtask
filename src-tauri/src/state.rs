@@ -13,6 +13,8 @@ pub struct AppState {
     pub watcher: RwLock<Option<notify::RecommendedWatcher>>,
     /// момент последней записи, сделанной самим приложением
     pub last_self_write: Mutex<Option<Instant>>,
+    /// фоновая задача синхронизации интеграций (abort при смене/закрытии графа)
+    pub sync_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
 }
 
 impl Default for AppState {
@@ -22,6 +24,7 @@ impl Default for AppState {
             root: RwLock::new(None),
             watcher: RwLock::new(None),
             last_self_write: Mutex::new(None),
+            sync_task: Mutex::new(None),
         }
     }
 }

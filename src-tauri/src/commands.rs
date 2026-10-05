@@ -193,6 +193,15 @@ pub async fn graph_load(
     if let Err(e) = crate::watcher::spawn_for_current(&app) {
         log::warn!("watcher не запущен: {e}");
     }
+
+    // фоновая синхронизация интеграций: стартовый прогон + тикер интервалов
+    if let Some(handle) = state.sync_task.lock().take() {
+        handle.abort();
+    }
+    let app_bg = app.clone();
+    *state.sync_task.lock() = Some(tauri::async_runtime::spawn(async move {
+        crate::sync::startup_and_ticker(app_bg).await;
+    }));
     Ok(summary)
 }
 
@@ -224,6 +233,9 @@ pub fn graph_summary(state: tauri::State<'_, AppState>) -> Result<GraphSummary, 
 /// Файлы графа не трогаем — только «закрыть» в приложении.
 #[tauri::command]
 pub fn graph_close(state: tauri::State<'_, AppState>) {
+    if let Some(handle) = state.sync_task.lock().take() {
+        handle.abort();
+    }
     *state.watcher.write() = None;
     *state.graph.write() = None;
     *state.root.write() = None;
