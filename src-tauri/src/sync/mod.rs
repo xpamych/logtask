@@ -6,6 +6,7 @@ pub mod forge;
 pub mod generic;
 pub mod http;
 pub mod jsonpath;
+pub mod merge;
 pub mod remote;
 pub mod secrets;
 pub mod state;
