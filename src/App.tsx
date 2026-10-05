@@ -19,7 +19,8 @@ import { Contents } from "~/components/Contents";
 import { JournalTape } from "~/components/JournalTape";
 import { PageView } from "~/components/PageView";
 import PanelResizer from "~/components/PanelResizer";
-import { SettingsModal } from "~/components/SettingsModal";
+import { SettingsPage } from "~/components/SettingsPage";
+import type { SettingsSection } from "~/components/SettingsPage";
 import { Sidebar } from "~/components/Sidebar";
 import { TasksPage } from "~/components/TasksPage";
 import { Topbar } from "~/components/Topbar";
@@ -68,7 +69,7 @@ const App: Component = () => {
   const [showAllPages, setShowAllPages] = createSignal(false);
   const [showTasks, setShowTasks] = createSignal(false);
   const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
-  const [showSettings, setShowSettings] = createSignal(false);
+  const [settingsSection, setSettingsSection] = createSignal<SettingsSection | null>(null);
   const [sidebarW, setSidebarW] = createSignal(DEFAULT_SETTINGS.sidebarWidth);
   const [panelW, setPanelW] = createSignal(DEFAULT_SETTINGS.taskpanelWidth);
   const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
@@ -81,6 +82,30 @@ const App: Component = () => {
   const [syncConflicts, setSyncConflicts] = createSignal(0);
   const [toast, setToast] = createSignal<string | null>(null);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // автосохранение настроек: точка-индикатор в сайдбаре
+  const [saveState, setSaveState] = createSignal<"saved" | "dirty" | "error">("saved");
+  const [saveError, setSaveError] = createSignal<string | null>(null);
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // изменения со страницы настроек: мгновенно в сигнал (тема/шрифт
+  // применяются сразу), на диск — сразу или с дебаунсом 400 мс
+  const saveSettingsAuto = (s: Settings, opts?: { immediate?: boolean }) => {
+    setSettings(s);
+    setSaveState("dirty");
+    setSaveError(null);
+    clearTimeout(saveTimer);
+    const run = () => {
+      void settingsSave(s)
+        .then(() => setSaveState("saved"))
+        .catch((e) => {
+          setSaveState("error");
+          setSaveError(String(e));
+        });
+    };
+    if (opts?.immediate) run();
+    else saveTimer = setTimeout(run, 400);
+  };
 
   const showToast = (text: string) => {
     setToast(text);
@@ -134,22 +159,26 @@ const App: Component = () => {
     | { kind: "journal" }
     | { kind: "tasks" }
     | { kind: "pages" }
+    | { kind: "settings"; section: SettingsSection }
     | { kind: "page"; name: string };
 
   const currentView = (): View =>
-    current()
-      ? { kind: "page", name: current()! }
-      : showTasks()
-        ? { kind: "tasks" }
-        : showAllPages()
-          ? { kind: "pages" }
-          : { kind: "journal" };
+    settingsSection()
+      ? { kind: "settings", section: settingsSection()! }
+      : current()
+        ? { kind: "page", name: current()! }
+        : showTasks()
+          ? { kind: "tasks" }
+          : showAllPages()
+            ? { kind: "pages" }
+            : { kind: "journal" };
 
   const [backStack, setBackStack] = createSignal<View[]>([]);
   const [fwdStack, setFwdStack] = createSignal<View[]>([]);
 
   const applyView = (v: View) => {
     setFocusUuid(null);
+    setSettingsSection(v.kind === "settings" ? v.section : null);
     setCurrent(v.kind === "page" ? v.name : null);
     setShowTasks(v.kind === "tasks");
     setShowAllPages(v.kind === "pages");
@@ -213,6 +242,9 @@ const App: Component = () => {
 
   const showAllPagesView = () => navigate({ kind: "pages" });
 
+  const showSettingsView = (section: SettingsSection) =>
+    navigate({ kind: "settings", section });
+
   // домашний вид из настроек: кнопка «⌂» и стартовый экран графа
   const homeViewOf = (s: Settings): View =>
     s.homeView === "tasks"
@@ -234,8 +266,16 @@ const App: Component = () => {
   };
 
   // активный пункт навигации сайдбара
-  const navView = (): "journal" | "pages" | "page" | "tasks" =>
-    current() ? "page" : showTasks() ? "tasks" : showAllPages() ? "pages" : "journal";
+  const navView = (): "journal" | "pages" | "page" | "tasks" | "settings" =>
+    settingsSection()
+      ? "settings"
+      : current()
+        ? "page"
+        : showTasks()
+          ? "tasks"
+          : showAllPages()
+            ? "pages"
+            : "journal";
 
   onMount(async () => {
     try {
@@ -433,13 +473,16 @@ const App: Component = () => {
             <Sidebar
               summary={summary()}
               view={navView()}
+              settingsSection={settingsSection()}
+              saveState={saveState()}
+              saveError={saveError()}
               favorites={settings().favorites}
               recentPages={recentPages()}
               onOpenPage={openPage}
               onShowJournal={showJournal}
               onShowTasks={showTasksPage}
               onShowAllPages={showAllPagesView}
-              onOpenSettings={() => setShowSettings(true)}
+              onOpenSettings={showSettingsView}
               onOpenGraph={openGraph}
               onCloseGraph={() => void closeGraph()}
               onSync={() => void runSync()}
@@ -450,41 +493,55 @@ const App: Component = () => {
           </Show>
           <Show when={summary()}>
             <Show
-              when={current()}
+              when={settingsSection()}
               fallback={
                 <Show
-                  when={showTasks()}
+                  when={current()}
                   fallback={
                     <Show
-                      when={showAllPages()}
-                      fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+                      when={showTasks()}
+                      fallback={
+                        <Show
+                          when={showAllPages()}
+                          fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+                        >
+                          <AllPages
+                            pages={pages()}
+                            favorites={settings().favorites}
+                            onOpenPage={openPage}
+                            onToggleFavorite={toggleFavorite}
+                          />
+                        </Show>
+                      }
                     >
-                      <AllPages
-                        pages={pages()}
-                        favorites={settings().favorites}
+                      <TasksPage
+                        refreshKey={refreshKey()}
+                        settings={settings()}
                         onOpenPage={openPage}
-                        onToggleFavorite={toggleFavorite}
                       />
                     </Show>
                   }
                 >
-                  <TasksPage
-                    refreshKey={refreshKey()}
-                    settings={settings()}
-                    onOpenPage={openPage}
-                  />
+                  {(name) => (
+                    <PageView
+                      name={name()}
+                      onOpenPage={openPage}
+                      refreshKey={refreshKey()}
+                      focusUuid={focusUuid()}
+                      settings={settings()}
+                      favorite={settings().favorites.includes(name())}
+                      onToggleFavorite={() => toggleFavorite(name())}
+                    />
+                  )}
                 </Show>
               }
             >
-              {(name) => (
-                <PageView
-                  name={name()}
-                  onOpenPage={openPage}
-                  refreshKey={refreshKey()}
-                  focusUuid={focusUuid()}
+              {(sec) => (
+                <SettingsPage
                   settings={settings()}
-                  favorite={settings().favorites.includes(name())}
-                  onToggleFavorite={() => toggleFavorite(name())}
+                  section={sec()}
+                  saveError={saveError()}
+                  onChange={saveSettingsAuto}
                 />
               )}
             </Show>
@@ -504,13 +561,6 @@ const App: Component = () => {
                 <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>
               </div>
             </aside>
-          </Show>
-          <Show when={showSettings()}>
-            <SettingsModal
-              settings={settings()}
-              onClose={() => setShowSettings(false)}
-              onSaved={setSettings}
-            />
           </Show>
         </div>
         <Show when={toast()}>

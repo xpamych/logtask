@@ -2,18 +2,25 @@ import { For, Show, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { GraphSummary, RecentGraph } from "~/lib/api";
 import { pickGraphDir, recentGraphs, recentRemove } from "~/lib/api";
+import { SETTINGS_SECTIONS } from "./SettingsPage";
+import type { SettingsSection } from "./SettingsPage";
 
 export function Sidebar(props: {
   summary: GraphSummary | null;
-  /** активный пункт навигации: лента журнала / задачи / все страницы / открытая страница */
-  view: "journal" | "pages" | "page" | "tasks";
+  /** активный пункт навигации: лента журнала / задачи / все страницы / открытая страница / настройки */
+  view: "journal" | "pages" | "page" | "tasks" | "settings";
+  /** активный раздел настроек (null — настройки закрыты) */
+  settingsSection: SettingsSection | null;
+  /** состояние автосохранения настроек: точка у пункта «Настройки» */
+  saveState: "saved" | "dirty" | "error";
+  saveError: string | null;
   favorites: string[];
   recentPages: string[];
   onOpenPage: (name: string) => void;
   onShowJournal: () => void;
   onShowTasks: () => void;
   onShowAllPages: () => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (section: SettingsSection) => void;
   onOpenGraph: (path: string) => void;
   onCloseGraph: () => void;
   onSync: () => void;
@@ -86,13 +93,6 @@ export function Sidebar(props: {
             <span class="sync-badge">{props.syncConflicts}</span>
           </Show>
         </button>
-        <button
-          class="settings-btn"
-          title="Настройки"
-          onClick={props.onOpenSettings}
-        >
-          ⚙
-        </button>
       </div>
 
       <Show when={graphMenu()}>
@@ -154,6 +154,45 @@ export function Sidebar(props: {
           >
             📄 Все страницы
           </button>
+          <button
+            class="nav-item nav-settings"
+            classList={{ active: props.view === "settings" }}
+            onClick={() => props.onOpenSettings("general")}
+          >
+            ⚙ Настройки
+            <span
+              class="save-dot"
+              classList={{
+                saved: props.saveState === "saved",
+                dirty: props.saveState === "dirty",
+                error: props.saveState === "error",
+              }}
+              title={
+                props.saveState === "error"
+                  ? `Ошибка сохранения: ${props.saveError ?? ""}`
+                  : props.saveState === "dirty"
+                    ? "Сохранение…"
+                    : "Настройки сохранены"
+              }
+            />
+          </button>
+          <Show when={props.view === "settings" && props.settingsSection}>
+            {(sec) => (
+              <div class="nav-sublist">
+                <For each={SETTINGS_SECTIONS}>
+                  {(s) => (
+                    <button
+                      class="nav-item nav-subitem"
+                      classList={{ active: sec() === s.id }}
+                      onClick={() => props.onOpenSettings(s.id)}
+                    >
+                      {s.label}
+                    </button>
+                  )}
+                </For>
+              </div>
+            )}
+          </Show>
         </div>
       </nav>
 
