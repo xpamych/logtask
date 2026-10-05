@@ -30,7 +30,7 @@ git-форжей (Gitea/Forgejo, GitHub, GitLab, включая self-hosted).
 | `fields` | generic | JSONPath до полей: `id/title/status/priority/assignee/author/created/url` |
 | `statusMap` | generic | значение сервера → маркер Logseq |
 | `priorityMap` | generic | значение сервера → буква A/B/C |
-| `push` | generic | write-back: `url` (с `{id}`), `method`, `bodyTemplate` (с `{id}`/`{status}`), `statusMapOut` |
+| `push` | generic | write-back: `url` (с `{id}` и `{status}`), `method`, `bodyTemplate` (с `{id}`/`{status}`), `statusMapOut` |
 
 JSONPath — подмножество: `$.a.b`, `$.a[0]`, `$.a[*]`, `$.a[*].b`.
 

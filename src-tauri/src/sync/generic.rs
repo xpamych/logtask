@@ -64,7 +64,14 @@ pub async fn push_status(
         return Ok(());
     };
     let out_status = remote::map_status_out(status.to_marker(), &push.status_map_out);
-    let url = secrets::resolve(&push.url.replace("{id}", id), graph_key)?;
+    // {id} и {status} подставляются и в URL (сервер может ждать их в query)
+    let url = secrets::resolve(
+        &push
+            .url
+            .replace("{id}", id)
+            .replace("{status}", &out_status),
+        graph_key,
+    )?;
     let body = substitute(&push.body_template, id, &out_status);
     let headers = resolve_headers(cfg, graph_key)?;
     http::send_json(client, &push.method, &url, &headers, &body).await
@@ -192,13 +199,14 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/api/tasks/ppdb-9/status"))
+            .and(wiremock::matchers::query_param("status", "completed"))
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
             .mount(&server)
             .await;
         let mut cfg = test_config("http://unused", "test-tok-push");
         cfg.push = Some(PushConfig {
-            url: format!("{}/api/tasks/{{id}}/status", server.uri()),
+            url: format!("{}/api/tasks/{{id}}/status?status={{status}}", server.uri()),
             method: "POST".into(),
             body_template: serde_json::json!({"status": "{status}", "task": "{id}"}),
             status_map_out: HashMap::from([("DONE".into(), "completed".into())]),

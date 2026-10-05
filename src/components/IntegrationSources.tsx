@@ -204,34 +204,37 @@ export function IntegrationSources(props: {
                       }
                     />
                   </label>
-                  <label class="settings-row">
-                    <span class="settings-label">Имя токена (tokenRef)</span>
-                    <input
-                      class="settings-select"
-                      placeholder="gitea-alr"
-                      value={s().tokenRef ?? ""}
-                      onInput={(e) => update(idx, { tokenRef: e.currentTarget.value || null })}
-                    />
-                  </label>
-                  <label class="settings-row">
-                    <span class="settings-label">
-                      Токен {stateOf(s().id)?.secretSet ? "(задан)" : "(не задан)"}
-                    </span>
-                    <input
-                      class="settings-select"
-                      type="password"
-                      placeholder="введите новый токен"
-                      value={tokenDraft()}
-                      onInput={(e) => setTokenDraft(e.currentTarget.value)}
-                    />
-                  </label>
-                  <div class="settings-row">
-                    <span class="settings-label" />
-                    <button class="btn" onClick={() => saveToken(s())}>
-                      Сохранить токен
-                    </button>
-                  </div>
                 </Show>
+
+                {/* токен — для всех типов: в generic имя подставляется
+                    в url/headers как ${{secret:имя}} */}
+                <label class="settings-row">
+                  <span class="settings-label">Имя токена (tokenRef)</span>
+                  <input
+                    class="settings-select"
+                    placeholder="lg-tasks"
+                    value={s().tokenRef ?? ""}
+                    onInput={(e) => update(idx, { tokenRef: e.currentTarget.value || null })}
+                  />
+                </label>
+                <label class="settings-row">
+                  <span class="settings-label">
+                    Токен {stateOf(s().id)?.secretSet ? "(задан)" : "(не задан)"}
+                  </span>
+                  <input
+                    class="settings-select"
+                    type="password"
+                    placeholder="введите новый токен"
+                    value={tokenDraft()}
+                    onInput={(e) => setTokenDraft(e.currentTarget.value)}
+                  />
+                </label>
+                <div class="settings-row">
+                  <span class="settings-label" />
+                  <button class="btn" onClick={() => saveToken(s())}>
+                    Сохранить токен
+                  </button>
+                </div>
 
                 <label class="settings-row">
                   <span class="settings-label">Интервал синка, мин (0 — выкл)</span>
