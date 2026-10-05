@@ -76,6 +76,44 @@ const App: Component = () => {
   // граф явно закрыт пользователем — показываем экран приветствия
   const [graphClosed, setGraphClosed] = createSignal(false);
 
+  const [syncing, setSyncing] = createSignal(false);
+  const [syncConflicts, setSyncConflicts] = createSignal(0);
+  const [toast, setToast] = createSignal<string | null>(null);
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const showToast = (text: string) => {
+    setToast(text);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => setToast(null), 6000);
+  };
+
+  const runSync = async () => {
+    setSyncing(true);
+    try {
+      const { integrationsSync } = await import("~/lib/api");
+      const reports = await integrationsSync();
+      const conflicts = reports.reduce((n, r) => n + r.conflicts, 0);
+      setSyncConflicts(conflicts);
+      const errors = reports.filter((r) => r.error);
+      if (reports.length === 0) {
+        showToast("Интеграции не настроены — добавьте источник в настройках");
+      } else if (errors.length > 0) {
+        showToast(`Синхронизация: ошибки в ${errors.map((r) => r.source).join(", ")}`);
+      } else {
+        const added = reports.reduce((n, r) => n + r.added, 0);
+        const updated = reports.reduce((n, r) => n + r.updated, 0);
+        showToast(
+          `Синхронизировано: новых ${added}, обновлено ${updated}` +
+            (conflicts > 0 ? `, конфликтов ${conflicts}` : ""),
+        );
+      }
+    } catch (e) {
+      showToast(`Синхронизация не удалась: ${e}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const applySettings = (s: Settings) => {
     setSettings(s);
     setSidebarW(s.sidebarWidth);
@@ -208,6 +246,7 @@ const App: Component = () => {
       // стартовый вид — домашняя страница из настроек
       applyView(homeViewOf(st));
       void listenGraphChanged();
+      void listenSyncEvents();
     } catch (e) {
       setError(String(e));
     }
@@ -266,6 +305,28 @@ const App: Component = () => {
     } catch (e) {
       // фронт запущен вне Tauri (npm run dev) — live-обновления недоступны
       console.warn("слушатель graph-changed не подключён:", e);
+    }
+  };
+
+  // фоновые синки интеграций (по интервалу/при открытии графа) — прогресс и ошибки
+  const listenSyncEvents = async () => {
+    try {
+      const { listen } = await import("@tauri-apps/api/event");
+      await listen("sync-started", () => setSyncing(true));
+      await listen<{ source: string; conflicts: number; error?: string }>(
+        "sync-finished",
+        (e) => {
+          setSyncing(false);
+          if (e.payload.error) {
+            showToast(`Синхронизация «${e.payload.source}»: ${e.payload.error}`);
+          }
+          if (e.payload.conflicts > 0) {
+            setSyncConflicts((n) => n + e.payload.conflicts);
+          }
+        },
+      );
+    } catch {
+      /* вне Tauri */
     }
   };
 
@@ -371,6 +432,9 @@ const App: Component = () => {
               onOpenSettings={() => setShowSettings(true)}
               onOpenGraph={openGraph}
               onCloseGraph={() => void closeGraph()}
+              onSync={() => void runSync()}
+              syncing={syncing()}
+              syncConflicts={syncConflicts()}
             />
             <PanelResizer side="left" start={sidebarW} onResize={setSidebarW} onCommit={commitWidths} />
           </Show>
@@ -439,6 +503,9 @@ const App: Component = () => {
             />
           </Show>
         </div>
+        <Show when={toast()}>
+          <div class="toast">{toast()}</div>
+        </Show>
       </div>
     </Show>
   );
