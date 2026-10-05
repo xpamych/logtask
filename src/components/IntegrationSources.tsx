@@ -82,7 +82,11 @@ export function IntegrationSources(props: {
   const saveToken = async (s: SourceConfig) => {
     const name = s.tokenRef?.trim();
     const value = tokenDraft().trim();
-    if (!name || !value) return;
+    if (!value) return;
+    if (!name) {
+      setNotice("Сначала укажите имя токена (tokenRef) — под ним он ляжет в хранилище");
+      return;
+    }
     try {
       await integrationsSetSecret(name, value);
       setTokenDraft("");
@@ -221,20 +225,24 @@ export function IntegrationSources(props: {
                   <span class="settings-label">
                     Токен {stateOf(s().id)?.secretSet ? "(задан)" : "(не задан)"}
                   </span>
+                  {/* автосохранение в keyring по Enter/blur — без кнопки;
+                      по каждому символу не сохраняем, чтобы не писать
+                      недопечатанный секрет */}
                   <input
                     class="settings-select"
                     type="password"
                     placeholder="введите новый токен"
                     value={tokenDraft()}
                     onInput={(e) => setTokenDraft(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void saveToken(s());
+                      }
+                    }}
+                    onBlur={() => void saveToken(s())}
                   />
                 </label>
-                <div class="settings-row">
-                  <span class="settings-label" />
-                  <button class="btn" onClick={() => saveToken(s())}>
-                    Сохранить токен
-                  </button>
-                </div>
 
                 <label class="settings-row">
                   <span class="settings-label">Интервал синка, мин (0 — выкл)</span>
