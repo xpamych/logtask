@@ -5,6 +5,7 @@ pub mod index;
 pub mod model;
 pub mod parser;
 pub mod query;
+pub mod rename;
 pub mod serializer;
 
 pub fn core_smoke() -> &'static str {

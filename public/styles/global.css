@@ -2038,3 +2038,24 @@ body.panel-resizing {
 .save-dot.error {
   background: var(--danger);
 }
+
+/* Переименование страницы: кликабельный заголовок и инлайн-инпут */
+.page-title-name {
+  cursor: pointer;
+}
+
+.page-title-name:hover {
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+
+.page-title-input {
+  font: inherit;
+  font-weight: inherit;
+  color: var(--fg);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 8px;
+  min-width: 260px;
+}

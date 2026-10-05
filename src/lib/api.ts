@@ -83,6 +83,11 @@ export async function pageList(): Promise<string[]> {
   return invoke<string[]>("page_list");
 }
 
+/** Переименовать страницу: файл + ссылки на неё во всём графе */
+export async function pageRename(oldName: string, newName: string): Promise<void> {
+  return invoke<void>("page_rename", { oldName, newName });
+}
+
 export interface TaskDto {
   uuid: string;
   page: string;

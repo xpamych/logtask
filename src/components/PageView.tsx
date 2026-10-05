@@ -7,6 +7,7 @@ import {
   blockDelete,
   followLink,
   pageGet,
+  pageRename,
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
@@ -22,6 +23,8 @@ export function PageView(props: {
   settings?: Settings | null;
   favorite?: boolean;
   onToggleFavorite?: () => void;
+  /** вызывается после успешного переименования страницы */
+  onRename?: (newName: string) => void;
 }): JSX.Element {
   const [page, setPage] = createSignal<PageDto | null>(null);
   const [backlinks, setBacklinks] = createSignal<[string, string][]>([]);
@@ -31,8 +34,44 @@ export function PageView(props: {
   const [virtual, setVirtual] = createSignal(false);
   const [adding, setAdding] = createSignal(false);
   const [newText, setNewText] = createSignal("");
+  // инлайн-переименование страницы по клику на заголовок
+  const [renaming, setRenaming] = createSignal(false);
+  const [renameDraft, setRenameDraft] = createSignal("");
+  const [renameBusy, setRenameBusy] = createSignal(false);
+  let renameCancel = false;
+  let renameInputEl: HTMLInputElement | undefined;
   let mainEl: HTMLElement | undefined;
   let addInputEl: HTMLInputElement | undefined;
+
+  const startRename = () => {
+    setRenameDraft(props.name);
+    setRenaming(true);
+    renameCancel = false;
+    queueMicrotask(() => {
+      renameInputEl?.focus();
+      renameInputEl?.select();
+    });
+  };
+
+  const commitRename = async () => {
+    const newName = renameDraft().trim();
+    if (!newName || newName === props.name) {
+      setRenaming(false);
+      return;
+    }
+    if (renameBusy()) return;
+    setRenameBusy(true);
+    try {
+      await pageRename(props.name, newName);
+      setRenaming(false);
+      props.onRename?.(newName);
+    } catch (e) {
+      // остаёмся в режиме редактирования, ошибка видна сверху
+      setError(String(e));
+    } finally {
+      setRenameBusy(false);
+    }
+  };
 
   const load = async () => {
     setError(null);
@@ -142,7 +181,51 @@ export function PageView(props: {
         {(p) => (
           <section class="day">
             <h2 class="day-title">
-              {p().kind === "journal" ? formatJournalName(p().name) : p().name}
+              <Show
+                when={renaming()}
+                fallback={
+                  <Show
+                    when={p().kind !== "journal" && !virtual()}
+                    fallback={
+                      <span>
+                        {p().kind === "journal" ? formatJournalName(p().name) : p().name}
+                      </span>
+                    }
+                  >
+                    <span
+                      class="page-title-name"
+                      title="Переименовать страницу"
+                      onClick={startRename}
+                    >
+                      {p().name}
+                    </span>
+                  </Show>
+                }
+              >
+                <input
+                  ref={renameInputEl}
+                  class="page-title-input"
+                  value={renameDraft()}
+                  disabled={renameBusy()}
+                  onInput={(e) => setRenameDraft(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commitRename();
+                    } else if (e.key === "Escape") {
+                      renameCancel = true;
+                      setRenaming(false);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (renameCancel) {
+                      renameCancel = false;
+                      return;
+                    }
+                    if (renaming()) void commitRename();
+                  }}
+                />
+              </Show>
               <Show when={props.onToggleFavorite}>
                 <button
                   class="star-btn"

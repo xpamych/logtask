@@ -430,6 +430,32 @@ pub fn page_list(state: tauri::State<'_, AppState>) -> Result<Vec<String>, Strin
     Ok(names)
 }
 
+/// Переименовывает страницу: файл + ссылки на неё во всех файлах графа.
+/// Индекс перестраивается через reindex_and_emit — фронт получает
+/// graph-changed с уже новым именем.
+#[tauri::command]
+pub async fn page_rename(
+    old_name: String,
+    new_name: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .rename_page(&old_name, &new_name, &root)
+            .map_err(|e| format!("{e}"))?;
+    }
+    mark_self_write(&state);
+    crate::watcher::reindex_and_emit(&app);
+    Ok(())
+}
+
 fn is_journal_name(name: &str) -> bool {
     let mut parts = name.split('_');
     let (y, m, d) = match (parts.next(), parts.next(), parts.next()) {

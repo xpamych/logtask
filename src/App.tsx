@@ -265,6 +265,26 @@ const App: Component = () => {
     void settingsSave(next).catch((e) => console.error("settings save:", e));
   };
 
+  // страница переименована: подменяем имя в избранном и недавних,
+  // навигируем на новое имя (индекс уже обновлён — придёт graph-changed)
+  const renameCurrentPage = (newName: string) => {
+    const old = current();
+    if (!old) return;
+    const s = settings();
+    if (s.favorites.includes(old)) {
+      const favorites = s.favorites.map((f) => (f === old ? newName : f));
+      const next = { ...s, favorites };
+      setSettings(next);
+      void settingsSave(next).catch((e) => console.error("settings save:", e));
+    }
+    if (recentPages().includes(old)) {
+      const rec = recentPages().map((r) => (r === old ? newName : r));
+      setRecentPages(rec);
+      localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(rec));
+    }
+    openPage(newName);
+  };
+
   // активный пункт навигации сайдбара
   const navView = (): "journal" | "pages" | "page" | "tasks" | "settings" =>
     settingsSection()
@@ -531,6 +551,7 @@ const App: Component = () => {
                       settings={settings()}
                       favorite={settings().favorites.includes(name())}
                       onToggleFavorite={() => toggleFavorite(name())}
+                      onRename={renameCurrentPage}
                     />
                   )}
                 </Show>

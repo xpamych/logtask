@@ -39,6 +39,7 @@ pub fn run() {
             commands::journal_prev,
             commands::page_get,
             commands::page_list,
+            commands::page_rename,
             commands::follow_link,
             commands::search,
             commands::backlinks_get,

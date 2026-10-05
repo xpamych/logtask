@@ -458,6 +458,79 @@ impl Graph {
             });
         Ok(new_id)
     }
+    /// Переименовывает страницу: файл pages/<old>.md → pages/<new>.md и
+    /// переписывает ссылки на неё (`[[old]]`, `[[old|alias]]`, `#old`) во
+    /// всех затронутых файлах графа (по индексу обратных ссылок).
+    /// Индекс не перестраивает — это делает вызывающий (reindex_and_emit).
+    pub fn rename_page(&mut self, old: &str, new: &str, root: &Path) -> std::io::Result<()> {
+        let invalid =
+            |msg: &str| std::io::Error::new(std::io::ErrorKind::InvalidInput, msg.to_string());
+
+        let new = new.trim();
+        if new.is_empty() {
+            return Err(invalid("имя страницы не может быть пустым"));
+        }
+        if new.contains('/') || new.contains('\\') {
+            return Err(invalid("имя страницы не может содержать / и \\"));
+        }
+        let Some(page) = self.pages.get(old) else {
+            return Err(invalid("страница не найдена"));
+        };
+        if page.kind != PageKind::Page {
+            return Err(invalid("журналы нельзя переименовывать"));
+        }
+        if self.pages.contains_key(new) {
+            return Err(invalid("страница с таким именем уже существует"));
+        }
+
+        let old_rel = page
+            .path
+            .clone()
+            .unwrap_or_else(|| default_rel_path(old, page.kind));
+        let new_rel = default_rel_path(new, PageKind::Page);
+        let old_abs = root.join(&old_rel);
+        let new_abs = root.join(&new_rel);
+        if new_abs.exists() {
+            return Err(invalid("файл с таким именем уже существует"));
+        }
+
+        // затронутые страницы — из обратных ссылок (включая self-ссылки)
+        let mut affected: Vec<String> = Vec::new();
+        if let Some(ids) = self.backlinks.get(old) {
+            for id in ids {
+                let page_name = self.page_of_block(id);
+                if !page_name.is_empty() && !affected.contains(&page_name) {
+                    affected.push(page_name);
+                }
+            }
+        }
+
+        std::fs::rename(&old_abs, &new_abs)?;
+
+        for name in affected {
+            let Some(p) = self.pages.get(&name) else {
+                continue;
+            };
+            let abs = if name == old {
+                new_abs.clone()
+            } else {
+                let rel = p
+                    .path
+                    .clone()
+                    .unwrap_or_else(|| default_rel_path(&p.name, p.kind));
+                root.join(rel)
+            };
+            let Ok(text) = std::fs::read_to_string(&abs) else {
+                continue;
+            };
+            let updated = super::rename::replace_refs(&text, old, new);
+            if updated != text {
+                super::fswrite::atomic_write(&abs, &updated)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// Err, если файл на диске новее прочитанного (внешняя правка)
