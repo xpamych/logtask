@@ -129,6 +129,8 @@ export function IntegrationSources(props: {
   const [openId, setOpenId] = createSignal<string | null>(null);
   const [notice, setNotice] = createSignal<string | null>(null);
   const [tokenDraft, setTokenDraft] = createSignal("");
+  // ошибка сохранения токена — отдельно от notice, чтобы не затиралась
+  const [tokenError, setTokenError] = createSignal<string | null>(null);
 
   const refreshStates = async () => {
     try {
@@ -193,16 +195,17 @@ export function IntegrationSources(props: {
     const value = tokenDraft().trim();
     if (!value) return;
     if (!name) {
-      setNotice("Сначала укажите имя токена (tokenRef) — под ним он ляжет в хранилище");
+      setTokenError("Сначала укажите имя токена (tokenRef) — под ним он ляжет в хранилище");
       return;
     }
     try {
       await integrationsSetSecret(name, value);
       setTokenDraft("");
+      setTokenError(null);
       setNotice(`Токен «${name}» сохранён в системном хранилище`);
       await refreshStates();
     } catch (e) {
-      setNotice(`Токен не сохранён: ${e}`);
+      setTokenError(`Токен не сохранён: ${e}`);
     }
   };
 
@@ -452,6 +455,9 @@ export function IntegrationSources(props: {
                     onBlur={() => void saveToken(s())}
                   />
                 </label>
+                <Show when={tokenError()}>
+                  {(e) => <p class="integration-error-text">{e()}</p>}
+                </Show>
 
                 <label class="settings-row">
                   <span class="settings-label">Интервал синка, мин (0 — выкл)</span>

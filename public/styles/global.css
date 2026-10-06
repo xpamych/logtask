@@ -2087,3 +2087,10 @@ textarea.push-body {
   font-size: 12px;
   resize: vertical;
 }
+
+/* Ошибка сохранения токена интеграции — липкая, не затирается notice */
+.integration-error-text {
+  color: var(--danger);
+  font-size: 12px;
+  margin: 2px 0 8px;
+}

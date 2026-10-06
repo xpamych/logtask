@@ -1146,7 +1146,13 @@ pub fn integrations_set_secret(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let root = state.root.read().clone().ok_or("граф не загружен")?;
-    crate::sync::secrets::set(&crate::sync::secrets::graph_key(&root), &name, &value)
+    let gkey = crate::sync::secrets::graph_key(&root);
+    let r = crate::sync::secrets::set(&gkey, &name, &value);
+    match &r {
+        Ok(()) => log::info!("секрет {name:?} сохранён в keyring (граф {gkey})"),
+        Err(e) => log::warn!("секрет {name:?} НЕ сохранён: {e}"),
+    }
+    r
 }
 
 /// Проверка подключения: fetch без записи в граф. Возвращает число задач.
