@@ -159,6 +159,9 @@ export function IntegrationSources(props: {
   };
 
   const testConnection = async (s: SourceConfig) => {
+    // если в поле токена есть несохранённый ввод — сначала сбрасываем в keyring,
+    // иначе проверка уйдёт без секрета и вернёт «не найден в хранилище»
+    await saveToken(s);
     setNotice("Проверка подключения…");
     try {
       const n = await integrationsTest(s);
@@ -169,6 +172,7 @@ export function IntegrationSources(props: {
   };
 
   const syncOne = async (s: SourceConfig) => {
+    await saveToken(s); // как в testConnection: сбросить несохранённый токен
     setNotice(`Синхронизация «${s.name}»…`);
     try {
       const reports = await integrationsSync(s.id);
