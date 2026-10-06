@@ -2170,3 +2170,56 @@ textarea.push-body {
   font-size: 12px;
   margin: 2px 0 8px;
 }
+
+/* Подсветка синтаксиса (highlight.js): цвета из темы через переменные */
+.hljs .hljs-comment,
+.hljs .hljs-quote {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+.hljs .hljs-keyword,
+.hljs .hljs-selector-tag,
+.hljs .hljs-operator,
+.hljs .hljs-meta {
+  color: var(--accent-2);
+}
+
+.hljs .hljs-string,
+.hljs .hljs-regexp {
+  color: var(--success);
+}
+
+.hljs .hljs-number,
+.hljs .hljs-literal,
+.hljs .hljs-symbol {
+  color: var(--warning);
+}
+
+.hljs .hljs-title,
+.hljs .hljs-title.function_,
+.hljs .hljs-section {
+  color: var(--accent);
+}
+
+.hljs .hljs-name,
+.hljs .hljs-tag,
+.hljs .hljs-built_in,
+.hljs .hljs-type {
+  color: var(--danger);
+}
+
+.hljs .hljs-attr,
+.hljs .hljs-attribute,
+.hljs .hljs-variable,
+.hljs .hljs-template-variable {
+  color: var(--fg);
+}
+
+.hljs .hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs .hljs-strong {
+  font-weight: 700;
+}

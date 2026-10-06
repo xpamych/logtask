@@ -3,6 +3,7 @@ import type { JSX } from "solid-js";
 import type { InlineSegment } from "~/lib/text";
 import { parseInline, splitMdBlocks } from "~/lib/text";
 import { AssetImage } from "./AssetImage";
+import { CodeBlock } from "./CodeBlock";
 
 /** Текст блока без md-разметки: [[ссылки]], #теги, **жирный**, *курсив*,
  *  ~~зачёркнутый~~, `код`, ^^подсветка^^, заголовки и блоки кода.
@@ -58,7 +59,7 @@ export function RichText(props: {
     <For each={blocks()}>
       {(blk) => {
         if (blk.kind === "code") {
-          return <span class="md-pre">{blk.text}</span>;
+          return <CodeBlock text={blk.text} lang={blk.lang} />;
         }
         if (blk.kind === "heading") {
           return (

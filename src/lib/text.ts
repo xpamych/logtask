@@ -208,25 +208,28 @@ export function parseInline(input: string): InlineSegment[] {
   return segments;
 }
 
-/** Блочная структура текста блока: заголовки (#..######), блоки кода ```,
- *  остальные строки — обычные */
+/** Блочная структура текста блока: заголовки (#..######), блоки кода ```
+ *  (с языком из ограждения), остальные строки — обычные */
 export type MdBlock =
-  | { kind: "code"; text: string }
+  | { kind: "code"; text: string; lang?: string }
   | { kind: "heading"; level: number; text: string }
   | { kind: "line"; text: string };
 
 export function splitMdBlocks(text: string): MdBlock[] {
   const blocks: MdBlock[] = [];
   let inCode = false;
+  let codeLang: string | undefined;
   let buf: string[] = [];
   for (const line of text.split("\n")) {
     if (line.trim().startsWith("```")) {
       if (inCode) {
-        blocks.push({ kind: "code", text: buf.join("\n") });
+        blocks.push({ kind: "code", text: buf.join("\n"), lang: codeLang });
         buf = [];
         inCode = false;
+        codeLang = undefined;
       } else {
         inCode = true;
+        codeLang = line.trim().slice(3).trim().split(/\s/)[0] || undefined;
       }
       continue;
     }
@@ -242,7 +245,7 @@ export function splitMdBlocks(text: string): MdBlock[] {
     }
   }
   if (buf.length > 0) {
-    blocks.push({ kind: "code", text: buf.join("\n") });
+    blocks.push({ kind: "code", text: buf.join("\n"), lang: codeLang });
   }
   return blocks;
 }
