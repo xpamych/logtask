@@ -11,8 +11,10 @@ import {
 } from "./StatusPrioDot";
 import type { BlockDto, Settings } from "~/lib/api";
 import {
+  blockIndent,
   blockMergeDown,
   blockMergeUp,
+  blockOutdent,
   blockSetProp,
   blockUpdateText,
   clockStart,
@@ -210,6 +212,21 @@ export function BlockView(props: {
     }
   };
 
+  /// Tab / Shift+Tab: вложенность блока (как в Logseq), курсор на месте
+  const moveIndent = async (out: boolean, at: number) => {
+    try {
+      const res = out ? await blockOutdent(b.uuid) : await blockIndent(b.uuid);
+      if (res) {
+        setEditingBlock(res.uuid);
+        setPendingEdit({ uuid: res.uuid, at });
+        props.onChanged?.();
+      }
+      // первый сосед/верхний уровень — некуда, остаёмся как есть
+    } catch (e) {
+      console.error("смена вложенности:", e);
+    }
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
     // IME-композиция: Enter подтверждает ввод, а не сохранение
     if (e.isComposing) return;
@@ -235,6 +252,13 @@ export function BlockView(props: {
         setAcOpen(false);
         return;
       }
+    }
+    // Tab / Shift+Tab — вложенность блока (текст не меняется, курсор на месте)
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const el = e.currentTarget as HTMLTextAreaElement;
+      void moveIndent(e.shiftKey, el.selectionStart);
+      return;
     }
     // Backspace в позиции 0 (ничего не выделено) — склеивание с блоком выше;
     // Delete в конце текста — приклеить нижестоящий блок к текущему

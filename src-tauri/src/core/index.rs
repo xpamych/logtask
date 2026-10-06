@@ -547,6 +547,234 @@ impl Graph {
         self.merge_block_up(&next, root)
     }
 
+    /// Общий пролог операций над одной страницей: страница блока, пути,
+    /// проверка mtime (защита от перезаписи чужих правок).
+    fn page_io(
+        &self,
+        id: &Uuid,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, super::model::PageKind, PathBuf, PathBuf)>> {
+        let page_name = self.page_of_block(id);
+        if page_name.is_empty() {
+            return Ok(None);
+        }
+        let Some(page) = self.pages.get(&page_name) else {
+            return Ok(None);
+        };
+        let rel_path = page
+            .path
+            .clone()
+            .unwrap_or_else(|| default_rel_path(&page.name, page.kind));
+        let abs = root.join(&rel_path);
+        check_mtime(&abs, page.mtime)?;
+        Ok(Some((page_name, page.kind, rel_path, abs)))
+    }
+
+    /// Сериализация и запись страницы после мутации + переиндексация
+    fn write_page(
+        &mut self,
+        page_name: &str,
+        kind: super::model::PageKind,
+        rel_path: PathBuf,
+        abs: PathBuf,
+    ) -> std::io::Result<()> {
+        let page_snapshot = self.pages[page_name].clone();
+        let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
+        if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
+            self.reload_page(page_name, kind, &abs, Some(rel_path.clone()));
+            return Err(e);
+        }
+        self.reload_page(page_name, kind, &abs, Some(rel_path));
+        Ok(())
+    }
+
+    /// Tab в редакторе: блок становится последним ребёнком предыдущего
+    /// соседа того же уровня (как в Logseq). Поддерево сдвигается на уровень
+    /// глубже. Порядок в документе не меняется. Нет предыдущего соседа →
+    /// Ok(None). Возвращает (страница, позиция блока в порядке документа).
+    pub fn indent_block(
+        &mut self,
+        id: &Uuid,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
+        let Some((page_name, kind, rel_path, abs)) = self.page_io(id, root)? else {
+            return Ok(None);
+        };
+
+        let (parent, old_indent_str) = {
+            let b = &self.blocks[id];
+            (b.parent, b.raw.indent_str.clone())
+        };
+        let siblings: Vec<Uuid> = match parent {
+            Some(p) => self.blocks[&p].children.clone(),
+            None => self.pages[&page_name].roots.clone(),
+        };
+        let Some(idx) = siblings.iter().position(|x| x == id) else {
+            return Ok(None);
+        };
+        if idx == 0 {
+            return Ok(None); // первому среди соседей некуда — не с кем
+        }
+        let new_parent = siblings[idx - 1];
+        let np_indent_str = self.blocks[&new_parent].raw.indent_str.clone();
+        // единица отступа нового уровня: из существующих детей нового
+        // родителя, иначе tab (как пишет Logseq/Logtask для новых блоков)
+        let unit = self.blocks[&new_parent]
+            .children
+            .first()
+            .and_then(|c| self.blocks.get(c))
+            .and_then(|c| c.raw.indent_str.strip_prefix(&np_indent_str))
+            .unwrap_or("\t")
+            .to_string();
+        let new_prefix = format!("{old_indent_str}{unit}");
+
+        // перепривязка к новому родителю
+        match parent {
+            Some(p) => self
+                .blocks
+                .get_mut(&p)
+                .expect("parent")
+                .children
+                .retain(|x| x != id),
+            None => self
+                .pages
+                .get_mut(&page_name)
+                .expect("page")
+                .roots
+                .retain(|x| x != id),
+        }
+        self.blocks
+            .get_mut(&new_parent)
+            .expect("new parent")
+            .children
+            .push(*id);
+
+        // поддерево: уровень +1, отступы — новый префикс
+        let mut stack = vec![*id];
+        while let Some(c) = stack.pop() {
+            let Some(b) = self.blocks.get_mut(&c) else {
+                continue;
+            };
+            b.indent += 1;
+            let suffix = b
+                .raw
+                .indent_str
+                .strip_prefix(&old_indent_str)
+                .unwrap_or("")
+                .to_string();
+            b.raw.indent_str = format!("{new_prefix}{suffix}");
+            if c == *id {
+                b.parent = Some(new_parent);
+            }
+            stack.extend(b.children.iter().copied());
+        }
+
+        // позиция считается ДО записи: reload_page пересоздаёт uuid
+        let pos = self.pages[&page_name]
+            .order
+            .iter()
+            .position(|x| x == id)
+            .expect("блок на месте");
+        self.write_page(&page_name, kind, rel_path, abs)?;
+        Ok(Some((page_name, pos)))
+    }
+
+    /// Shift+Tab: блок поднимается на уровень родителя и встаёт сразу после
+    /// поддерева родителя (как в Logseq). Поддерево блока сдвигается на
+    /// уровень выше. Блоку верхнего уровня некуда → Ok(None).
+    pub fn outdent_block(
+        &mut self,
+        id: &Uuid,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
+        let Some((page_name, kind, rel_path, abs)) = self.page_io(id, root)? else {
+            return Ok(None);
+        };
+
+        let Some(parent) = self.blocks[id].parent else {
+            return Ok(None);
+        };
+        let gp = self.blocks[&parent].parent;
+        let p_level = self.blocks[&parent].indent;
+        let p_indent_str = self.blocks[&parent].raw.indent_str.clone();
+        let old_indent_str = self.blocks[id].raw.indent_str.clone();
+        let cur_level = self.blocks[id].indent;
+        // блок встаёт на уровень родителя: новый префикс = отступ родителя
+        let new_prefix = p_indent_str.clone();
+
+        // порядок документа — preorder, поддеревья непрерывны:
+        // вырезаем поддерево блока и вставляем сразу за поддеревом родителя
+        let order = &self.pages[&page_name].order;
+        let p_pos = order.iter().position(|x| x == &parent).expect("parent");
+        let cur_pos = order.iter().position(|x| x == id).expect("cur");
+        let mut p_end = p_pos + 1;
+        while p_end < order.len() && self.blocks[&order[p_end]].indent > p_level {
+            p_end += 1;
+        }
+        let mut cur_end = cur_pos + 1;
+        while cur_end < order.len() && self.blocks[&order[cur_end]].indent > cur_level {
+            cur_end += 1;
+        }
+        let mut new_order = order.clone();
+        let segment: Vec<Uuid> = new_order.drain(cur_pos..cur_end).collect();
+        let insert_at = p_end - segment.len();
+        for (i, x) in segment.into_iter().enumerate() {
+            new_order.insert(insert_at + i, x);
+        }
+        self.pages.get_mut(&page_name).expect("page").order = new_order;
+
+        // перепривязка: из детей родителя — в дети деда (или roots) после родителя
+        self.blocks
+            .get_mut(&parent)
+            .expect("parent")
+            .children
+            .retain(|x| x != id);
+        match gp {
+            Some(g) => {
+                let ch = &mut self.blocks.get_mut(&g).expect("gp").children;
+                let pi = ch.iter().position(|x| x == &parent).expect("parent in gp");
+                ch.insert(pi + 1, *id);
+            }
+            None => {
+                let roots = &mut self.pages.get_mut(&page_name).expect("page").roots;
+                let pi = roots
+                    .iter()
+                    .position(|x| x == &parent)
+                    .expect("parent in roots");
+                roots.insert(pi + 1, *id);
+            }
+        }
+
+        // поддерево: уровень -1, отступы — новый префикс
+        let mut stack = vec![*id];
+        while let Some(c) = stack.pop() {
+            let Some(b) = self.blocks.get_mut(&c) else {
+                continue;
+            };
+            b.indent -= 1;
+            let suffix = b
+                .raw
+                .indent_str
+                .strip_prefix(&old_indent_str)
+                .unwrap_or("")
+                .to_string();
+            b.raw.indent_str = format!("{new_prefix}{suffix}");
+            if c == *id {
+                b.parent = gp;
+            }
+            stack.extend(b.children.iter().copied());
+        }
+
+        // позиция считается ДО записи: reload_page пересоздаёт uuid
+        let pos = self.pages[&page_name]
+            .order
+            .iter()
+            .position(|x| x == id)
+            .expect("блок на месте");
+        self.write_page(&page_name, kind, rel_path, abs)?;
+        Ok(Some((page_name, pos)))
+    }
+
     /// Добавляет новый блок в конец страницы (корневой уровень).
     /// Возвращает uuid нового блока.
     pub fn append_block(

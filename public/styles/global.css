@@ -671,17 +671,34 @@ body.panel-resizing {
   margin-top: 2px;
 }
 
+/* обычный блок без статуса/приоритета — маленькая точка-маркер */
 .status-prio-dot.empty {
-  border: 1px solid var(--border);
+  width: 7px;
+  height: 7px;
+  background: var(--fg-muted);
+  opacity: 0.55;
+  border: none;
   box-sizing: border-box;
+  /* центр первой строки ≈ 11px */
+  margin-top: 7px;
 }
 
-/* svg иначе инлайнится с базовой линией и «уезжает» от центра кружка */
-.status-prio-dot svg {
-  display: block;
+.status-prio-dot.empty:hover {
+  opacity: 1;
 }
 
-/* приоритет без статуса: полый кружок, значок — цвета приоритета */
+/* приоритет без статуса: полый кружок полного размера, значок — цвета приоритета */
+.status-prio-dot.empty.prio-a,
+.status-prio-dot.empty.prio-b,
+.status-prio-dot.empty.prio-c {
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  opacity: 1;
+  border: 1px solid var(--border);
+  margin-top: 2px;
+}
+
 .status-prio-dot.empty.prio-a {
   color: var(--danger);
   border-color: var(--danger);
@@ -694,6 +711,11 @@ body.panel-resizing {
 
 .status-prio-dot.empty.prio-c {
   color: var(--fg-muted);
+}
+
+/* svg иначе инлайнится с базовой линией и «уезжает» от центра кружка */
+.status-prio-dot svg {
+  display: block;
 }
 
 .prio-icon {

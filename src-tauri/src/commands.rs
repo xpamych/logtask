@@ -930,7 +930,7 @@ pub struct MergeResultDto {
 
 async fn merge_cmd(
     uuid: String,
-    down: bool,
+    op: &str,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
@@ -943,10 +943,12 @@ async fn merge_cmd(
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
-        let r = if down {
-            graph.merge_block_down(&id, &root)
-        } else {
-            graph.merge_block_up(&id, &root)
+        let r = match op {
+            "up" => graph.merge_block_up(&id, &root),
+            "down" => graph.merge_block_down(&id, &root),
+            "indent" => graph.indent_block(&id, &root),
+            "outdent" => graph.outdent_block(&id, &root),
+            other => return Err(format!("неизвестная операция: {other}")),
         };
         r.map_err(|e| format!("ошибка записи: {e}"))?
     };
@@ -979,7 +981,7 @@ pub async fn block_merge_up(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
-    merge_cmd(uuid, false, app, state).await
+    merge_cmd(uuid, "up", app, state).await
 }
 
 /// Склеивает блок с нижестоящим (Delete в конце редактируемого блока).
@@ -989,7 +991,27 @@ pub async fn block_merge_down(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
-    merge_cmd(uuid, true, app, state).await
+    merge_cmd(uuid, "down", app, state).await
+}
+
+/// Tab: блок становится ребёнком предыдущего соседа (как в Logseq).
+#[tauri::command]
+pub async fn block_indent(
+    uuid: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<MergeResultDto>, String> {
+    merge_cmd(uuid, "indent", app, state).await
+}
+
+/// Shift+Tab: блок поднимается на уровень родителя.
+#[tauri::command]
+pub async fn block_outdent(
+    uuid: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<MergeResultDto>, String> {
+    merge_cmd(uuid, "outdent", app, state).await
 }
 
 /// Создаёт новый блок в конце страницы.

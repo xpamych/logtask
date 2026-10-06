@@ -194,6 +194,16 @@ export async function blockMergeDown(uuid: string): Promise<MergeResult | null> 
   return invoke<MergeResult | null>("block_merge_down", { uuid });
 }
 
+/** Tab: сделать блок ребёнком предыдущего соседа */
+export async function blockIndent(uuid: string): Promise<MergeResult | null> {
+  return invoke<MergeResult | null>("block_indent", { uuid });
+}
+
+/** Shift+Tab: поднять блок на уровень родителя */
+export async function blockOutdent(uuid: string): Promise<MergeResult | null> {
+  return invoke<MergeResult | null>("block_outdent", { uuid });
+}
+
 export async function blockCreate(
   page: string,
   content: string,
