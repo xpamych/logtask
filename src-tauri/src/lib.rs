@@ -97,7 +97,6 @@ pub fn run() {
                             || (kv == gtk::gdk::keys::constants::Tab
                                 && ev.state().contains(gtk::gdk::ModifierType::SHIFT_MASK));
                         if backtab {
-                            log::info!("перехвачен Shift+Tab (keysym {kv:?})");
                             let _ = main_for_keys.emit("editor-shift-tab", ());
                             return gtk::glib::Propagation::Stop;
                         }

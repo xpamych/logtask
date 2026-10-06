@@ -16,7 +16,6 @@ import {
   blockMergeUp,
   blockOutdent,
   blockSetProp,
-  logFrontend,
   blockUpdateText,
   clockStart,
   clockStop,
@@ -153,7 +152,6 @@ export function BlockView(props: {
         const { listen } = await import("@tauri-apps/api/event");
         unlisten = await listen("editor-shift-tab", () => {
           if (!editing() || editingBlock() !== b.uuid) return;
-          void logFrontend(`shift-tab event uuid=${b.uuid}`);
           void moveIndent(true, textareaEl?.selectionStart ?? 0);
         });
       } catch {
@@ -193,15 +191,11 @@ export function BlockView(props: {
   // в редактирование и ставим курсор в точку стыка
   {
     const pending = pendingEdit();
-    void logFrontend(
-      `BlockView setup uuid=${b.uuid} pending=${JSON.stringify(pending)}`,
-    );
     if (pending && pending.uuid === b.uuid) {
       setPendingEdit(null);
       startEdit();
       queueMicrotask(() => {
         const el = textareaEl;
-        void logFrontend(`auto-edit focus el=${el ? "ok" : "null"}`);
         if (!el) return;
         const firstLineLen = el.value.split("\n")[0].length;
         const pos = pending.at ?? Math.max(0, firstLineLen - (pending.minus ?? 0));
@@ -246,10 +240,8 @@ export function BlockView(props: {
 
   /// Tab / Shift+Tab: вложенность блока (как в Logseq), курсор на месте
   const moveIndent = async (out: boolean, at: number) => {
-    void logFrontend(`moveIndent out=${out} uuid=${b.uuid}`);
     try {
       const res = out ? await blockOutdent(b.uuid) : await blockIndent(b.uuid);
-      void logFrontend(`moveIndent result=${JSON.stringify(res)}`);
       if (res) {
         setEditingBlock(res.uuid);
         setPendingEdit({ uuid: res.uuid, at });
@@ -262,11 +254,6 @@ export function BlockView(props: {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Tab") {
-      void logFrontend(
-        `Tab seen shift=${e.shiftKey} composing=${e.isComposing} acOpen=${acOpen()}`,
-      );
-    }
     // IME-композиция: Enter подтверждает ввод, а не сохранение
     if (e.isComposing) return;
     // навигация по автодополнению
@@ -295,7 +282,6 @@ export function BlockView(props: {
     // Tab / Shift+Tab — вложенность блока (текст не меняется, курсор на месте)
     if (e.key === "Tab") {
       e.preventDefault();
-      void logFrontend(`Tab keydown shift=${e.shiftKey} composing=${e.isComposing} acOpen=${acOpen()}`);
       const el = e.currentTarget as HTMLTextAreaElement;
       void moveIndent(e.shiftKey, el.selectionStart);
       return;
@@ -429,10 +415,7 @@ export function BlockView(props: {
             disabled={saving()}
             onInput={(e) => void onEditInput(e.currentTarget)}
             onKeyDown={onKeyDown}
-            onBlur={() => {
-              void logFrontend(`blur uuid=${b.uuid} editingBlock=${editingBlock()}`);
-              void save();
-            }}
+            onBlur={() => void save()}
             rows={Math.max(
               1,
               draft().split("\n").length,
