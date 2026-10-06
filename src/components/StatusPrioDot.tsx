@@ -38,6 +38,19 @@ export const PRIO_LABELS: Record<string, string> = {
   C: "низкий",
 };
 
+/** Контрастный цвет иконки на цветном кружке статуса:
+ *  светлый фон (бирюза/зелёный/оранжевый) — тёмная иконка, тёмный — белая */
+function contrastOn(hex: string): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return "#fff";
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.55 ? "rgba(0,0,0,0.65)" : "#fff";
+}
+
 /** Кружок блока/задачи: цвет — статус, внутри — значок приоритета.
  *  Клик открывает общий мини-попап со списками статусов и приоритетов.
  *  Родитель с position: relative обязателен (попап абсолютный). */
@@ -69,6 +82,10 @@ export function StatusPrioDot(props: {
           background: props.status
             ? (STATUS_COLORS[props.status] ?? "#888888")
             : "transparent",
+          // иконка приоритета — контрастная к фону кружка
+          color: props.status
+            ? contrastOn(STATUS_COLORS[props.status] ?? "#888888")
+            : undefined,
         }}
         title={
           (props.status ? statusLabel(props.status) : "Без статуса") +

@@ -676,6 +676,11 @@ body.panel-resizing {
   box-sizing: border-box;
 }
 
+/* svg иначе инлайнится с базовой линией и «уезжает» от центра кружка */
+.status-prio-dot svg {
+  display: block;
+}
+
 /* приоритет без статуса: полый кружок, значок — цвета приоритета */
 .status-prio-dot.empty.prio-a {
   color: var(--danger);
