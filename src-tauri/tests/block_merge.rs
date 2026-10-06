@@ -93,11 +93,12 @@ fn merge_down_pulls_next_block_up() {
     let (dir, mut g) = graph_with("t5", "- первая\n- вторая\n\t- вложенная\n");
     let id = block_id(&g, "Тест", "первая");
 
-    let Some((page, survivor)) = g.merge_block_down(&id, &dir).unwrap() else {
+    let Some((page, survivor_pos)) = g.merge_block_down(&id, &dir).unwrap() else {
         panic!("склейка не случилась");
     };
     assert_eq!(page, "Тест");
-    // свежий uuid существует и указывает на склеенный блок
+    // позиция выжившего указывает на склеенный блок
+    let survivor = g.pages["Тест"].order[survivor_pos];
     assert_eq!(g.blocks[&survivor].content, "первая вторая");
 
     let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();

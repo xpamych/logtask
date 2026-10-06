@@ -398,14 +398,15 @@ impl Graph {
     /// текст дописывается в конец вышестоящего, дочерние переезжают к нему,
     /// текущий блок удаляется. Вышестоящий — предыдущий в порядке документа.
     /// Первому блоку страницы склеиваться не с кем → Ok(None).
-    /// Возвращает (страница, НОВЫЙ uuid выжившего блока — после записи
-    /// uuid пересоздаются, фронту нужен свежий, чтобы продолжить
-    /// редактирование уже склеенного блока).
+    /// Возвращает (страница, позиция выжившего блока в порядке документа) —
+    /// uuid после перезаписи страницы и полной переиндексации меняются
+    /// дважды, поэтому наружу отдаём позицию, а uuid вычисляет команда
+    /// уже по финальному графу.
     pub fn merge_block_up(
         &mut self,
         id: &Uuid,
         root: &Path,
-    ) -> std::io::Result<Option<(String, Uuid)>> {
+    ) -> std::io::Result<Option<(String, usize)>> {
         let page_name = self.page_of_block(id);
         if page_name.is_empty() {
             return Ok(None);
@@ -521,12 +522,8 @@ impl Graph {
             return Err(e);
         }
         self.reload_page(&page_name, kind, &abs, Some(rel_path));
-        // выживший блок остался на позиции prev (pos - 1); uuid свежий
-        let new_id = self
-            .pages
-            .get(&page_name)
-            .and_then(|p| p.order.get(pos - 1).copied());
-        Ok(new_id.map(|u| (page_name, u)))
+        // выживший блок остался на позиции prev (pos - 1)
+        Ok(Some((page_name, pos - 1)))
     }
 
     /// Склеивание с нижестоящим блоком (Delete в конце блока): нижестоящий
@@ -536,7 +533,7 @@ impl Graph {
         &mut self,
         id: &Uuid,
         root: &Path,
-    ) -> std::io::Result<Option<(String, Uuid)>> {
+    ) -> std::io::Result<Option<(String, usize)>> {
         let page_name = self.page_of_block(id);
         let Some(page) = self.pages.get(&page_name) else {
             return Ok(None);

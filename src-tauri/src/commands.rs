@@ -951,13 +951,23 @@ async fn merge_cmd(
         r.map_err(|e| format!("ошибка записи: {e}"))?
     };
 
-    if res.is_some() {
-        mark_self_write(&state);
-        crate::watcher::reindex_and_emit(&app);
-    }
-    Ok(res.map(|(page, uuid)| MergeResultDto {
+    let Some((page, pos)) = res else {
+        return Ok(None);
+    };
+    mark_self_write(&state);
+    // полная переиндексация пересоздаёт uuid — находим финальный uuid
+    // выжившего блока по его позиции уже в новом графе
+    crate::watcher::reindex_and_emit(&app);
+    let fresh_uuid = {
+        let graph = state.graph.read();
+        graph
+            .as_ref()
+            .and_then(|g| g.pages.get(&page))
+            .and_then(|p| p.order.get(pos).copied())
+    };
+    Ok(fresh_uuid.map(|u| MergeResultDto {
         page,
-        uuid: uuid.to_string(),
+        uuid: u.to_string(),
     }))
 }
 
