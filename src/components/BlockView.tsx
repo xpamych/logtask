@@ -243,6 +243,11 @@ export function BlockView(props: {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Tab") {
+      void logFrontend(
+        `Tab seen shift=${e.shiftKey} composing=${e.isComposing} acOpen=${acOpen()}`,
+      );
+    }
     // IME-композиция: Enter подтверждает ввод, а не сохранение
     if (e.isComposing) return;
     // навигация по автодополнению
