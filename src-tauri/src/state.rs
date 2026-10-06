@@ -15,6 +15,10 @@ pub struct AppState {
     pub last_self_write: Mutex<Option<Instant>>,
     /// фоновая задача синхронизации интеграций (abort при смене/закрытии графа)
     pub sync_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    /// кэш favicon (host → data-URL; пустая строка — «иконки нет»)
+    pub favicons: RwLock<std::collections::HashMap<String, String>>,
+    /// кэш заголовков веб-страниц (url → <title>)
+    pub webtitles: RwLock<std::collections::HashMap<String, String>>,
 }
 
 impl Default for AppState {
@@ -25,6 +29,8 @@ impl Default for AppState {
             watcher: RwLock::new(None),
             last_self_write: Mutex::new(None),
             sync_task: Mutex::new(None),
+            favicons: RwLock::new(std::collections::HashMap::new()),
+            webtitles: RwLock::new(std::collections::HashMap::new()),
         }
     }
 }

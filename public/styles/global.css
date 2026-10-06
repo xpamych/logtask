@@ -2297,3 +2297,36 @@ textarea.push-body {
   flex-direction: column;
   gap: 4px;
 }
+
+/* Внешние ссылки в тексте блоков: кликабельные, с favicon */
+.extlink {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  word-break: break-all;
+}
+
+.extlink:hover {
+  text-decoration-style: solid;
+}
+
+.favicon {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  margin-right: 4px;
+  border-radius: 3px;
+  /* нейтральная подложка: тёмные иконки видны в тёмной теме,
+     светлые — в светлой */
+  background: color-mix(in srgb, var(--fg) 30%, transparent);
+  padding: 1px;
+}
+
+.extlink-icon {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 3px;
+  color: var(--fg-muted);
+}

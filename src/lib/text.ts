@@ -124,15 +124,23 @@ export interface InlineSegment {
     | "strike"
     | "code"
     | "highlight"
-    | "image";
+    | "image"
+    | "url";
   text: string;
   target?: string;
   children?: InlineSegment[];
 }
 
-// порядок альтернатив важен: картинки раньше [[ссылок]], ** раньше *
+// порядок альтернатив важен: картинки и md-ссылки раньше [[ссылок]],
+// голый URL — последним (после md-ссылки)
 const INLINE_RE =
-  /(!\[\[[^\]]+\]\])|(!\[[^\]]*\]\([^)]+\))|(\[\[[^\]|]+(?:\|[^\]]*)?\]\])|(#(?:\[\[[^\]]+\]\]|\[[^\]]+\]|[^\s#\[)\],.;:!?("«»]+))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(`[^`]+`)|(\^\^[^^]+\^\^)/g;
+  /(!\[\[[^\]]+\]\])|(!\[[^\]]*\]\([^)]+\))|(\[[^\]]+\]\(https?:\/\/[^)]+\))|(\[\[[^\]|]+(?:\|[^\]]*)?\]\])|(#(?:\[\[[^\]]+\]\]|\[[^\]]+\]|[^\s#\[)\],.;:!?("«»]+))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(`[^`]+`)|(\^\^[^^]+\^\^)|(https?:\/\/[^\s)\]]+)/g;
+
+/** Хвостовую пунктуацию голого URL (точка/запятая в конце предложения)
+ *  не включаем в ссылку */
+export function trimUrlTail(url: string): string {
+  return url.replace(/[.,;:!?]+$/, "");
+}
 
 /** Разбирает инлайн-markdown: [[ссылки]], #теги, **жирный**, *курсив*,
  *  ~~зачёркнутый~~, `код`, ^^подсветка^^. Вложенность — внутри
@@ -148,7 +156,7 @@ export function parseInline(input: string): InlineSegment[] {
     if (m.index > pos) {
       segments.push({ type: "text", text: input.slice(pos, m.index) });
     }
-    const [full, imgEmbed, imgMd, link, tag, bold, italic, strike, code, highlight] = m;
+    const [full, imgEmbed, imgMd, mdLink, link, tag, bold, italic, strike, code, highlight, bareUrl] = m;
     if (imgEmbed !== undefined) {
       // logseq-вставка: ![[../assets/x.png]]
       const path = imgEmbed.slice(3, -2).trim();
@@ -160,6 +168,21 @@ export function parseInline(input: string): InlineSegment[] {
         type: "image",
         text: inner?.[1] ?? "",
         target: (inner?.[2] ?? "").trim(),
+      });
+    } else if (mdLink !== undefined) {
+      // markdown-ссылка: [текст](https://…)
+      const inner = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/.exec(mdLink);
+      segments.push({
+        type: "url",
+        text: inner?.[1] ?? mdLink,
+        target: trimUrlTail((inner?.[2] ?? "").trim()),
+      });
+    } else if (bareUrl !== undefined) {
+      // голый URL — кликабельный
+      segments.push({
+        type: "url",
+        text: trimUrlTail(bareUrl),
+        target: trimUrlTail(bareUrl),
       });
     } else if (link !== undefined) {
       const inner = link.slice(2, -2);

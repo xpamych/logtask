@@ -1529,6 +1529,133 @@ pub async fn asset_data_url(
     Ok(format!("data:{mime};base64,{}", base64_encode(&data)))
 }
 
+/// Открывает внешнюю ссылку в системном браузере (через Rust API
+/// opener-плагина — JS-вызов на этой системе молча не срабатывает)
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), String> {
+    tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Favicon домена ссылки как data-URL. Грузится через reqwest (rustls):
+/// webview на этой системе https грузить не может («TLS support is not
+/// available»). Кэш — в памяти; пустая строка = «иконки нет».
+#[tauri::command]
+pub async fn favicon_data_url(
+    url: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let host = {
+        let u = reqwest::Url::parse(&url).map_err(|e| format!("url: {e}"))?;
+        u.host_str().unwrap_or("").to_string()
+    };
+    if host.is_empty() {
+        return Err("нет домена в ссылке".into());
+    }
+    if let Some(cached) = state.favicons.read().get(&host) {
+        return if cached.is_empty() {
+            Err("иконки нет (кэш)".into())
+        } else {
+            Ok(cached.clone())
+        };
+    }
+
+    let result = fetch_favicon(&host).await;
+    state
+        .favicons
+        .write()
+        .insert(host, result.clone().unwrap_or_default());
+    result
+}
+
+async fn fetch_favicon(host: &str) -> Result<String, String> {
+    let client = crate::sync::http::client()?;
+    let url = format!("https://{host}/favicon.ico");
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("favicon {host}: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("favicon {host}: HTTP {}", resp.status()));
+    }
+    let mime = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/x-icon")
+        .split(';')
+        .next()
+        .unwrap_or("image/x-icon")
+        .to_string();
+    let data = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("favicon {host}: {e}"))?;
+    if data.is_empty() {
+        return Err(format!("favicon {host}: пустой ответ"));
+    }
+    Ok(format!("data:{mime};base64,{}", base64_encode(&data)))
+}
+
+/// Заголовок веб-страницы по ссылке (тег <title>): голые URL в режиме
+/// просмотра показываются заголовком, как в Logseq. Кэш — в памяти;
+/// пустая строка = «заголовка нет/ошибка».
+#[tauri::command]
+pub async fn web_title(url: String, state: tauri::State<'_, AppState>) -> Result<String, String> {
+    if let Some(cached) = state.webtitles.read().get(&url) {
+        return if cached.is_empty() {
+            Err("заголовка нет (кэш)".into())
+        } else {
+            Ok(cached.clone())
+        };
+    }
+    let result = fetch_title(&url).await;
+    state
+        .webtitles
+        .write()
+        .insert(url, result.clone().unwrap_or_default());
+    result
+}
+
+async fn fetch_title(url: &str) -> Result<String, String> {
+    let client = crate::sync::http::client()?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("title {url}: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("title {url}: HTTP {}", resp.status()));
+    }
+    // читаем целиком и обрезаем: <title> живёт в начале документа
+    let body = resp.text().await.map_err(|e| format!("title {url}: {e}"))?;
+    let html = body.chars().take(256 * 1024).collect::<String>();
+    let lower = html.to_lowercase();
+    let start = lower
+        .find("<title")
+        .and_then(|i| lower[i..].find('>').map(|j| i + j + 1))
+        .ok_or("нет <title>")?;
+    let end = lower[start..]
+        .find("</title>")
+        .map(|j| start + j)
+        .ok_or("нет </title>")?;
+    let title = html[start..end].trim().to_string();
+    if title.is_empty() {
+        return Err("пустой <title>".into());
+    }
+    Ok(decode_entities(&title))
+}
+
+/// Минимальное раскодирование HTML-сущностей в заголовке
+fn decode_entities(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
+}
+
 /// Минимальный base64 без внешних зависимостей
 fn base64_encode(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

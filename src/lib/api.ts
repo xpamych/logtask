@@ -392,10 +392,19 @@ export async function search(query: string): Promise<SearchHit[]> {
   return invoke<SearchHit[]>("search", { query });
 }
 
-/** Открывает внешнюю ссылку в системном браузере (tauri-plugin-opener) */
+/** Открывает внешнюю ссылку в системном браузере (IPC → opener-плагин в Rust) */
 export async function openExternal(url: string): Promise<void> {
-  const { openUrl } = await import("@tauri-apps/plugin-opener");
-  await openUrl(url);
+  return invoke<void>("open_external", { url });
+}
+
+/** Favicon домена ссылки как data-URL (грузится в Rust, кэшируется) */
+export async function faviconDataUrl(url: string): Promise<string> {
+  return invoke<string>("favicon_data_url", { url });
+}
+
+/** Заголовок веб-страницы по ссылке (тег title, грузится в Rust, кэшируется) */
+export async function webTitle(url: string): Promise<string> {
+  return invoke<string>("web_title", { url });
 }
 
 /** Картинка из графа как data-URL (для <img>) */
