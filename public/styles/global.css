@@ -658,17 +658,17 @@ body.panel-resizing {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   font-size: 10px;
   font-weight: 700;
   color: #fff;
   flex: none;
   /* прижат к первой строке блока (даже если ниже код/продолжение):
-     центр первой строки ≈ 11px, кружок 16px → отступ 3px */
+     центр первой строки ≈ 11px, кружок 18px → отступ 2px */
   align-self: flex-start;
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 .status-prio-dot.empty {

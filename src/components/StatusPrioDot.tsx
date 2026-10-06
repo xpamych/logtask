@@ -24,7 +24,10 @@ export const MARKER_LABELS: Record<string, string> = {
 export const PRIORITIES = ["A", "B", "C"];
 /// значки приоритета: A — стрелка вверх (красная), B — тире (зелёное),
 /// C — стрелка вниз (серая)
-const PRIO_ICONS: Record<string, (p: { size?: number }) => JSX.Element> = {
+const PRIO_ICONS: Record<
+  string,
+  (p: { size?: number; strokeWidth?: number }) => JSX.Element
+> = {
   A: IconArrowUp,
   B: IconMinus,
   C: IconArrowDown,
@@ -83,7 +86,7 @@ export function StatusPrioDot(props: {
           const letter = props.priority?.[2];
           const Icon = letter ? PRIO_ICONS[letter] : undefined;
           if (!letter) return "";
-          return Icon ? <Icon size={10} /> : letter;
+          return Icon ? <Icon size={11} strokeWidth={3.2} /> : letter;
         })()}
       </span>
       <Show when={popup()}>
@@ -121,7 +124,7 @@ export function StatusPrioDot(props: {
                 <span class={`prio-icon prio-${p.toLowerCase()}`}>
                   {(() => {
                     const Icon = PRIO_ICONS[p];
-                    return Icon ? <Icon size={12} /> : p;
+                    return Icon ? <Icon size={13} strokeWidth={2.6} /> : p;
                   })()}
                 </span>
                 {PRIO_LABELS[p]}

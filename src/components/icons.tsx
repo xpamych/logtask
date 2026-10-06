@@ -2,7 +2,11 @@ import type { JSX } from "solid-js";
 
 /** Инлайн-SVG иконки в стиле Lucide: сетка 24px, линии currentColor,
  *  скруглённые концы. Цвет наследуется от текста кнопки, размер — проп size. */
-function Svg(props: { size?: number; children: JSX.Element }): JSX.Element {
+function Svg(props: {
+  size?: number;
+  strokeWidth?: number;
+  children: JSX.Element;
+}): JSX.Element {
   return (
     <svg
       width={props.size ?? 16}
@@ -10,7 +14,7 @@ function Svg(props: { size?: number; children: JSX.Element }): JSX.Element {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="2"
+      stroke-width={props.strokeWidth ?? 2}
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-hidden="true"
@@ -20,7 +24,7 @@ function Svg(props: { size?: number; children: JSX.Element }): JSX.Element {
   );
 }
 
-type P = { size?: number };
+type P = { size?: number; strokeWidth?: number };
 
 export const IconPanelLeft = (p: P) => (
   <Svg size={p.size}>
@@ -128,21 +132,21 @@ export const IconSettings = (p: P) => (
 );
 
 export const IconArrowUp = (p: P) => (
-  <Svg size={p.size}>
+  <Svg size={p.size} strokeWidth={p.strokeWidth}>
     <path d="M12 19V5" />
     <path d="m5 12 7-7 7 7" />
   </Svg>
 );
 
 export const IconArrowDown = (p: P) => (
-  <Svg size={p.size}>
+  <Svg size={p.size} strokeWidth={p.strokeWidth}>
     <path d="M12 5v14" />
     <path d="m19 12-7 7-7-7" />
   </Svg>
 );
 
 export const IconMinus = (p: P) => (
-  <Svg size={p.size}>
+  <Svg size={p.size} strokeWidth={p.strokeWidth}>
     <path d="M5 12h14" />
   </Svg>
 );
