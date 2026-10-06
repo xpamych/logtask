@@ -121,7 +121,15 @@ export function BlockView(props: {
     setDraft(b.source);
     setEditing(true);
     setEditingBlock(b.uuid);
-    queueMicrotask(() => textareaEl?.focus());
+    queueMicrotask(() => {
+      const el = textareaEl;
+      if (!el) return;
+      el.focus();
+      // фокус ставит каретку в конец текста и ускролливает большой блок —
+      // возвращаем курсор и скролл в начало
+      el.setSelectionRange(0, 0);
+      el.scrollTop = 0;
+    });
   };
 
   /// выход из режима редактирования: сброс локального и общего состояния
