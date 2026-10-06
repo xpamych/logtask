@@ -1,6 +1,6 @@
 import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
-import { editingBlock, setEditingBlock } from "~/lib/editState";
+import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { IconTrash } from "~/components/icons";
 import { RichText } from "./RichText";
 import {
@@ -11,6 +11,7 @@ import {
 } from "./StatusPrioDot";
 import type { BlockDto, Settings } from "~/lib/api";
 import {
+  blockMergeDown,
   blockMergeUp,
   blockSetProp,
   blockUpdateText,
@@ -157,14 +158,55 @@ export function BlockView(props: {
     setDraft(b.source);
   };
 
-  /// Backspace в самом начале блока: склеивание с вышестоящим (как в Logseq)
+  // продолжение редактирования после склейки: страница перезагрузилась,
+  // этот экземпляр — выживший блок (uuid из pendingEdit) → сразу входим
+  // в редактирование и ставим курсор в точку стыка
+  {
+    const pending = pendingEdit();
+    if (pending && pending.uuid === b.uuid) {
+      setPendingEdit(null);
+      startEdit();
+      queueMicrotask(() => {
+        const el = textareaEl;
+        if (!el) return;
+        const firstLineLen = el.value.split("\n")[0].length;
+        const pos = pending.at ?? Math.max(0, firstLineLen - (pending.minus ?? 0));
+        el.setSelectionRange(pos, pos);
+      });
+    }
+  }
+
+  /// Backspace в самом начале блока: склеивание с вышестоящим (как в Logseq).
+  /// Редактирование продолжается уже в склеенном блоке (новый uuid),
+  /// курсор — в точке стыка
   const mergeUp = async () => {
-    stopEdit();
+    const movedLen = draft().split("\n")[0].trim().length;
     try {
-      const merged = await blockMergeUp(b.uuid);
-      if (merged) props.onChanged?.();
+      const res = await blockMergeUp(b.uuid);
+      if (res) {
+        setEditingBlock(res.uuid);
+        setPendingEdit({ uuid: res.uuid, minus: movedLen });
+        props.onChanged?.();
+      }
+      // первый блок страницы — не с кем, остаёмся в редактировании
     } catch (e) {
       console.error("склеивание блока:", e);
+    }
+  };
+
+  /// Delete в конце блока: нижестоящий приклеивается к текущему
+  const mergeDown = async () => {
+    const at = draft().split("\n")[0].length;
+    try {
+      const res = await blockMergeDown(b.uuid);
+      if (res) {
+        setEditingBlock(res.uuid);
+        setPendingEdit({ uuid: res.uuid, at });
+        props.onChanged?.();
+      }
+      // последний блок — не с кем, остаёмся в редактировании
+    } catch (e) {
+      console.error("склеивание с нижестоящим:", e);
     }
   };
 
@@ -194,12 +236,22 @@ export function BlockView(props: {
         return;
       }
     }
-    // Backspace в позиции 0 (ничего не выделено) — склеивание с блоком выше
-    if (e.key === "Backspace") {
+    // Backspace в позиции 0 (ничего не выделено) — склеивание с блоком выше;
+    // Delete в конце текста — приклеить нижестоящий блок к текущему
+    if (e.key === "Backspace" || e.key === "Delete") {
       const el = e.currentTarget as HTMLTextAreaElement;
-      if (el.selectionStart === 0 && el.selectionEnd === 0) {
+      if (e.key === "Backspace" && el.selectionStart === 0 && el.selectionEnd === 0) {
         e.preventDefault();
         void mergeUp();
+        return;
+      }
+      if (
+        e.key === "Delete" &&
+        el.selectionStart === el.value.length &&
+        el.selectionEnd === el.value.length
+      ) {
+        e.preventDefault();
+        void mergeDown();
         return;
       }
     }

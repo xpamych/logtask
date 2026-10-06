@@ -30,7 +30,7 @@ fn merge_joins_text_and_moves_children() {
     let id = block_id(&g, "Тест", "вторая");
 
     let page = g.merge_block_up(&id, &dir).unwrap();
-    assert_eq!(page, Some("Тест".to_string()));
+    assert_eq!(page.map(|(p, _)| p), Some("Тест".to_string()));
 
     let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
     assert_eq!(
@@ -68,7 +68,7 @@ fn merge_first_block_is_noop() {
     let id = block_id(&g, "Тест", "единственная");
 
     let page = g.merge_block_up(&id, &dir).unwrap();
-    assert_eq!(page, None);
+    assert!(page.is_none());
     let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
     assert_eq!(text, "- единственная сверху\n- вторая\n");
     let _ = fs::remove_dir_all(&dir);
@@ -83,5 +83,34 @@ fn merge_keeps_trailing_props() {
 
     let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
     assert_eq!(text, "- первая вторая\n  source-id:: 42\n", "файл:\n{text}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn merge_down_pulls_next_block_up() {
+    // Delete в конце блока: нижестоящий приклеивается к текущему,
+    // uuid выжившего возвращается (фронт продолжает редактирование)
+    let (dir, mut g) = graph_with("t5", "- первая\n- вторая\n\t- вложенная\n");
+    let id = block_id(&g, "Тест", "первая");
+
+    let Some((page, survivor)) = g.merge_block_down(&id, &dir).unwrap() else {
+        panic!("склейка не случилась");
+    };
+    assert_eq!(page, "Тест");
+    // свежий uuid существует и указывает на склеенный блок
+    assert_eq!(g.blocks[&survivor].content, "первая вторая");
+
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(text, "- первая вторая\n\t- вложенная\n", "файл:\n{text}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn merge_down_last_block_is_noop() {
+    let (dir, mut g) = graph_with("t6", "- первая\n- последняя\n");
+    let id = block_id(&g, "Тест", "последняя");
+    assert!(g.merge_block_down(&id, &dir).unwrap().is_none());
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(text, "- первая\n- последняя\n");
     let _ = fs::remove_dir_all(&dir);
 }

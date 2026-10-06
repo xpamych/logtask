@@ -920,6 +920,47 @@ pub async fn block_delete(
     Ok(page)
 }
 
+/// Результат склейки блоков: страница и свежий uuid выжившего блока
+/// (после записи uuid пересоздаются — фронт продолжает редактирование)
+#[derive(serde::Serialize)]
+pub struct MergeResultDto {
+    pub page: String,
+    pub uuid: String,
+}
+
+async fn merge_cmd(
+    uuid: String,
+    down: bool,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<MergeResultDto>, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+
+    let res = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        let r = if down {
+            graph.merge_block_down(&id, &root)
+        } else {
+            graph.merge_block_up(&id, &root)
+        };
+        r.map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    if res.is_some() {
+        mark_self_write(&state);
+        crate::watcher::reindex_and_emit(&app);
+    }
+    Ok(res.map(|(page, uuid)| MergeResultDto {
+        page,
+        uuid: uuid.to_string(),
+    }))
+}
+
 /// Склеивает блок с вышестоящим (Backspace в начале редактируемого блока,
 /// как в Logseq): текст уходит вверх, дети переезжают, блок удаляется.
 #[tauri::command]
@@ -927,26 +968,18 @@ pub async fn block_merge_up(
     uuid: String,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
-) -> Result<Option<String>, String> {
-    let root = state.root.read().clone();
-    let root = root.ok_or("граф не загружен")?;
-    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+) -> Result<Option<MergeResultDto>, String> {
+    merge_cmd(uuid, false, app, state).await
+}
 
-    let page = {
-        let mut graph = state.graph.write();
-        let Some(graph) = graph.as_mut() else {
-            return Err("граф не загружен".into());
-        };
-        graph
-            .merge_block_up(&id, &root)
-            .map_err(|e| format!("ошибка записи: {e}"))?
-    };
-
-    if page.is_some() {
-        mark_self_write(&state);
-        crate::watcher::reindex_and_emit(&app);
-    }
-    Ok(page)
+/// Склеивает блок с нижестоящим (Delete в конце редактируемого блока).
+#[tauri::command]
+pub async fn block_merge_down(
+    uuid: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<MergeResultDto>, String> {
+    merge_cmd(uuid, true, app, state).await
 }
 
 /// Создаёт новый блок в конце страницы.

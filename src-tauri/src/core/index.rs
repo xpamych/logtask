@@ -398,7 +398,14 @@ impl Graph {
     /// текст дописывается в конец вышестоящего, дочерние переезжают к нему,
     /// текущий блок удаляется. Вышестоящий — предыдущий в порядке документа.
     /// Первому блоку страницы склеиваться не с кем → Ok(None).
-    pub fn merge_block_up(&mut self, id: &Uuid, root: &Path) -> std::io::Result<Option<String>> {
+    /// Возвращает (страница, НОВЫЙ uuid выжившего блока — после записи
+    /// uuid пересоздаются, фронту нужен свежий, чтобы продолжить
+    /// редактирование уже склеенного блока).
+    pub fn merge_block_up(
+        &mut self,
+        id: &Uuid,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, Uuid)>> {
         let page_name = self.page_of_block(id);
         if page_name.is_empty() {
             return Ok(None);
@@ -514,7 +521,33 @@ impl Graph {
             return Err(e);
         }
         self.reload_page(&page_name, kind, &abs, Some(rel_path));
-        Ok(Some(page_name))
+        // выживший блок остался на позиции prev (pos - 1); uuid свежий
+        let new_id = self
+            .pages
+            .get(&page_name)
+            .and_then(|p| p.order.get(pos - 1).copied());
+        Ok(new_id.map(|u| (page_name, u)))
+    }
+
+    /// Склеивание с нижестоящим блоком (Delete в конце блока): нижестоящий
+    /// присоединяется к текущему — это merge_block_up для следующего блока
+    /// в порядке документа.
+    pub fn merge_block_down(
+        &mut self,
+        id: &Uuid,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, Uuid)>> {
+        let page_name = self.page_of_block(id);
+        let Some(page) = self.pages.get(&page_name) else {
+            return Ok(None);
+        };
+        let Some(pos) = page.order.iter().position(|x| x == id) else {
+            return Ok(None);
+        };
+        let Some(&next) = page.order.get(pos + 1) else {
+            return Ok(None); // последнему блоку не с кем склеиваться
+        };
+        self.merge_block_up(&next, root)
     }
 
     /// Добавляет новый блок в конец страницы (корневой уровень).
