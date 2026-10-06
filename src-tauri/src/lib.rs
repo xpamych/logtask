@@ -91,9 +91,13 @@ pub fn run() {
                 main.with_webview(move |platform| {
                     let wv = platform.inner();
                     wv.connect_key_press_event(move |_, ev| {
-                        if ev.keyval() == gtk::gdk::keys::constants::Tab
-                            && ev.state().contains(gtk::gdk::ModifierType::SHIFT_MASK)
-                        {
+                        let kv = ev.keyval();
+                        // Shift+Tab в GDK — отдельный keysym ISO_Left_Tab, а не Tab!
+                        let backtab = kv == gtk::gdk::keys::constants::ISO_Left_Tab
+                            || (kv == gtk::gdk::keys::constants::Tab
+                                && ev.state().contains(gtk::gdk::ModifierType::SHIFT_MASK));
+                        if backtab {
+                            log::info!("перехвачен Shift+Tab (keysym {kv:?})");
                             let _ = main_for_keys.emit("editor-shift-tab", ());
                             return gtk::glib::Propagation::Stop;
                         }
