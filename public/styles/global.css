@@ -645,7 +645,6 @@ body.panel-resizing {
 
 .block-task {
   border-left: 2px solid var(--border);
-  padding-left: 8px !important;
   margin-left: 4px;
 }
 
@@ -2222,4 +2221,79 @@ textarea.push-body {
 
 .hljs .hljs-strong {
   font-weight: 700;
+}
+
+/* Контекстное меню карточки задачи (правый клик) */
+.ctx-menu {
+  position: fixed;
+  right: auto;
+  top: auto;
+  max-height: 70vh;
+  overflow-y: auto;
+  min-width: 170px;
+}
+
+.block-menu-item.danger {
+  color: var(--danger);
+}
+
+.block-menu-item.danger:hover {
+  border-color: var(--danger);
+}
+
+/* инлайн-редактор в карточке задачи */
+.task-card-edit {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-card-text {
+  cursor: text;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Прогресс-бар вложенных задач и список детей в карточке */
+.task-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.task-progress {
+  flex: 1;
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--bg-alt);
+}
+
+.task-progress-seg {
+  display: block;
+  height: 100%;
+}
+
+.task-progress-toggle {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.task-progress-toggle:hover {
+  color: var(--fg);
+}
+
+.task-children {
+  margin: 6px 0 2px 9px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }

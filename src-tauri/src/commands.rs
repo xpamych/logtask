@@ -495,6 +495,10 @@ pub struct TaskDto {
     pub done: bool,
     /// свойства блока (source-id, author, url…), отсортированные по ключу
     pub props: Vec<(String, String)>,
+    /// исходник блока для инлайн-редактора в карточке задачи
+    pub source: String,
+    /// вложенные задачи (дочерние блоки-задачи, рекурсивно)
+    pub children: Vec<TaskDto>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -516,6 +520,8 @@ fn task_dto(graph: &Graph, id: uuid::Uuid, block: &Block) -> TaskDto {
     let mut props: Vec<(String, String)> = block
         .props
         .iter()
+        // collapsed — служебное свойство Logseq, в карточке это шум
+        .filter(|(k, _)| k.as_str() != "collapsed")
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     props.sort();
@@ -533,7 +539,37 @@ fn task_dto(graph: &Graph, id: uuid::Uuid, block: &Block) -> TaskDto {
         tags,
         done: block.status.map(|s| s.is_done()).unwrap_or(false),
         props,
+        source: block.edit_source(),
+        children: block
+            .children
+            .iter()
+            .filter_map(|cid| graph.blocks.get(cid).map(|b| (*cid, b)))
+            .filter(|(_, b)| b.is_task())
+            .map(|(cid, b)| task_dto(graph, cid, b))
+            .collect(),
     }
+}
+
+/// Убирает из выборки задачи, чей предок (по цепочке parent) тоже в выборке:
+/// вложенные показываются внутри карточки родителя, а не отдельными карточками
+fn strip_nested_tasks<'a>(
+    graph: &Graph,
+    tasks: Vec<(uuid::Uuid, &'a Block)>,
+) -> Vec<(uuid::Uuid, &'a Block)> {
+    let ids: std::collections::HashSet<uuid::Uuid> = tasks.iter().map(|(id, _)| *id).collect();
+    tasks
+        .into_iter()
+        .filter(|(id, _)| {
+            let mut cur = graph.blocks.get(id).and_then(|b| b.parent);
+            while let Some(p) = cur {
+                if ids.contains(&p) {
+                    return false;
+                }
+                cur = graph.blocks.get(&p).and_then(|b| b.parent);
+            }
+            true
+        })
+        .collect()
 }
 
 /// Канбан: все задачи, сгруппированные по 6 статусам
@@ -566,7 +602,7 @@ pub async fn kanban(state: tauri::State<'_, AppState>) -> Result<Vec<TaskColumn>
     .into_iter()
     .collect();
 
-    for (id, block) in graph.all_tasks() {
+    for (id, block) in strip_nested_tasks(graph, graph.all_tasks()) {
         let Some(status) = block.status else {
             continue;
         };
@@ -605,7 +641,7 @@ pub fn tasks_by_filter(
 ) -> Result<Vec<TaskDto>, String> {
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
-    let entries = graph.filter_tasks(&filter);
+    let entries = strip_nested_tasks(graph, graph.filter_tasks(&filter));
     Ok(entries
         .into_iter()
         .map(|(id, block)| task_dto(graph, id, block))
@@ -664,7 +700,7 @@ pub async fn matrix(state: tauri::State<'_, AppState>) -> Result<Vec<MatrixQuadr
 
     let by_key: [(&str, usize); 4] = [("do", 0), ("schedule", 1), ("delegate", 2), ("drop", 3)];
 
-    for (id, block) in graph.all_tasks() {
+    for (id, block) in strip_nested_tasks(graph, graph.all_tasks()) {
         // только открытые задачи
         if block.status.map(|s| s.is_done()).unwrap_or(false) {
             continue;
