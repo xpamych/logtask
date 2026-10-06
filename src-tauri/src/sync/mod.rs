@@ -253,13 +253,30 @@ fn apply_merge(
             continue;
         }
         let remote_ids: HashSet<&str> = tasks.iter().map(|t| t.id.as_str()).collect();
-        let existing = page_blocks_with_source(graph, page, &cfg.id);
 
         for &t in tasks {
-            let found = existing
-                .iter()
+            // uuid блоков пересоздаются при каждой записи страницы
+            // (reload_page после mutate/delete), поэтому нельзя держать
+            // список existing, вычисленный до цикла: после первой же записи
+            // он протухает и merge добавляет дубли. Ищем свежо перед
+            // каждой операцией; заодно удаляем дубли source-id, оставшиеся
+            // от прошлых гонок/этого бага.
+            loop {
+                let matches: Vec<uuid::Uuid> = page_blocks_with_source(graph, page, &cfg.id)
+                    .into_iter()
+                    .filter(|(_, sid)| sid == &t.id)
+                    .map(|(u, _)| u)
+                    .collect();
+                if matches.len() <= 1 {
+                    break;
+                }
+                let _ = graph.delete_block(&matches[1], root);
+                report.removed += 1;
+            }
+            let found = page_blocks_with_source(graph, page, &cfg.id)
+                .into_iter()
                 .find(|(_, sid)| sid == &t.id)
-                .map(|(u, _)| *u);
+                .map(|(u, _)| u);
             let block = found.and_then(|u| graph.blocks.get(&u));
             let prev = src_state.tasks.get(&t.id);
             match merge::decide(Some(t), block, prev) {
@@ -288,11 +305,14 @@ fn apply_merge(
             }
         }
 
-        // исчезнувшие с сервера
-        for (uuid, sid) in existing {
-            if remote_ids.contains(sid.as_str()) {
-                continue;
-            }
+        // исчезнувшие с сервера: пересчитываем список после каждой записи
+        // (uuid протухают), обработанные запоминаем, чтобы не зациклиться
+        let mut handled: HashSet<String> = HashSet::new();
+        while let Some((uuid, sid)) = page_blocks_with_source(graph, page, &cfg.id)
+            .into_iter()
+            .find(|(_, sid)| !remote_ids.contains(sid.as_str()) && !handled.contains(sid))
+        {
+            handled.insert(sid.clone());
             let block = graph.blocks.get(&uuid);
             let prev = src_state.tasks.get(&sid);
             match merge::decide(None, block, prev) {
@@ -637,6 +657,75 @@ mod tests {
         assert_eq!(report.updated, 0);
         assert_eq!(report.removed, 0);
         assert!(pushes.is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn update_of_one_task_does_not_duplicate_others() {
+        // регрессия: запись первой задачи пересоздаёт uuid всех блоков
+        // страницы (reload_page); список existing, вычисленный до цикла,
+        // протухает → вторая задача добавлялась дублём в конец файла
+        let root = temp_graph("dup");
+        let cfg = test_cfg();
+        let mut st = SourceState::default();
+        let remote = vec![
+            task("ppdb-1", "Первая", Status::Todo),
+            task("ppdb-2", "Вторая", Status::Todo),
+        ];
+        run_merge(&root, &cfg, &remote, &mut st);
+
+        let remote2 = vec![
+            task("ppdb-1", "Первая", Status::Doing),
+            task("ppdb-2", "Вторая", Status::Todo),
+        ];
+        let (report, _) = run_merge(&root, &cfg, &remote2, &mut st);
+        assert_eq!(report.added, 0, "не должно быть дублей");
+        assert_eq!(report.updated, 1);
+        let text = page_text(&root, "PPDB - TODO");
+        assert_eq!(
+            text.matches("source-id:: ppdb-1").count(),
+            1,
+            "файл:\n{text}"
+        );
+        assert_eq!(
+            text.matches("source-id:: ppdb-2").count(),
+            1,
+            "файл:\n{text}"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn duplicate_blocks_are_collapsed() {
+        // наследие гонки: в файле два блока с одним source-id — merge
+        // оставляет первый, лишний удаляет
+        let root = temp_graph("dedup");
+        let cfg = test_cfg();
+        let mut st = SourceState::default();
+        run_merge(
+            &root,
+            &cfg,
+            &[task("ppdb-1", "Задача", Status::Todo)],
+            &mut st,
+        );
+        let p = root.join("pages/PPDB - TODO.md");
+        let text = std::fs::read_to_string(&p).unwrap();
+        let dup = text.clone();
+        std::fs::write(&p, format!("{text}{dup}")).unwrap();
+
+        let (report, _) = run_merge(
+            &root,
+            &cfg,
+            &[task("ppdb-1", "Задача", Status::Todo)],
+            &mut st,
+        );
+        assert_eq!(report.removed, 1);
+        let text = page_text(&root, "PPDB - TODO");
+        assert_eq!(
+            text.matches("source-id:: ppdb-1").count(),
+            1,
+            "файл:\n{text}"
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 
