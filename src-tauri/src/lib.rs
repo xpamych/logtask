@@ -80,6 +80,27 @@ pub fn run() {
         .setup(|app| {
             let main = app.get_webview_window("main").expect("главное окно");
             let _ = main.show();
+
+            // WebKitGTK не диспатчит Shift+Tab в DOM (выполняет backtab-навигацию
+            // нативно) — перехватываем на уровне виджета и шлём событие во фронт
+            #[cfg(target_os = "linux")]
+            {
+                use gtk::prelude::*;
+                use tauri::Emitter;
+                let main_for_keys = main.clone();
+                main.with_webview(move |platform| {
+                    let wv = platform.inner();
+                    wv.connect_key_press_event(move |_, ev| {
+                        if ev.keyval() == gtk::gdk::keys::constants::Tab
+                            && ev.state().contains(gtk::gdk::ModifierType::SHIFT_MASK)
+                        {
+                            let _ = main_for_keys.emit("editor-shift-tab", ());
+                            return gtk::glib::Propagation::Stop;
+                        }
+                        gtk::glib::Propagation::Proceed
+                    });
+                })?;
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onCleanup } from "solid-js";
+import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { IconTrash } from "~/components/icons";
@@ -142,6 +142,25 @@ export function BlockView(props: {
   // отложенные перезагрузки по graph-changed
   onCleanup(() => {
     if (editingBlock() === b.uuid) setEditingBlock(null);
+  });
+
+  // Shift+Tab: WebKitGTK не отдаёт клавишу в DOM, её ловит Rust и шлёт
+  // событие — реагирует только редактируемый сейчас блок
+  onMount(() => {
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlisten = await listen("editor-shift-tab", () => {
+          if (!editing() || editingBlock() !== b.uuid) return;
+          void logFrontend(`shift-tab event uuid=${b.uuid}`);
+          void moveIndent(true, textareaEl?.selectionStart ?? 0);
+        });
+      } catch {
+        /* вне Tauri */
+      }
+    })();
+    onCleanup(() => unlisten?.());
   });
 
   const save = async () => {

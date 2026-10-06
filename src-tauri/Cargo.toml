@@ -39,3 +39,8 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [dev-dependencies]
 wiremock = "0.6.5"
+
+# нативный перехват клавиш (WebKitGTK не диспатчит Shift+Tab в DOM)
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+webkit2gtk = "2.0"
