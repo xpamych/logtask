@@ -129,6 +129,9 @@ export function IntegrationSources(props: {
   const [openId, setOpenId] = createSignal<string | null>(null);
   const [notice, setNotice] = createSignal<string | null>(null);
   const [tokenDraft, setTokenDraft] = createSignal("");
+  // список репозиториев — черновик строкой, коммит по blur/Enter:
+  // иначе парсинг на каждый ввод съедает только что набранную запятую
+  const [reposDraft, setReposDraft] = createSignal<string | null>(null);
   // ошибка сохранения токена — отдельно от notice, чтобы не затиралась
   const [tokenError, setTokenError] = createSignal<string | null>(null);
 
@@ -232,6 +235,8 @@ export function IntegrationSources(props: {
                 class="integration-title"
                 onClick={() => {
                   setTokenDraft("");
+                  setReposDraft(null);
+                  setTokenError(null);
                   setOpenId(openId() === s().id ? null : s().id);
                 }}
               >
@@ -406,18 +411,27 @@ export function IntegrationSources(props: {
                     />
                   </label>
                   <label class="settings-row">
-                    <span class="settings-label">Репозитории (owner/repo, через запятую)</span>
+                    <span class="settings-label">
+                      Репозитории (owner/repo или owner — все репо, через запятую)
+                    </span>
                     <input
                       class="settings-select"
-                      value={s().repos.join(", ")}
-                      onInput={(e) =>
+                      value={reposDraft() ?? s().repos.join(", ")}
+                      onInput={(e) => setReposDraft(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      onBlur={() => {
+                        const d = reposDraft();
+                        setReposDraft(null);
+                        if (d === null) return;
                         update(idx, {
-                          repos: e.currentTarget.value
-                            .split(",")
-                            .map((r) => r.trim())
-                            .filter(Boolean),
-                        })
-                      }
+                          repos: d.split(",").map((r) => r.trim()).filter(Boolean),
+                        });
+                      }}
                     />
                   </label>
                 </Show>

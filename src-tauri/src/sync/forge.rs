@@ -14,11 +14,28 @@ fn short_repo(repo: &str) -> &str {
 
 fn page_name(cfg: &SourceConfig, repo: &str) -> String {
     let tpl = if cfg.page_template.is_empty() {
-        "Gitea - {repo} - TODO"
+        "{repo} - TODO"
     } else {
         &cfg.page_template
     };
     tpl.replace("{repo}", short_repo(repo))
+}
+
+/// Раскрывает список `repos`: запись с "/" — конкретный репозиторий,
+/// запись без "/" — владелец (user/org/group), для него подтягиваются
+/// все неархивные репозитории.
+fn split_repos(repos: &[String]) -> (Vec<String>, Vec<String>) {
+    repos.iter().cloned().partition(|r| r.contains('/'))
+}
+
+/// Имена репозиториев из ответа API (поля full_name/path_with_namespace, archived)
+fn repo_names(json: &serde_json::Value, name_key: &str) -> Vec<String> {
+    json.as_array()
+        .into_iter()
+        .flatten()
+        .filter(|r| !r.get("archived").and_then(|a| a.as_bool()).unwrap_or(false))
+        .filter_map(|r| r.get(name_key).and_then(|n| n.as_str()).map(String::from))
+        .collect()
 }
 
 fn token(cfg: &SourceConfig, graph_key: &str) -> Result<Option<String>, String> {
@@ -51,6 +68,24 @@ fn issue_status(state: &str) -> Status {
 
 // ---------- Gitea / Forgejo ----------
 
+/// Все неархивные репозитории владельца: сначала пробуем как org, потом как user
+async fn list_gitea_owner_repos(
+    client: &reqwest::Client,
+    base: &str,
+    owner: &str,
+    headers: &[(String, String)],
+) -> Result<Vec<String>, String> {
+    let org = format!("{base}/api/v1/orgs/{owner}/repos?limit=50");
+    let user = format!("{base}/api/v1/users/{owner}/repos?limit=50");
+    let json = match http::get_json(client, &org, headers).await {
+        Ok(j) => j,
+        Err(org_err) => http::get_json(client, &user, headers)
+            .await
+            .map_err(|user_err| format!("gitea: репозитории {owner:?}: {org_err}; {user_err}"))?,
+    };
+    Ok(repo_names(&json, "full_name"))
+}
+
 pub async fn fetch_gitea(
     client: &reqwest::Client,
     cfg: &SourceConfig,
@@ -61,14 +96,18 @@ pub async fn fetch_gitea(
         return Err("gitea: не задан baseUrl".into());
     }
     let tok = token(cfg, graph_key)?;
+    let headers = tok
+        .as_ref()
+        .map(|t| vec![("Authorization".into(), format!("token {t}"))])
+        .unwrap_or_default();
     let state = cfg.state.as_deref().unwrap_or("open");
+    let (mut repos, owners) = split_repos(&cfg.repos);
+    for owner in owners {
+        repos.extend(list_gitea_owner_repos(client, base, &owner, &headers).await?);
+    }
     let mut out = Vec::new();
-    for repo in &cfg.repos {
+    for repo in &repos {
         let url = format!("{base}/api/v1/repos/{repo}/issues?state={state}&limit=100&type=issues");
-        let headers = tok
-            .as_ref()
-            .map(|t| vec![("Authorization".into(), format!("token {t}"))])
-            .unwrap_or_default();
         let json = http::get_json(client, &url, &headers).await?;
         let page = page_name(cfg, repo);
         for item in json.as_array().into_iter().flatten() {
@@ -143,6 +182,24 @@ pub async fn push_gitea(
 
 // ---------- GitHub ----------
 
+/// Все неархивные репозитории владельца: сначала как org, потом как user
+async fn list_github_owner_repos(
+    client: &reqwest::Client,
+    base: &str,
+    owner: &str,
+    headers: &[(String, String)],
+) -> Result<Vec<String>, String> {
+    let org = format!("{base}/orgs/{owner}/repos?per_page=100");
+    let user = format!("{base}/users/{owner}/repos?per_page=100");
+    let json = match http::get_json(client, &org, headers).await {
+        Ok(j) => j,
+        Err(org_err) => http::get_json(client, &user, headers)
+            .await
+            .map_err(|user_err| format!("github: репозитории {owner:?}: {org_err}; {user_err}"))?,
+    };
+    Ok(repo_names(&json, "full_name"))
+}
+
 pub async fn fetch_github(
     client: &reqwest::Client,
     cfg: &SourceConfig,
@@ -154,14 +211,18 @@ pub async fn fetch_github(
         cfg.base_url.trim_end_matches('/')
     };
     let tok = token(cfg, graph_key)?;
+    let mut headers = vec![("Accept".into(), "application/vnd.github+json".into())];
+    if let Some(t) = &tok {
+        headers.push(("Authorization".into(), format!("Bearer {t}")));
+    }
     let state = cfg.state.as_deref().unwrap_or("open");
+    let (mut repos, owners) = split_repos(&cfg.repos);
+    for owner in owners {
+        repos.extend(list_github_owner_repos(client, base, &owner, &headers).await?);
+    }
     let mut out = Vec::new();
-    for repo in &cfg.repos {
+    for repo in &repos {
         let url = format!("{base}/repos/{repo}/issues?state={state}&per_page=100");
-        let mut headers = vec![("Accept".into(), "application/vnd.github+json".into())];
-        if let Some(t) = &tok {
-            headers.push(("Authorization".into(), format!("Bearer {t}")));
-        }
         let json = http::get_json(client, &url, &headers).await?;
         let page = page_name(cfg, repo);
         for item in json.as_array().into_iter().flatten() {
@@ -244,6 +305,19 @@ pub async fn push_github(
 
 // ---------- GitLab ----------
 
+/// Все неархивные проекты группы (владельца)
+async fn list_gitlab_group_projects(
+    client: &reqwest::Client,
+    base: &str,
+    group: &str,
+    headers: &[(String, String)],
+) -> Result<Vec<String>, String> {
+    let enc = group.replace('/', "%2F");
+    let url = format!("{base}/api/v4/groups/{enc}/projects?per_page=100");
+    let json = http::get_json(client, &url, headers).await?;
+    Ok(repo_names(&json, "path_with_namespace"))
+}
+
 pub async fn fetch_gitlab(
     client: &reqwest::Client,
     cfg: &SourceConfig,
@@ -254,19 +328,23 @@ pub async fn fetch_gitlab(
         return Err("gitlab: не задан baseUrl".into());
     }
     let tok = token(cfg, graph_key)?;
+    let headers = tok
+        .as_ref()
+        .map(|t| vec![("PRIVATE-TOKEN".into(), t.clone())])
+        .unwrap_or_default();
     let state = match cfg.state.as_deref().unwrap_or("open") {
         "closed" => "closed",
         "all" => "all",
         _ => "opened",
     };
+    let (mut repos, owners) = split_repos(&cfg.repos);
+    for owner in owners {
+        repos.extend(list_gitlab_group_projects(client, base, &owner, &headers).await?);
+    }
     let mut out = Vec::new();
-    for project in &cfg.repos {
+    for project in &repos {
         let enc = project.replace('/', "%2F");
         let url = format!("{base}/api/v4/projects/{enc}/issues?state={state}&per_page=100");
-        let headers = tok
-            .as_ref()
-            .map(|t| vec![("PRIVATE-TOKEN".into(), t.clone())])
-            .unwrap_or_default();
         let json = http::get_json(client, &url, &headers).await?;
         let page = page_name(cfg, project);
         for item in json.as_array().into_iter().flatten() {
@@ -439,6 +517,45 @@ mod tests {
         .await
         .unwrap();
         std::env::remove_var("LOGTASK_SECRET_GITEA_PUSH_TOK");
+    }
+
+    #[tokio::test]
+    async fn gitea_owner_expands_to_repos() {
+        // своё имя секрета: env-override не должен пересекаться с другими тестами
+        std::env::set_var("LOGTASK_SECRET_GITEA_OWN_TOK", "sek");
+        let server = MockServer::start().await;
+        // org-эндпоинт 404 → fallback на users; архивный репозиторий отбрасывается
+        Mock::given(method("GET"))
+            .and(path("/api/v1/orgs/plemya/repos"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/users/plemya/repos"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"full_name": "plemya/alpha", "archived": false},
+                {"full_name": "plemya/old", "archived": true}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/repos/plemya/alpha/issues"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"number": 1, "title": "Задача", "state": "open", "labels": []}
+            ])))
+            .mount(&server)
+            .await;
+        let mut cfg = gitea_config(&server.uri());
+        cfg.token_ref = Some("gitea-own-tok".into());
+        cfg.repos = vec!["plemya".into()];
+        cfg.page_template = String::new(); // дефолтный шаблон: "{repo} - TODO"
+        let tasks = fetch_gitea(&http::client().unwrap(), &cfg, "g")
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "plemya/alpha#1");
+        assert_eq!(tasks[0].page, "alpha - TODO");
+        std::env::remove_var("LOGTASK_SECRET_GITEA_OWN_TOK");
     }
 
     #[tokio::test]

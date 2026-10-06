@@ -25,10 +25,10 @@ Logseq (`TODO`/`DOING`/…) или буква приоритета (`A`/`B`/`C`)
 | `enabled` | все | вкл/выкл |
 | `syncIntervalMin` | все | интервал фонового синка, мин; 0 — выкл |
 | `page` | generic | страница задач, например `PPDB - TODO` |
-| `pageTemplate` | форжи | шаблон страницы, `{repo}` = имя репозитория |
+| `pageTemplate` | форжи | шаблон страницы, `{repo}` = имя репозитория (по умолчанию `{repo} - TODO`) |
 | `baseUrl` | форжи | адрес сервера (github может быть пустым = api.github.com) |
 | `tokenRef` | форжи | имя токена в системном keyring |
-| `repos` | форжи | `owner/repo` (gitlab: `group/project`) |
+| `repos` | форжи | `owner/repo` (gitlab: `group/project`); запись без `/` — владелец: подтягиваются все его неархивные репозитории (gitea/github: org → fallback user; gitlab: группа), задачи каждого раскладываются по страницам по шаблону |
 | `state` | форжи | `open` / `closed` / `all` |
 | `url`, `method`, `headers` | generic | запрос задач; значения могут содержать `${secret:имя}` |
 | `itemsPath` | generic | JSONPath до массива задач |

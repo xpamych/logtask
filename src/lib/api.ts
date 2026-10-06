@@ -285,7 +285,7 @@ export function newSourceConfig(kind: string): SourceConfig {
     name: "",
     enabled: true,
     page: "",
-    pageTemplate: "Gitea - {repo} - TODO",
+    pageTemplate: "{repo} - TODO",
     baseUrl: "",
     tokenRef: null,
     repos: [],
