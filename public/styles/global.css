@@ -2059,3 +2059,31 @@ body.panel-resizing {
   padding: 2px 8px;
   min-width: 260px;
 }
+
+/* Редакторы маппингов и write-back в настройках интеграций */
+.map-editor {
+  margin: 8px 0 10px;
+}
+
+.map-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.map-row .settings-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.map-arrow {
+  color: var(--fg-muted);
+  flex: none;
+}
+
+textarea.push-body {
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+}

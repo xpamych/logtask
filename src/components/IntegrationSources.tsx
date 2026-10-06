@@ -15,6 +15,111 @@ const KIND_LABELS: Record<string, string> = {
   gitlab: "GitLab",
 };
 
+const FIELD_KEYS: [string, string][] = [
+  ["id", "id *"],
+  ["title", "Название"],
+  ["status", "Статус"],
+  ["priority", "Приоритет"],
+  ["assignee", "Исполнитель"],
+  ["author", "Автор"],
+  ["created", "Создана"],
+  ["url", "URL"],
+];
+
+/** Редактор пар «ключ → значение» (маппинги/заголовки): черновик локально,
+    коммит по blur, чтобы посимвольный ввод не дёргал конфиг и фокус */
+function MapEditor(props: {
+  title: string;
+  rows: [string, string][];
+  keyPlaceholder: string;
+  valuePlaceholder: string;
+  onCommit: (rows: [string, string][]) => void;
+}) {
+  const [draft, setDraft] = createSignal<[string, string][]>(
+    props.rows.map(([k, v]) => [k, v] as [string, string]),
+  );
+  const cleaned = (rows: [string, string][]) =>
+    rows.filter(([k]) => k.trim() !== "").map(([k, v]) => [k.trim(), v] as [string, string]);
+  const commit = () => props.onCommit(cleaned(draft()));
+  const setRow = (i: number, which: 0 | 1, val: string) =>
+    setDraft((d) =>
+      d.map((r, j) => (j === i ? (which === 0 ? [val, r[1]] : [r[0], val]) : r)),
+    );
+  return (
+    <div class="map-editor">
+      <div class="settings-section">{props.title}</div>
+      <Index each={draft()}>
+        {(row, i) => (
+          <div class="map-row">
+            <input
+              class="settings-select"
+              placeholder={props.keyPlaceholder}
+              value={row()[0]}
+              onInput={(e) => setRow(i, 0, e.currentTarget.value)}
+              onBlur={commit}
+            />
+            <span class="map-arrow">→</span>
+            <input
+              class="settings-select"
+              placeholder={props.valuePlaceholder}
+              value={row()[1]}
+              onInput={(e) => setRow(i, 1, e.currentTarget.value)}
+              onBlur={commit}
+            />
+            <button
+              class="status-move"
+              title="Удалить"
+              onClick={() => {
+                const next = draft().filter((_, j) => j !== i);
+                setDraft(next);
+                props.onCommit(cleaned(next));
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+      </Index>
+      <button class="btn" onClick={() => setDraft((d) => [...d, ["", ""]])}>
+        + добавить
+      </button>
+    </div>
+  );
+}
+
+/** Тело write-back как JSON: черновик локально, коммит по blur;
+    невалидный JSON не сохраняется */
+function PushBodyEditor(props: {
+  value: unknown;
+  onCommit: (v: unknown) => void;
+  onError: (msg: string) => void;
+}) {
+  const serialize = (v: unknown) =>
+    typeof v === "string" ? v : JSON.stringify(v ?? {}, null, 2);
+  const [draft, setDraft] = createSignal<string | null>(null);
+  return (
+    <label class="settings-row">
+      <span class="settings-label">Тело (JSON, {"{id}"}/{"{status}"})</span>
+      <textarea
+        class="settings-select push-body"
+        rows={3}
+        value={draft() ?? serialize(props.value)}
+        onInput={(e) => setDraft(e.currentTarget.value)}
+        onBlur={() => {
+          const d = draft();
+          setDraft(null);
+          if (d === null) return;
+          try {
+            props.onCommit(JSON.parse(d));
+          } catch {
+            props.onError("Тело write-back: невалидный JSON — не сохранено");
+          }
+        }}
+      />
+    </label>
+  );
+}
+
 /** Секция «Интеграции» настроек: список источников + форма редактирования */
 export function IntegrationSources(props: {
   sources: SourceConfig[];
@@ -176,11 +281,111 @@ export function IntegrationSources(props: {
                       onInput={(e) => update(idx, { itemsPath: e.currentTarget.value })}
                     />
                   </label>
-                  <p class="integration-hint">
-                    Поля (fields), маппинги (statusMap/priorityMap), заголовки и
-                    write-back (push) пока редактируются вручную в
-                    .logtask/settings.json — формат: docs/05-integrations.md.
-                  </p>
+
+                  <div class="settings-section">Поля (JSONPath)</div>
+                  <For each={FIELD_KEYS}>
+                    {([key, label]) => (
+                      <label class="settings-row">
+                        <span class="settings-label">{label}</span>
+                        <input
+                          class="settings-select"
+                          placeholder={`$.${key}`}
+                          value={s().fields[key] ?? ""}
+                          onInput={(e) => {
+                            const fields = { ...s().fields };
+                            const v = e.currentTarget.value.trim();
+                            if (v) fields[key] = v;
+                            else delete fields[key];
+                            update(idx, { fields });
+                          }}
+                        />
+                      </label>
+                    )}
+                  </For>
+
+                  <MapEditor
+                    title="Маппинг статусов (сервер → маркер; готовые TODO/DOING/… проходят и без таблицы)"
+                    rows={Object.entries(s().statusMap)}
+                    keyPlaceholder="new"
+                    valuePlaceholder="TODO"
+                    onCommit={(rows) => update(idx, { statusMap: Object.fromEntries(rows) })}
+                  />
+                  <MapEditor
+                    title="Маппинг приоритетов (сервер → A/B/C; готовые буквы проходят и без таблицы)"
+                    rows={Object.entries(s().priorityMap)}
+                    keyPlaceholder="high"
+                    valuePlaceholder="A"
+                    onCommit={(rows) => update(idx, { priorityMap: Object.fromEntries(rows) })}
+                  />
+                  <MapEditor
+                    title="Заголовки запроса (можно ${secret:имя})"
+                    rows={Object.entries(s().headers)}
+                    keyPlaceholder="Authorization"
+                    valuePlaceholder="Bearer ${secret:lg-tasks}"
+                    onCommit={(rows) => update(idx, { headers: Object.fromEntries(rows) })}
+                  />
+
+                  <label class="settings-row">
+                    <span class="settings-label">Отправлять статус на сервер</span>
+                    <input
+                      type="checkbox"
+                      checked={s().push !== null}
+                      onChange={(e) =>
+                        update(idx, {
+                          push: e.currentTarget.checked
+                            ? { url: "", method: "PUT", bodyTemplate: {}, statusMapOut: {} }
+                            : null,
+                        })
+                      }
+                    />
+                  </label>
+                  <Show when={s().push}>
+                    {(p) => (
+                      <>
+                        <label class="settings-row">
+                          <span class="settings-label">URL write-back</span>
+                          <input
+                            class="settings-select"
+                            placeholder="https://…/tasks/{id}/status?status={status}"
+                            value={p().url}
+                            onInput={(e) =>
+                              update(idx, { push: { ...p(), url: e.currentTarget.value } })
+                            }
+                          />
+                        </label>
+                        <label class="settings-row">
+                          <span class="settings-label">Метод write-back</span>
+                          <select
+                            class="settings-select"
+                            value={p().method}
+                            onChange={(e) =>
+                              update(idx, { push: { ...p(), method: e.currentTarget.value } })
+                            }
+                          >
+                            <For each={["PUT", "POST", "PATCH", "GET"]}>
+                              {(m) => <option value={m}>{m}</option>}
+                            </For>
+                          </select>
+                        </label>
+                        <PushBodyEditor
+                          value={p().bodyTemplate}
+                          onCommit={(v) => update(idx, { push: { ...p(), bodyTemplate: v } })}
+                          onError={(msg) => setNotice(msg)}
+                        />
+                        <MapEditor
+                          title="Маркер → значение сервера (statusMapOut)"
+                          rows={Object.entries(p().statusMapOut)}
+                          keyPlaceholder="DONE"
+                          valuePlaceholder="completed"
+                          onCommit={(rows) =>
+                            update(idx, {
+                              push: { ...p(), statusMapOut: Object.fromEntries(rows) },
+                            })
+                          }
+                        />
+                      </>
+                    )}
+                  </Show>
                 </Show>
 
                 <Show when={s().type !== "generic"}>

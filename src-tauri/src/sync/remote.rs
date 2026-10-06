@@ -20,18 +20,22 @@ pub struct RemoteTask {
 }
 
 /// Значение сервера → Status по таблице из конфига. Неизвестное → Todo.
+/// Значение сервера → Status (по таблице конфига; валидный маркер Logseq
+/// проходит как есть — для API, отдающих Logseq-статусы напрямую)
 pub fn map_status(value: &str, map: &HashMap<String, String>) -> Status {
     map.get(value)
         .and_then(|m| Status::from_marker(m))
+        .or_else(|| Status::from_marker(value))
         .unwrap_or(Status::Todo)
 }
 
-/// Значение сервера → Priority ("A"/"B"/"C" в таблице конфига)
+/// Значение сервера → Priority ("A"/"B"/"C" в таблице конфига;
+/// готовая буква A/B/C проходит как есть)
 pub fn map_priority(value: &str, map: &HashMap<String, String>) -> Option<Priority> {
-    match map.get(value).map(|s| s.as_str()) {
-        Some("A") => Some(Priority::A),
-        Some("B") => Some(Priority::B),
-        Some("C") => Some(Priority::C),
+    match map.get(value).map(|s| s.as_str()).unwrap_or(value) {
+        "A" => Some(Priority::A),
+        "B" => Some(Priority::B),
+        "C" => Some(Priority::C),
         _ => None,
     }
 }
@@ -70,6 +74,17 @@ mod tests {
     #[test]
     fn unknown_status_falls_back_to_todo() {
         assert_eq!(map_status("weird", &status_map()), Status::Todo);
+    }
+
+    #[test]
+    fn logseq_markers_pass_through_without_map() {
+        // API отдаёт готовые маркеры — таблица не нужна
+        let empty = HashMap::new();
+        assert_eq!(map_status("DOING", &empty), Status::Doing);
+        assert_eq!(map_status("CANCELED", &empty), Status::Canceled);
+        assert_eq!(map_priority("A", &empty), Some(Priority::A));
+        assert_eq!(map_priority("C", &empty), Some(Priority::C));
+        assert_eq!(map_priority("high", &empty), None);
     }
 
     #[test]
