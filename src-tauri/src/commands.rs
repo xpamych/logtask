@@ -973,6 +973,12 @@ async fn merge_cmd(
     }))
 }
 
+/// Лог-мост для отладки фронта: пишет сообщение в лог приложения
+#[tauri::command]
+pub fn log_frontend(msg: String) {
+    log::info!("frontend: {msg}");
+}
+
 /// Склеивает блок с вышестоящим (Backspace в начале редактируемого блока,
 /// как в Logseq): текст уходит вверх, дети переезжают, блок удаляется.
 #[tauri::command]

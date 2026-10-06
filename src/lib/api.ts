@@ -398,3 +398,8 @@ export async function openExternal(url: string): Promise<void> {
 export async function assetDataUrl(path: string): Promise<string> {
   return invoke<string>("asset_data_url", { path });
 }
+
+/** Отладка: писать сообщение фронта в лог приложения */
+export async function logFrontend(msg: string): Promise<void> {
+  return invoke<void>("log_frontend", { msg });
+}
