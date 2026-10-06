@@ -449,6 +449,9 @@ body.panel-resizing {
 .block-text {
   white-space: pre-wrap;
   word-break: break-word;
+  /* span на всю ширину строки: клик справа от короткого текста
+     (заголовки) тоже открывает редактирование */
+  display: block;
 }
 
 .empty-bullet {
@@ -673,18 +676,17 @@ body.panel-resizing {
 
 /* обычный блок без статуса/приоритета — маленькая точка-маркер */
 .status-prio-dot.empty {
-  width: 7px;
-  height: 7px;
-  background: var(--fg-muted);
-  opacity: 0.55;
-  border: none;
+  width: 8px;
+  height: 8px;
+  background: transparent;
+  border: 1.5px solid var(--fg-muted);
   box-sizing: border-box;
   /* центр первой строки ≈ 11px */
   margin-top: 7px;
 }
 
 .status-prio-dot.empty:hover {
-  opacity: 1;
+  border-color: var(--accent);
 }
 
 /* приоритет без статуса: полый кружок полного размера, значок — цвета приоритета */
