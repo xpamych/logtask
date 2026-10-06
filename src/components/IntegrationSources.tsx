@@ -411,6 +411,18 @@ export function IntegrationSources(props: {
                     />
                   </label>
                   <label class="settings-row">
+                    <span class="settings-label">Статусы issues</span>
+                    <select
+                      class="settings-select"
+                      value={s().state ?? "open"}
+                      onChange={(e) => update(idx, { state: e.currentTarget.value })}
+                    >
+                      <option value="open">Только открытые</option>
+                      <option value="all">Все (закрытые → DONE)</option>
+                      <option value="closed">Только закрытые</option>
+                    </select>
+                  </label>
+                  <label class="settings-row">
                     <span class="settings-label">
                       Репозитории (owner/repo или owner — все репо, через запятую)
                     </span>
