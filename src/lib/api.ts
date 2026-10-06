@@ -179,6 +179,11 @@ export async function blockDelete(uuid: string): Promise<string> {
   return invoke<string>("block_delete", { uuid });
 }
 
+/** Склеить блок с вышестоящим (Backspace в начале блока). Возвращает имя страницы или null */
+export async function blockMergeUp(uuid: string): Promise<string | null> {
+  return invoke<string | null>("block_merge_up", { uuid });
+}
+
 export async function blockCreate(
   page: string,
   content: string,

@@ -53,6 +53,7 @@ pub fn run() {
             commands::task_set_quadrant,
             commands::block_update_text,
             commands::block_delete,
+            commands::block_merge_up,
             commands::block_create,
             commands::clock_start,
             commands::clock_stop,

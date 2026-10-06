@@ -394,6 +394,129 @@ impl Graph {
         Ok(Some(page_name))
     }
 
+    /// Склеивает блок с блоком выше (Backspace в начале блока, как в Logseq):
+    /// текст дописывается в конец вышестоящего, дочерние переезжают к нему,
+    /// текущий блок удаляется. Вышестоящий — предыдущий в порядке документа.
+    /// Первому блоку страницы склеиваться не с кем → Ok(None).
+    pub fn merge_block_up(&mut self, id: &Uuid, root: &Path) -> std::io::Result<Option<String>> {
+        let page_name = self.page_of_block(id);
+        if page_name.is_empty() {
+            return Ok(None);
+        }
+        let (kind, rel_path, mtime) = {
+            let Some(page) = self.pages.get(&page_name) else {
+                return Ok(None);
+            };
+            (
+                page.kind,
+                page.path
+                    .clone()
+                    .unwrap_or_else(|| default_rel_path(&page.name, page.kind)),
+                page.mtime,
+            )
+        };
+        let abs = root.join(&rel_path);
+        check_mtime(&abs, mtime)?;
+
+        let page = &self.pages[&page_name];
+        let Some(pos) = page.order.iter().position(|x| x == id) else {
+            return Ok(None);
+        };
+        if pos == 0 {
+            return Ok(None); // первому блоку не с кем склеиваться
+        }
+        let prev_id = page.order[pos - 1];
+
+        // данные текущего блока
+        let (cur_content, cur_trailing, cur_children, cur_indent, cur_indent_str, cur_parent) = {
+            let b = &self.blocks[id];
+            (
+                b.content.clone(),
+                b.raw.trailing.clone(),
+                b.children.clone(),
+                b.indent,
+                b.raw.indent_str.clone(),
+                b.parent,
+            )
+        };
+        let (pred_indent, pred_indent_str) = {
+            let b = &self.blocks[&prev_id];
+            (b.indent, b.raw.indent_str.clone())
+        };
+
+        // единица отступа поддерева: из первого ребёнка, иначе tab
+        let unit = cur_children
+            .first()
+            .and_then(|c| self.blocks.get(c))
+            .and_then(|c| c.raw.indent_str.strip_prefix(&cur_indent_str))
+            .unwrap_or("\t")
+            .to_string();
+        let old_prefix = format!("{cur_indent_str}{unit}");
+        let new_prefix = format!("{pred_indent_str}{unit}");
+
+        // текст дописываем в вышестоящий (через пробел, если оба непустые)
+        {
+            let prev = self.blocks.get_mut(&prev_id).expect("prev блок");
+            let joined = match (
+                prev.content.trim_end().is_empty(),
+                cur_content.trim().is_empty(),
+            ) {
+                (true, true) => String::new(),
+                (true, false) => cur_content.trim().to_string(),
+                (false, true) => prev.content.clone(),
+                (false, false) => format!("{} {}", prev.content.trim_end(), cur_content.trim()),
+            };
+            prev.set_content(&joined);
+            prev.raw.trailing.extend(cur_trailing);
+            prev.children.extend(cur_children.iter().copied());
+        }
+
+        // поддерево переезжает: уровни и отступы сдвигаются к новому родителю
+        let mut descendants = cur_children.clone();
+        let mut stack = cur_children.clone();
+        while let Some(c) = stack.pop() {
+            if let Some(b) = self.blocks.get(&c) {
+                stack.extend(b.children.iter().copied());
+                descendants.extend(b.children.iter().copied());
+            }
+        }
+        for d in descendants {
+            let Some(b) = self.blocks.get_mut(&d) else {
+                continue;
+            };
+            b.indent = pred_indent + (b.indent - cur_indent);
+            let suffix = b
+                .raw
+                .indent_str
+                .strip_prefix(&old_prefix)
+                .unwrap_or("")
+                .to_string();
+            b.raw.indent_str = format!("{new_prefix}{suffix}");
+            if cur_children.contains(&d) {
+                b.parent = Some(prev_id);
+            }
+        }
+
+        // текущий блок удаляется (дети уже перепривязаны)
+        self.remove_block(id);
+        if let Some(p) = cur_parent.and_then(|p| self.blocks.get_mut(&p)) {
+            p.children.retain(|x| x != id);
+        }
+        if let Some(page) = self.pages.get_mut(&page_name) {
+            page.order.retain(|x| x != id);
+            page.roots.retain(|x| x != id);
+        }
+
+        let page_snapshot = self.pages[&page_name].clone();
+        let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
+        if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
+            self.reload_page(&page_name, kind, &abs, Some(rel_path.clone()));
+            return Err(e);
+        }
+        self.reload_page(&page_name, kind, &abs, Some(rel_path));
+        Ok(Some(page_name))
+    }
+
     /// Добавляет новый блок в конец страницы (корневой уровень).
     /// Возвращает uuid нового блока.
     pub fn append_block(

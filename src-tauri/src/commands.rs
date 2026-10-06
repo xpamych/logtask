@@ -920,6 +920,35 @@ pub async fn block_delete(
     Ok(page)
 }
 
+/// Склеивает блок с вышестоящим (Backspace в начале редактируемого блока,
+/// как в Logseq): текст уходит вверх, дети переезжают, блок удаляется.
+#[tauri::command]
+pub async fn block_merge_up(
+    uuid: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+
+    let page = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .merge_block_up(&id, &root)
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    if page.is_some() {
+        mark_self_write(&state);
+        crate::watcher::reindex_and_emit(&app);
+    }
+    Ok(page)
+}
+
 /// Создаёт новый блок в конце страницы.
 /// marker — один из LATER/TODO/DOING/... или null для обычного блока
 #[tauri::command]

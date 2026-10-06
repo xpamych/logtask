@@ -11,6 +11,7 @@ import {
 } from "./StatusPrioDot";
 import type { BlockDto, Settings } from "~/lib/api";
 import {
+  blockMergeUp,
   blockSetProp,
   blockUpdateText,
   clockStart,
@@ -156,6 +157,17 @@ export function BlockView(props: {
     setDraft(b.source);
   };
 
+  /// Backspace в самом начале блока: склеивание с вышестоящим (как в Logseq)
+  const mergeUp = async () => {
+    stopEdit();
+    try {
+      const merged = await blockMergeUp(b.uuid);
+      if (merged) props.onChanged?.();
+    } catch (e) {
+      console.error("склеивание блока:", e);
+    }
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
     // IME-композиция: Enter подтверждает ввод, а не сохранение
     if (e.isComposing) return;
@@ -179,6 +191,15 @@ export function BlockView(props: {
       if (e.key === "Escape") {
         e.preventDefault();
         setAcOpen(false);
+        return;
+      }
+    }
+    // Backspace в позиции 0 (ничего не выделено) — склеивание с блоком выше
+    if (e.key === "Backspace") {
+      const el = e.currentTarget as HTMLTextAreaElement;
+      if (el.selectionStart === 0 && el.selectionEnd === 0) {
+        e.preventDefault();
+        void mergeUp();
         return;
       }
     }
