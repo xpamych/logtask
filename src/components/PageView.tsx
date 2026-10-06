@@ -12,6 +12,7 @@ import {
 } from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
 import { refreshGuarded } from "~/lib/editState";
+import { IconStar } from "~/components/icons";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
 
@@ -233,7 +234,7 @@ export function PageView(props: {
                   title={props.favorite ? "Убрать из избранного" : "В избранное"}
                   onClick={() => props.onToggleFavorite?.()}
                 >
-                  {props.favorite ? "★" : "☆"}
+                  <IconStar size={18} filled={props.favorite ?? false} />
                 </button>
               </Show>
             </h2>

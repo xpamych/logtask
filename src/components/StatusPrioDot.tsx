@@ -1,6 +1,7 @@
 import { For, Show, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
+import { IconArrowDown, IconArrowUp, IconMinus } from "~/components/icons";
 
 export const STATUS_COLORS: Record<string, string> = {
   LATER: "#888888",
@@ -23,7 +24,11 @@ export const MARKER_LABELS: Record<string, string> = {
 export const PRIORITIES = ["A", "B", "C"];
 /// значки приоритета: A — стрелка вверх (красная), B — тире (зелёное),
 /// C — стрелка вниз (серая)
-export const PRIO_ICONS: Record<string, string> = { A: "↑", B: "–", C: "↓" };
+const PRIO_ICONS: Record<string, (p: { size?: number }) => JSX.Element> = {
+  A: IconArrowUp,
+  B: IconMinus,
+  C: IconArrowDown,
+};
 export const PRIO_LABELS: Record<string, string> = {
   A: "высокий",
   B: "средний",
@@ -74,9 +79,12 @@ export function StatusPrioDot(props: {
           setPopup((v) => !v);
         }}
       >
-        {props.priority
-          ? (PRIO_ICONS[props.priority[2]] ?? props.priority[2])
-          : ""}
+        {(() => {
+          const letter = props.priority?.[2];
+          const Icon = letter ? PRIO_ICONS[letter] : undefined;
+          if (!letter) return "";
+          return Icon ? <Icon size={10} /> : letter;
+        })()}
       </span>
       <Show when={popup()}>
         <div class="mini-popup" onClick={(e) => e.stopPropagation()}>
@@ -111,7 +119,10 @@ export function StatusPrioDot(props: {
                 }}
               >
                 <span class={`prio-icon prio-${p.toLowerCase()}`}>
-                  {PRIO_ICONS[p]}
+                  {(() => {
+                    const Icon = PRIO_ICONS[p];
+                    return Icon ? <Icon size={12} /> : p;
+                  })()}
                 </span>
                 {PRIO_LABELS[p]}
               </button>

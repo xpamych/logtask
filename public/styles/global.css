@@ -91,6 +91,18 @@ body {
   color: var(--fg-muted);
   font-size: 14px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.block-action,
+.status-move,
+.modal-close,
+.graph-menu-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .topbar-btn:hover {
@@ -681,6 +693,19 @@ body.panel-resizing {
 
 .prio-icon {
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+
+.star-btn {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .prio-icon.prio-a {
@@ -1638,6 +1663,13 @@ select.settings-select {
   text-align: left;
   padding: 7px 10px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-item svg {
+  flex: none;
 }
 
 .nav-item:hover {
@@ -1651,15 +1683,6 @@ select.settings-select {
 }
 
 /* Звёздочка избранного */
-.star-btn {
-  background: none;
-  border: none;
-  color: var(--fg-muted);
-  font-size: 16px;
-  cursor: pointer;
-  padding: 0 4px;
-}
-
 .star-btn:hover {
   color: var(--warning);
 }

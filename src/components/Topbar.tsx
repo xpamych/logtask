@@ -1,6 +1,17 @@
 import { Show, createSignal, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { SearchBar } from "~/components/SearchBar";
+import {
+  IconArrowLeft,
+  IconArrowRight,
+  IconHome,
+  IconMaximize,
+  IconMinimize,
+  IconPanelLeft,
+  IconPanelRight,
+  IconRefresh,
+  IconX,
+} from "~/components/icons";
 
 type Win = import("@tauri-apps/api/window").Window;
 
@@ -41,7 +52,7 @@ export function Topbar(props: {
         title={props.sidebarCollapsed ? "Показать левую панель" : "Скрыть левую панель"}
         onClick={props.onToggleSidebar}
       >
-        ◧
+        <IconPanelLeft />
       </button>
       <button
         class="topbar-btn"
@@ -49,7 +60,7 @@ export function Topbar(props: {
         disabled={!props.canBack}
         onClick={props.onBack}
       >
-        ←
+        <IconArrowLeft />
       </button>
       <button
         class="topbar-btn"
@@ -57,10 +68,10 @@ export function Topbar(props: {
         disabled={!props.canForward}
         onClick={props.onForward}
       >
-        →
+        <IconArrowRight />
       </button>
       <button class="topbar-btn" title="Домой" onClick={props.onHome}>
-        ⌂
+        <IconHome />
       </button>
       <button
         class="topbar-btn sync-btn"
@@ -68,7 +79,7 @@ export function Topbar(props: {
         title="Синхронизировать задачи из интеграций"
         onClick={props.onSync}
       >
-        ⟳
+        <IconRefresh />
       </button>
       <div class="topbar-search">
         <SearchBar onOpenPage={props.onOpenPage} />
@@ -79,27 +90,27 @@ export function Topbar(props: {
         title={props.panelCollapsed ? "Показать правую панель" : "Скрыть правую панель"}
         onClick={props.onTogglePanel}
       >
-        ◨
+        <IconPanelRight />
       </button>
       <Show when={!props.systemTitlebar && win()}>
         {(w) => (
           <div class="win-controls">
             <button class="topbar-btn" title="Свернуть" onClick={() => void w().minimize()}>
-              —
+              <IconMinimize />
             </button>
             <button
               class="topbar-btn"
               title="Развернуть / восстановить"
               onClick={() => void w().toggleMaximize()}
             >
-              ▢
+              <IconMaximize />
             </button>
             <button
               class="topbar-btn win-close"
               title="Закрыть"
               onClick={() => void w().close()}
             >
-              ✕
+              <IconX />
             </button>
           </div>
         )}

@@ -1,5 +1,6 @@
 import { For } from "solid-js";
 import type { JSX } from "solid-js";
+import { IconStar } from "~/components/icons";
 
 /** Центральный вид «Все страницы»: список страниц графа со звёздочками */
 export function AllPages(props: {
@@ -23,7 +24,7 @@ export function AllPages(props: {
                 title={isFav(name) ? "Убрать из избранного" : "В избранное"}
                 onClick={() => props.onToggleFavorite(name)}
               >
-                {isFav(name) ? "★" : "☆"}
+                <IconStar size={14} filled={isFav(name)} />
               </button>
               <button class="page-item allpages-link" onClick={() => props.onOpenPage(name)}>
                 {name}

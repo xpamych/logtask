@@ -2,6 +2,13 @@ import { For, Show, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { GraphSummary, RecentGraph } from "~/lib/api";
 import { pickGraphDir, recentGraphs, recentRemove } from "~/lib/api";
+import {
+  IconCalendar,
+  IconFileText,
+  IconSettings,
+  IconTasks,
+  IconX,
+} from "~/components/icons";
 import { SETTINGS_SECTIONS } from "./SettingsPage";
 import type { SettingsSection } from "./SettingsPage";
 
@@ -107,7 +114,7 @@ export function Sidebar(props: {
                     title={`Убрать из списка: ${g.path}`}
                     onClick={() => void removeGraph(g.path)}
                   >
-                    ✕
+                    <IconX size={12} />
                   </button>
                 </div>
               )}
@@ -124,28 +131,28 @@ export function Sidebar(props: {
             classList={{ active: props.view === "journal" }}
             onClick={props.onShowJournal}
           >
-            📅 Журналы
+            <IconCalendar /> Журналы
           </button>
           <button
             class="nav-item"
             classList={{ active: props.view === "tasks" }}
             onClick={props.onShowTasks}
           >
-            ✓ Задачи
+            <IconTasks /> Задачи
           </button>
           <button
             class="nav-item"
             classList={{ active: props.view === "pages" }}
             onClick={props.onShowAllPages}
           >
-            📄 Все страницы
+            <IconFileText /> Все страницы
           </button>
           <button
             class="nav-item nav-settings"
             classList={{ active: props.view === "settings" }}
             onClick={() => props.onOpenSettings("general")}
           >
-            ⚙ Настройки
+            <IconSettings /> Настройки
             <span
               class="save-dot"
               classList={{

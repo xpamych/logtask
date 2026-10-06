@@ -1,6 +1,7 @@
 import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { editingBlock, setEditingBlock } from "~/lib/editState";
+import { IconTrash } from "~/components/icons";
 import { RichText } from "./RichText";
 import {
   StatusPrioDot,
@@ -366,7 +367,7 @@ export function BlockView(props: {
               }
             }}
           >
-            ✕
+            <IconTrash size={13} />
           </button>
         </span>
       </Show>

@@ -1,4 +1,5 @@
 import { createSignal, Index, For, Show, onMount } from "solid-js";
+import { IconTrash } from "~/components/icons";
 import type { SourceConfig, SourceState } from "~/lib/api";
 import {
   integrationsSetSecret,
@@ -75,7 +76,7 @@ function MapEditor(props: {
                 props.onCommit(cleaned(next));
               }}
             >
-              ✕
+              <IconTrash size={12} />
             </button>
           </div>
         )}

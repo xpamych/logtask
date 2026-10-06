@@ -1,6 +1,7 @@
 import { For, Index, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
+import { IconArrowDown, IconArrowUp } from "~/components/icons";
 import { IntegrationSources } from "./IntegrationSources";
 
 export type SettingsSection = "general" | "appearance" | "tasks" | "integrations";
@@ -184,7 +185,7 @@ export function SettingsPage(props: {
                 onClick={() => moveStatus(i, -1)}
                 title="Выше"
               >
-                ↑
+                <IconArrowUp size={12} />
               </button>
               <button
                 class="status-move"
@@ -192,7 +193,7 @@ export function SettingsPage(props: {
                 onClick={() => moveStatus(i, 1)}
                 title="Ниже"
               >
-                ↓
+                <IconArrowDown size={12} />
               </button>
             </div>
           )}

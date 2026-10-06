@@ -1,4 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
+import { IconX } from "~/components/icons";
 import type { JSX } from "solid-js";
 import type { SavedQuery, Settings } from "~/lib/api";
 
@@ -92,7 +93,7 @@ export function QueryEditor(props: {
             {isNew() ? "Новая подборка" : `Подборка «${props.query!.title}»`}
           </span>
           <button class="modal-close" onClick={props.onClose}>
-            ✕
+            <IconX />
           </button>
         </header>
 
