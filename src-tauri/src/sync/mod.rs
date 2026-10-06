@@ -59,7 +59,6 @@ pub struct SyncReport {
     pub added: usize,
     pub updated: usize,
     pub pushed: usize,
-    pub conflicts: usize,
     pub removed: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -286,7 +285,7 @@ fn apply_merge(
                 }
                 merge::Action::Update => {
                     if let Some(uuid) = found {
-                        update_task(graph, root, &uuid, cfg, t, false);
+                        update_task(graph, root, &uuid, cfg, t);
                         report.updated += 1;
                     }
                 }
@@ -296,9 +295,11 @@ fn apply_merge(
                     }
                 }
                 merge::Action::Conflict => {
+                    // менялись и локально, и на сервере — сервер истина,
+                    // блок просто приводим к серверному состоянию
                     if let Some(uuid) = found {
-                        update_task(graph, root, &uuid, cfg, t, true);
-                        report.conflicts += 1;
+                        update_task(graph, root, &uuid, cfg, t);
+                        report.updated += 1;
                     }
                 }
                 _ => {}
@@ -412,20 +413,19 @@ fn add_task(graph: &mut Graph, root: &Path, page: &str, cfg: &SourceConfig, t: &
     });
 }
 
-/// Обновляет блок по данным сервера; conflict=true — ещё и метка sync-conflict
+/// Обновляет блок по данным сервера; заодно снимает служебные пометки
+/// прошлых синков (sync-conflict/sync-missing)
 fn update_task(
     graph: &mut Graph,
     root: &Path,
     uuid: &uuid::Uuid,
     cfg: &SourceConfig,
     t: &RemoteTask,
-    conflict: bool,
 ) {
     let priority = t.priority;
     let props = task_props(cfg, t);
     let title = sanitize(&t.title);
     let status = t.status;
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let _ = graph.mutate_block(uuid, root, |b| {
         b.set_status(status);
         // set_content перепарсивает [#X] и сбрасывает priority — поэтому раньше
@@ -434,11 +434,7 @@ fn update_task(
         for (k, v) in &props {
             b.set_prop(k, Some(v));
         }
-        if conflict {
-            b.set_prop("sync-conflict", Some(&today));
-        } else {
-            b.set_prop("sync-conflict", None);
-        }
+        b.set_prop("sync-conflict", None);
         b.set_prop("sync-missing", None);
     });
 }
@@ -782,7 +778,9 @@ mod tests {
     }
 
     #[test]
-    fn conflict_server_wins_and_marks_block() {
+    fn conflict_server_wins_without_marking() {
+        // менялись и локально, и на сервере — сервер истина, блок просто
+        // приводится к серверному состоянию, без пометок конфликта
         let root = temp_graph("conflict");
         let cfg = test_cfg();
         let mut st = SourceState::default();
@@ -804,10 +802,10 @@ mod tests {
             &[task("ppdb-1", "Задача", Status::Done)],
             &mut st,
         );
-        assert_eq!(report.conflicts, 1);
+        assert_eq!(report.updated, 1);
         let text = page_text(&root, "PPDB - TODO");
         assert!(text.contains("- DONE [#B] Задача"), "файл:\n{text}");
-        assert!(text.contains("sync-conflict::"), "файл:\n{text}");
+        assert!(!text.contains("sync-conflict::"), "файл:\n{text}");
         std::fs::remove_dir_all(&root).unwrap();
     }
 

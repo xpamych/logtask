@@ -185,7 +185,7 @@ export function IntegrationSources(props: {
       setNotice(
         r?.error
           ? `«${s.name}»: ошибка — ${r.error}`
-          : `«${s.name}»: +${r?.added ?? 0} обновлено ${r?.updated ?? 0}, конфликтов ${r?.conflicts ?? 0}`,
+          : `«${s.name}»: +${r?.added ?? 0} обновлено ${r?.updated ?? 0}, удалено ${r?.removed ?? 0}`,
       );
       await refreshStates();
     } catch (e) {

@@ -272,7 +272,6 @@ export interface SyncReport {
   added: number;
   updated: number;
   pushed: number;
-  conflicts: number;
   removed: number;
   error?: string;
 }

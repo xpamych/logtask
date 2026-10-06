@@ -21,7 +21,6 @@ export function Topbar(props: {
   /** ручная синхронизация интеграций */
   onSync: () => void;
   syncing: boolean;
-  syncConflicts: number;
 }): JSX.Element {
   const [win, setWin] = createSignal<Win | null>(null);
 
@@ -70,9 +69,6 @@ export function Topbar(props: {
         onClick={props.onSync}
       >
         ⟳
-        <Show when={props.syncConflicts > 0}>
-          <span class="sync-badge">{props.syncConflicts}</span>
-        </Show>
       </button>
       <div class="topbar-search">
         <SearchBar onOpenPage={props.onOpenPage} />

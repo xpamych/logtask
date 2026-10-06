@@ -79,7 +79,6 @@ const App: Component = () => {
   const [graphClosed, setGraphClosed] = createSignal(false);
 
   const [syncing, setSyncing] = createSignal(false);
-  const [syncConflicts, setSyncConflicts] = createSignal(0);
   const [toast, setToast] = createSignal<string | null>(null);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -118,8 +117,6 @@ const App: Component = () => {
     manualSync = true;
     try {
       const reports = await integrationsSync();
-      const conflicts = reports.reduce((n, r) => n + r.conflicts, 0);
-      setSyncConflicts(conflicts);
       const errors = reports.filter((r) => r.error);
       if (reports.length === 0) {
         showToast("Интеграции не настроены — добавьте источник в настройках");
@@ -128,10 +125,7 @@ const App: Component = () => {
       } else {
         const added = reports.reduce((n, r) => n + r.added, 0);
         const updated = reports.reduce((n, r) => n + r.updated, 0);
-        showToast(
-          `Синхронизировано: новых ${added}, обновлено ${updated}` +
-            (conflicts > 0 ? `, конфликтов ${conflicts}` : ""),
-        );
+        showToast(`Синхронизировано: новых ${added}, обновлено ${updated}`);
       }
     } catch (e) {
       showToast(`Синхронизация не удалась: ${e}`);
@@ -382,15 +376,12 @@ const App: Component = () => {
       const { listen } = await import("@tauri-apps/api/event");
       unlistenSync.push(await listen("sync-started", () => setSyncing(true)));
       unlistenSync.push(
-        await listen<{ source: string; conflicts: number; error?: string }>(
+        await listen<{ source: string; error?: string }>(
           "sync-finished",
           (e) => {
             setSyncing(false);
             if (!manualSync && e.payload.error) {
               showToast(`Синхронизация «${e.payload.source}»: ${e.payload.error}`);
-            }
-            if (!manualSync && e.payload.conflicts > 0) {
-              setSyncConflicts((n) => n + e.payload.conflicts);
             }
           },
         ),
@@ -489,7 +480,6 @@ const App: Component = () => {
           onHome={showHome}
           onSync={() => void runSync()}
           syncing={syncing()}
-          syncConflicts={syncConflicts()}
         />
         <div class="app" style={{ "grid-template-columns": gridCols() }}>
           <Show when={!sidebarCollapsed()}>
