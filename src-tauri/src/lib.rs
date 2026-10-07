@@ -65,6 +65,7 @@ pub fn run() {
             commands::block_merge_down,
             commands::block_indent,
             commands::block_outdent,
+            commands::block_split,
             commands::log_frontend,
             commands::block_create,
             commands::clock_start,

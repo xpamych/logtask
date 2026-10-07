@@ -268,7 +268,8 @@ export function PageView(props: {
                   onClick={(e) => {
                     e.stopPropagation();
                     const r = e.currentTarget.getBoundingClientRect();
-                    setMenuPos(menuPos() ? null : { x: r.right - 180, y: r.bottom + 4 });
+                    // правый край меню — по кнопке, ширину считает CSS
+                    setMenuPos(menuPos() ? null : { x: r.right, y: r.bottom + 4 });
                   }}
                 >
                   ⋯
@@ -278,14 +279,25 @@ export function PageView(props: {
             <Show when={menuPos()}>
               {(pos) => (
                 <>
-                  <div class="menu-backdrop" onClick={() => setMenuPos(null)} />
                   <div
-                    class="block-menu ctx-menu"
-                    style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
+                    class="menu-backdrop"
+                    onClick={() => setMenuPos(null)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setMenuPos(null);
+                    }}
+                  />
+                  <div
+                    class="block-menu ctx-menu page-menu"
+                    style={{
+                      left: "auto",
+                      right: `${window.innerWidth - pos().x}px`,
+                      top: `${pos().y}px`,
+                    }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
-                      class="block-menu-item"
+                      class="page-menu-item"
                       onClick={() => {
                         setMenuPos(null);
                         void onReveal();
@@ -294,7 +306,7 @@ export function PageView(props: {
                       Открыть в файловом менеджере
                     </button>
                     <button
-                      class="block-menu-item danger"
+                      class="page-menu-item danger"
                       onClick={() => {
                         setMenuPos(null);
                         void onDeletePage();

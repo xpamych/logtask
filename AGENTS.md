@@ -58,7 +58,9 @@ Logtask — десктоп-приложение: лёгкая замена Logse
      правая панель (Оглавление открытой страницы).
    - `components/` — `JournalTape`, `PageView`, `BlockView` (textarea
      редактирование блока целиком), `Contents` (оглавление правой панели),
-     `StatusPrioDot` (кружок статуса/приоритета с попапом), `TaskCard`,
+     `StatusPrioDot` (кружок статуса/приоритета с попапом), `BlockMenu`
+     (общее контекстное меню блока — и в ленте, и в карточках задач),
+     `TaskCard`,
      `Kanban`, `Matrix`, `Queries`, `QueryEditor`, `Sidebar`,
      `SettingsPage` (настройки страницей в центре, разделы в сайдбаре).
    - `lib/api.ts` — типизированные обёртки над `invoke()` для каждой

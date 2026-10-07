@@ -517,3 +517,46 @@ fn set_priority_and_deadline() {
     assert!(after.contains("deadline:: 2026-10-15"), "{after}");
     assert!(after.contains("- TODO [#C] задача"), "{after}");
 }
+
+/// Переход в статус «В работе» запускает CLOCK, выход из него останавливает.
+#[test]
+fn doing_status_toggles_clock() {
+    let dir = std::env::temp_dir().join("logtask_doing_clock_test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("journals")).unwrap();
+    let file = dir.join("journals/2026_10_07.md");
+    fs::write(&file, "- TODO задача\n").unwrap();
+
+    let mut graph = Graph::default();
+    graph.index_dir(&dir).unwrap();
+    let id = graph
+        .all_tasks()
+        .into_iter()
+        .map(|(id, _)| id)
+        .next()
+        .expect("задача есть");
+
+    // TODO → DOING: часы запустились
+    graph.set_block_status(&id, Status::Doing, &dir).unwrap();
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(after.contains("- DOING задача"), "{after}");
+    assert!(after.contains(":LOGBOOK:"), "{after}");
+    assert!(after.contains("CLOCK: ["), "{after}");
+    let b = graph.all_tasks().into_iter().next().expect("задача").1;
+    assert!(b.clock_running());
+
+    // DOING → DONE: часы остановились, длительность проставлена
+    // (uuid пересоздаётся при переиндексации — находим задачу заново)
+    let id = graph
+        .all_tasks()
+        .into_iter()
+        .map(|(id, _)| id)
+        .next()
+        .expect("задача есть");
+    graph.set_block_status(&id, Status::Done, &dir).unwrap();
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(after.contains("- DONE задача"), "{after}");
+    assert!(after.contains("=>"), "{after}"); // CLOCK: [...]--[...] => длит.
+    let b = graph.all_tasks().into_iter().next().expect("задача").1;
+    assert!(!b.clock_running());
+}

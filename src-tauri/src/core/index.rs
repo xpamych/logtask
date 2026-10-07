@@ -301,14 +301,24 @@ impl Graph {
         Ok(Some(page_name))
     }
 
-    /// Меняет статус задачи (drag&drop в канбане).
+    /// Меняет статус задачи (drag&drop в канбане, кружок статуса, меню).
+    /// Учёт времени привязан к статусу «В работе»: переход в DOING запускает
+    /// CLOCK, выход из DOING останавливает (если идёт).
     pub fn set_block_status(
         &mut self,
         id: &Uuid,
         status: super::model::Status,
         root: &Path,
     ) -> std::io::Result<Option<String>> {
-        self.mutate_block(id, root, |b| b.set_status(status))
+        self.mutate_block(id, root, |b| {
+            b.set_status(status);
+            let now = super::model::org_timestamp_now();
+            if status == super::model::Status::Doing {
+                b.clock_start(&now);
+            } else if b.clock_running() {
+                let _ = b.clock_stop(&now);
+            }
+        })
     }
 
     /// Меняет срочность/важность задачи (drag&drop в матрице).
@@ -773,6 +783,77 @@ impl Graph {
             .expect("блок на месте");
         self.write_page(&page_name, kind, rel_path, abs)?;
         Ok(Some((page_name, pos)))
+    }
+
+    /// Enter в редакторе: разбивает блок на два по позиции курсора.
+    /// `before` остаётся в текущем блоке, `after` уходит в новый блок-
+    /// сосед сразу под поддеревом текущего (как в Logseq); маркер статуса
+    /// наследуется, свойства и LOGBOOK остаются в верхнем блоке.
+    /// Возвращает (страница, позиция нового блока в порядке документа).
+    pub fn split_block(
+        &mut self,
+        id: &Uuid,
+        before: &str,
+        after: &str,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
+        let Some((page_name, kind, rel_path, abs)) = self.page_io(id, root)? else {
+            return Ok(None);
+        };
+
+        let (parent, indent, indent_str, status) = {
+            let b = &self.blocks[id];
+            (b.parent, b.indent, b.raw.indent_str.clone(), b.status)
+        };
+
+        // верхний блок — текст до курсора (set_source парсит продолжения)
+        self.blocks.get_mut(id).expect("блок").set_source(before);
+
+        // новый блок-сосед с текстом после курсора
+        let mut nb = super::serializer::new_block(String::new(), indent);
+        nb.raw.indent_str = indent_str;
+        match status {
+            Some(s) => nb.set_status(s),
+            None => {
+                nb.status = None;
+                nb.raw.marker_str = String::new();
+            }
+        }
+        nb.set_source(after);
+        nb.parent = parent;
+        let new_id = nb.id.expect("свежий uuid");
+        self.block_page.insert(new_id, page_name.clone());
+        self.blocks.insert(new_id, nb);
+
+        // соседи: сразу после текущего блока
+        match parent {
+            Some(p) => {
+                let ch = &mut self.blocks.get_mut(&p).expect("parent").children;
+                let i = ch.iter().position(|x| x == id).expect("блок у родителя");
+                ch.insert(i + 1, new_id);
+            }
+            None => {
+                let roots = &mut self.pages.get_mut(&page_name).expect("page").roots;
+                let i = roots.iter().position(|x| x == id).expect("блок в roots");
+                roots.insert(i + 1, new_id);
+            }
+        }
+
+        // порядок документа: сразу после поддерева текущего блока
+        let order = &self.pages[&page_name].order;
+        let pos = order.iter().position(|x| x == id).expect("блок на месте");
+        let mut end = pos + 1;
+        while end < order.len() && self.blocks[&order[end]].indent > indent {
+            end += 1;
+        }
+        self.pages
+            .get_mut(&page_name)
+            .expect("page")
+            .order
+            .insert(end, new_id);
+
+        self.write_page(&page_name, kind, rel_path, abs)?;
+        Ok(Some((page_name, end)))
     }
 
     /// Добавляет новый блок в конец страницы (корневой уровень).

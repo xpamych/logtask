@@ -162,6 +162,14 @@ export function StatusPrioDot(props: {
         )}
       </Show>
       <Show when={popup()}>
+        <div
+          class="menu-backdrop"
+          onClick={() => setPopup(false)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setPopup(false);
+          }}
+        />
         <div class="mini-popup" onClick={(e) => e.stopPropagation()}>
           <div class="block-menu-title">Статус</div>
           <For each={MARKERS}>

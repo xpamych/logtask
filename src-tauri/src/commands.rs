@@ -1098,6 +1098,50 @@ pub async fn block_outdent(
     merge_cmd(uuid, "outdent", app, state).await
 }
 
+/// Enter в редакторе: разбивает блок на два по позиции курсора —
+/// `before` остаётся в текущем блоке, `after` уходит в новый блок ниже.
+/// Возвращает страницу и свежий uuid нового блока (фронт продолжает
+/// редактирование уже в нём).
+#[tauri::command]
+pub async fn block_split(
+    uuid: String,
+    before: String,
+    after: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<MergeResultDto>, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+
+    let res = {
+        let mut graph = state.graph.write();
+        let Some(graph) = graph.as_mut() else {
+            return Err("граф не загружен".into());
+        };
+        graph
+            .split_block(&id, &before, &after, &root)
+            .map_err(|e| format!("ошибка записи: {e}"))?
+    };
+
+    let Some((page, pos)) = res else {
+        return Ok(None);
+    };
+    mark_self_write(&state);
+    crate::watcher::reindex_and_emit(&app);
+    let fresh_uuid = {
+        let graph = state.graph.read();
+        graph
+            .as_ref()
+            .and_then(|g| g.pages.get(&page))
+            .and_then(|p| p.order.get(pos).copied())
+    };
+    Ok(fresh_uuid.map(|u| MergeResultDto {
+        page,
+        uuid: u.to_string(),
+    }))
+}
+
 /// Создаёт новый блок в конце страницы.
 /// marker — один из LATER/TODO/DOING/... или null для обычного блока
 #[tauri::command]

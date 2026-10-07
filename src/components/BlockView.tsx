@@ -1,14 +1,9 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
-import { IconTrash } from "~/components/icons";
 import { RichText } from "./RichText";
-import {
-  StatusPrioDot,
-  MARKERS,
-  MARKER_LABELS,
-  PRIORITIES,
-} from "./StatusPrioDot";
+import { BlockMenu } from "./BlockMenu";
+import { StatusPrioDot } from "./StatusPrioDot";
 import type { BlockDto, Settings } from "~/lib/api";
 import {
   blockIndent,
@@ -16,6 +11,7 @@ import {
   blockMergeUp,
   blockOutdent,
   blockSetProp,
+  blockSplit,
   blockUpdateText,
   clockStart,
   clockStop,
@@ -30,13 +26,6 @@ const QUADRANT_HINT: Record<string, string> = {
   low: "·",
 };
 
-const LEVELS = ["low", "medium", "high"];
-const LEVEL_LABELS: Record<string, string> = {
-  low: "низкая",
-  medium: "средняя",
-  high: "высокая",
-};
-
 export function BlockView(props: {
   block: BlockDto;
   onOpenPage?: (name: string) => void;
@@ -48,15 +37,9 @@ export function BlockView(props: {
   const b = props.block;
   const onOpen = props.onOpenPage;
 
-  // подпись статуса: из настроек пользователя, иначе дефолт
-  const statusLabel = (marker: string): string =>
-    props.settings?.statuses.find((s) => s.marker === marker)?.label ??
-    MARKER_LABELS[marker] ??
-    marker;
-
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal("");
-  const [menu, setMenu] = createSignal(false);
+  const [menu, setMenu] = createSignal<{ x: number; y: number } | null>(null);
   const [saving, setSaving] = createSignal(false);
   const [acItems, setAcItems] = createSignal<string[]>([]);
   const [acOpen, setAcOpen] = createSignal(false);
@@ -253,6 +236,25 @@ export function BlockView(props: {
     }
   };
 
+  /// Enter в редакторе (как в Logseq): текущий черновик делится по курсору —
+  /// текст до курсора остаётся в блоке, текст после уходит в новый блок ниже;
+  /// редактирование продолжается уже в новом блоке (курсор в начале)
+  const splitBlock = async (start: number, end: number) => {
+    const text = draft();
+    const before = text.slice(0, start);
+    const after = text.slice(end);
+    try {
+      const res = await blockSplit(b.uuid, before, after);
+      if (res) {
+        setEditingBlock(res.uuid);
+        setPendingEdit({ uuid: res.uuid, at: 0 });
+        props.onChanged?.();
+      }
+    } catch (e) {
+      console.error("разбиение блока:", e);
+    }
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
     // IME-композиция: Enter подтверждает ввод, а не сохранение
     if (e.isComposing) return;
@@ -305,12 +307,16 @@ export function BlockView(props: {
         return;
       }
     }
-    // редактор многострочный: Enter — новая строка,
-    // сохранение — blur или mod+Enter (меню блока в редакторе не открываем)
+    // Enter — новый блок ниже (с разбиением текста по курсору),
+    // mod+Enter — сохранить, Escape — отмена
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       e.stopPropagation();
       void save();
+    } else if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      const el = e.currentTarget as HTMLTextAreaElement;
+      void splitBlock(el.selectionStart, el.selectionEnd);
     } else if (e.key === "Escape") {
       e.preventDefault();
       cancel();
@@ -318,7 +324,7 @@ export function BlockView(props: {
   };
 
   const onClockToggle = async () => {
-    setMenu(false);
+    setMenu(null);
     try {
       if (b.clockRunning) {
         await clockStop(b.uuid);
@@ -332,7 +338,7 @@ export function BlockView(props: {
   };
 
   const onPriority = async (prio: string | null) => {
-    setMenu(false);
+    setMenu(null);
     try {
       await taskSetPriority(b.uuid, prio);
       props.onChanged?.();
@@ -341,8 +347,8 @@ export function BlockView(props: {
     }
   };
 
-  const onLevel = async (key: "urgency" | "importance", level: string) => {
-    setMenu(false);
+  const onLevel = async (key: "urgency" | "importance", level: string | null) => {
+    setMenu(null);
     try {
       await taskSetQuadrant(
         b.uuid,
@@ -356,7 +362,7 @@ export function BlockView(props: {
   };
 
   const onDeadline = async () => {
-    setMenu(false);
+    setMenu(null);
     const value = window.prompt(
       "Дедлайн (YYYY-MM-DD):",
       b.deadline ?? "",
@@ -370,11 +376,26 @@ export function BlockView(props: {
     }
   };
 
-  // мод+enter — меню быстрого редактирования
+  // мод+enter — контекстное меню блока (открывается у самого блока)
   const onBlockKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      setMenu((v) => !v);
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setMenu(menu() ? null : { x: rect.left, y: rect.bottom + 4 });
+    }
+  };
+
+  // правая кнопка — контекстное меню в точке клика (вне режима редактирования)
+  const onContextMenu = (e: MouseEvent) => {
+    if (editing()) return;
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const onDeleteBlock = () => {
+    setMenu(null);
+    if (confirm(`Удалить блок «${b.content.slice(0, 60)}»?`)) {
+      void props.onDelete?.(b.uuid);
     }
   };
 
@@ -386,6 +407,7 @@ export function BlockView(props: {
       style={{ "padding-left": `${10 + b.indent * 22}px` }}
       tabindex={-1}
       onKeyDown={onBlockKeyDown}
+      onContextMenu={onContextMenu}
     >
       <StatusPrioDot
         status={b.status}
@@ -461,131 +483,26 @@ export function BlockView(props: {
       <Show when={b.clockTotal}>
         {(t) => <span class="clock-total" title="отработано">⏱ {t()}</span>}
       </Show>
-      <Show when={!editing()}>
-        <span class="block-actions">
-          <button class="block-action" title="Редактировать" onClick={startEdit}>
-            ✎
-          </button>
-          <Show when={b.task || b.clockRunning}>
-            <button
-              class="block-action"
-              classList={{ active: b.clockRunning }}
-              title={b.clockRunning ? "Остановить таймер" : "Начать учёт времени"}
-              onClick={onClockToggle}
-            >
-              {b.clockRunning ? "⏹" : "▶"}
-            </button>
-          </Show>
-          <button
-            class="block-action"
-            title="Меню задачи (mod+enter)"
-            onClick={() => setMenu((v) => !v)}
-          >
-            ⋯
-          </button>
-          <button
-            class="block-action danger"
-            title="Удалить блок"
-            onClick={() => {
-              if (confirm(`Удалить блок «${b.content.slice(0, 60)}»?`)) {
-                void props.onDelete?.(b.uuid);
-              }
-            }}
-          >
-            <IconTrash size={13} />
-          </button>
-        </span>
-      </Show>
       <Show when={menu()}>
-        <div class="block-menu">
-          <div class="block-menu-title">Статус</div>
-          <div class="block-menu-row">
-            <For each={MARKERS}>
-              {(m) => (
-                <button
-                  class="block-menu-item"
-                  classList={{ active: b.status === m }}
-                  onClick={() => {
-                    setMenu(false);
-                    props.onStatusChange?.(b.uuid, m);
-                  }}
-                >
-                  {statusLabel(m)}
-                </button>
-              )}
-            </For>
-          </div>
-
-          <div class="block-menu-title">Приоритет</div>
-          <div class="block-menu-row">
-            <For each={PRIORITIES}>
-              {(p) => (
-                <button
-                  class="block-menu-item"
-                  classList={{ active: b.priority === `[#${p}]` }}
-                  onClick={() => onPriority(p)}
-                >
-                  [#{p}]
-                </button>
-              )}
-            </For>
-            <Show when={b.priority}>
-              <button class="block-menu-item" onClick={() => onPriority(null)}>
-                убрать
-              </button>
-            </Show>
-          </div>
-
-          <div class="block-menu-title">Срочность</div>
-          <div class="block-menu-row">
-            <For each={LEVELS}>
-              {(l) => (
-                <button
-                  class="block-menu-item"
-                  classList={{ active: b.urgency === l }}
-                  onClick={() => onLevel("urgency", l)}
-                >
-                  {LEVEL_LABELS[l]}
-                </button>
-              )}
-            </For>
-          </div>
-
-          <div class="block-menu-title">Важность</div>
-          <div class="block-menu-row">
-            <For each={LEVELS}>
-              {(l) => (
-                <button
-                  class="block-menu-item"
-                  classList={{ active: b.importance === l }}
-                  onClick={() => onLevel("importance", l)}
-                >
-                  {LEVEL_LABELS[l]}
-                </button>
-              )}
-            </For>
-          </div>
-
-          <div class="block-menu-title">Дедлайн</div>
-          <div class="block-menu-row">
-            <button class="block-menu-item" onClick={onDeadline}>
-              {b.deadline ? `изменить (${b.deadline})` : "установить"}
-            </button>
-            <Show when={b.deadline}>
-              <button
-                class="block-menu-item"
-                onClick={() => {
-                  setMenu(false);
-                  void blockSetProp(b.uuid, "deadline", null).then(() =>
-                    props.onChanged?.(),
-                  );
-                }}
-              >
-                убрать
-              </button>
-            </Show>
-          </div>
-        </div>
+        {(pos) => (
+          <BlockMenu
+            pos={pos()}
+            onClose={() => setMenu(null)}
+            status={b.status}
+            priority={b.priority}
+            urgency={b.urgency}
+            importance={b.importance}
+            task={b.task}
+            clockRunning={b.clockRunning}
+            settings={props.settings}
+            onStatus={(m) => props.onStatusChange?.(b.uuid, m)}
+            onPriority={(p) => void onPriority(p)}
+            onLevel={(k, l) => void onLevel(k, l)}
+            onDeadline={() => void onDeadline()}
+            onDelete={onDeleteBlock}
+            onClockToggle={b.task ? () => void onClockToggle() : undefined}
+          />
+        )}
       </Show>
     </div>
   );

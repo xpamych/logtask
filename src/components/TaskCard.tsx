@@ -11,18 +11,8 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { RichText } from "./RichText";
-import {
-  StatusPrioDot,
-  MARKERS,
-  MARKER_LABELS,
-  PRIORITIES,
-  PRIO_ICONS,
-  STATUS_COLORS,
-  levelColor,
-  LEVEL_LABELS,
-} from "./StatusPrioDot";
-
-const LEVELS = ["low", "medium", "high"];
+import { BlockMenu } from "./BlockMenu";
+import { StatusPrioDot, MARKERS, STATUS_COLORS } from "./StatusPrioDot";
 
 /** Карточка задачи (подборки/канбан/матрица): клик по тексту — инлайн-редактор,
  *  переход к файлу — только по имени страницы справа, правый клик — меню действий */
@@ -41,27 +31,9 @@ export function TaskCard(props: {
   const [draft, setDraft] = createSignal("");
   const [saving, setSaving] = createSignal(false);
   const [menuPos, setMenuPos] = createSignal<{ x: number; y: number } | null>(null);
-  let menuEl: HTMLDivElement | undefined;
 
-  /** открывает меню в точке клика, затем прижимает его к границам окна,
-   *  чтобы не вылезало за пределы экрана */
-  const openMenu = (pos: { x: number; y: number }) => {
-    setMenuPos(pos);
-    queueMicrotask(() => {
-      const el = menuEl;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const pad = 8;
-      let { x, y } = pos;
-      if (r.right > window.innerWidth - pad) {
-        x = Math.max(pad, window.innerWidth - r.width - pad);
-      }
-      if (r.bottom > window.innerHeight - pad) {
-        y = Math.max(pad, window.innerHeight - r.height - pad);
-      }
-      if (x !== pos.x || y !== pos.y) setMenuPos({ x, y });
-    });
-  };
+  /** открывает контекстное меню в точке клика (прижатие к границам — в BlockMenu) */
+  const openMenu = (pos: { x: number; y: number }) => setMenuPos(pos);
   const [showChildren, setShowChildren] = createSignal(false);
   let textareaEl: HTMLTextAreaElement | undefined;
 
@@ -82,11 +54,6 @@ export function TaskCard(props: {
     const done = t.children.filter((c) => c.done).length;
     return { segments, done, total };
   };
-
-  const statusLabel = (marker: string): string =>
-    props.settings?.statuses.find((s) => s.marker === marker)?.label ??
-    MARKER_LABELS[marker] ??
-    marker;
 
   const onDragStart = (e: DragEvent) => {
     if (!e.dataTransfer) return;
@@ -176,34 +143,6 @@ export function TaskCard(props: {
       console.error("не удалось удалить блок:", e);
     }
   };
-
-  const statusColor = (marker: string): string =>
-    props.settings?.statuses.find((s) => s.marker === marker)?.color ??
-    STATUS_COLORS[marker] ??
-    "#888888";
-
-  const levelRow = (key: "urgency" | "importance", title: string) => (
-    <>
-      <div class="block-menu-title">{title}</div>
-      <For each={LEVELS}>
-        {(l) => (
-          <button
-            class="block-menu-item"
-            classList={{ active: (key === "urgency" ? t.urgency : t.importance) === l }}
-            onClick={() => {
-              setMenuPos(null);
-              // повторное нажатие на активный уровень — снимает его
-              const cur = key === "urgency" ? t.urgency : t.importance;
-              void onLevel(key, cur === l ? null : l);
-            }}
-          >
-            <span class="status-dot" style={{ background: levelColor(l) }} />
-            {LEVEL_LABELS[l]}
-          </button>
-        )}
-      </For>
-    </>
-  );
 
   return (
     <div
@@ -356,75 +295,21 @@ export function TaskCard(props: {
 
       <Show when={menuPos()}>
         {(pos) => (
-          <>
-            <div class="menu-backdrop" onClick={() => setMenuPos(null)} />
-            <div
-              ref={menuEl}
-              class="block-menu ctx-menu"
-              style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div class="block-menu-title">Статус</div>
-              <For each={MARKERS}>
-                {(m) => (
-                  <button
-                    class="block-menu-item"
-                    classList={{ active: t.status === m }}
-                    onClick={() => {
-                      setMenuPos(null);
-                      void onStatus(m);
-                    }}
-                  >
-                    <span class="status-dot" style={{ background: statusColor(m) }} />
-                    {statusLabel(m)}
-                  </button>
-                )}
-              </For>
-              <div class="block-menu-title">Приоритет</div>
-              <For each={[...PRIORITIES].reverse()}>
-                {(p) => (
-                  <button
-                    class="block-menu-item"
-                    classList={{ active: t.priority === `[#${p}]` }}
-                    onClick={() => {
-                      setMenuPos(null);
-                      // повторное нажатие на активный приоритет — снимает его
-                      void onPriority(t.priority === `[#${p}]` ? null : p);
-                    }}
-                  >
-                    <span class={`prio-icon prio-${p.toLowerCase()}`}>
-                      {(() => {
-                        const Icon = PRIO_ICONS[p];
-                        return Icon ? <Icon size={12} strokeWidth={2.6} /> : p;
-                      })()}
-                    </span>
-                    {p === "A" ? "высокий" : p === "B" ? "средний" : "низкий"}
-                  </button>
-                )}
-              </For>
-              {levelRow("urgency", "Срочность")}
-              {levelRow("importance", "Важность")}
-              <div class="block-menu-title">Прочее</div>
-              <button
-                class="block-menu-item"
-                onClick={() => {
-                  setMenuPos(null);
-                  void onDeadline();
-                }}
-              >
-                Дедлайн…
-              </button>
-              <button
-                class="block-menu-item danger"
-                onClick={() => {
-                  setMenuPos(null);
-                  void onDelete();
-                }}
-              >
-                Удалить блок
-              </button>
-            </div>
-          </>
+          <BlockMenu
+            pos={pos()}
+            onClose={() => setMenuPos(null)}
+            status={t.status}
+            priority={t.priority}
+            urgency={t.urgency}
+            importance={t.importance}
+            task={true}
+            settings={props.settings}
+            onStatus={(m) => void onStatus(m)}
+            onPriority={(p) => void onPriority(p)}
+            onLevel={(k, l) => void onLevel(k, l)}
+            onDeadline={() => void onDeadline()}
+            onDelete={() => void onDelete()}
+          />
         )}
       </Show>
     </div>

@@ -218,6 +218,15 @@ export async function blockOutdent(uuid: string): Promise<MergeResult | null> {
   return invoke<MergeResult | null>("block_outdent", { uuid });
 }
 
+/** Enter: разбить блок на два по курсору; возвращает uuid нового блока */
+export async function blockSplit(
+  uuid: string,
+  before: string,
+  after: string,
+): Promise<MergeResult | null> {
+  return invoke<MergeResult | null>("block_split", { uuid, before, after });
+}
+
 export async function blockCreate(
   page: string,
   content: string,

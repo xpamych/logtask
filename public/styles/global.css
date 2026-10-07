@@ -786,7 +786,7 @@ body.panel-resizing {
   position: absolute;
   top: 24px;
   left: 20px;
-  z-index: 20;
+  z-index: 60;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1233,37 +1233,6 @@ body.panel-resizing {
   outline: none;
 }
 
-.block-actions {
-  display: none;
-  position: absolute;
-  right: 2px;
-  top: 2px;
-  gap: 2px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px;
-}
-
-.block:hover .block-actions {
-  display: flex;
-}
-
-.block-action {
-  background: none;
-  border: none;
-  color: var(--fg-muted);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.block-action:hover {
-  color: var(--fg);
-  background: var(--bg-alt);
-}
-
 .block-menu {
   position: absolute;
   right: 2px;
@@ -1275,6 +1244,16 @@ body.panel-resizing {
   padding: 6px 8px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   min-width: 180px;
+}
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.block-menu-item.danger {
+  color: var(--danger, #e06c75);
 }
 
 .block-menu-title {
@@ -2283,6 +2262,43 @@ textarea.push-body {
   max-height: 70vh;
   overflow-y: auto;
   min-width: 170px;
+}
+
+/* меню действий страницы: вертикальный список, привязка правым краем
+   к кнопке ⋯ (inline-стиль right), чтобы не уезжало за край окна */
+.page-menu {
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+}
+
+.page-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.page-menu-item:hover {
+  background: var(--bg-alt);
+}
+
+.page-menu-item.danger {
+  color: var(--danger);
+}
+
+.page-menu-item.danger:hover {
+  background: var(--danger);
+  color: #fff;
 }
 
 .block-menu-item.danger {
