@@ -111,7 +111,9 @@ pub fn default_statuses() -> Vec<StatusConfig> {
         StatusConfig {
             marker: "DOING".into(),
             label: "В работе".into(),
-            color: "#ff9800".into(),
+            // синий, чтобы не пересекаться с оранжевой «средней»
+            // срочностью/важностью (уровни: danger/warning/fg-muted)
+            color: "#2196f3".into(),
             visible: true,
             shortcut: None,
         },

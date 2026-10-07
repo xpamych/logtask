@@ -16,6 +16,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
+            tauri_plugin_window_state::Builder::new()
+                // запоминаем и размер, и положение (на Wayland положение
+                // восстановится только если позволит композитор)
+                .build(),
+        )
+        .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
                 .targets([
@@ -40,6 +46,8 @@ pub fn run() {
             commands::page_get,
             commands::page_list,
             commands::page_rename,
+            commands::page_reveal_in_files,
+            commands::page_delete,
             commands::follow_link,
             commands::search,
             commands::backlinks_get,

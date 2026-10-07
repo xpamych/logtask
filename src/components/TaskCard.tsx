@@ -16,15 +16,13 @@ import {
   MARKERS,
   MARKER_LABELS,
   PRIORITIES,
+  PRIO_ICONS,
   STATUS_COLORS,
+  levelColor,
+  LEVEL_LABELS,
 } from "./StatusPrioDot";
 
 const LEVELS = ["low", "medium", "high"];
-const LEVEL_LABELS: Record<string, string> = {
-  low: "низкая",
-  medium: "средняя",
-  high: "высокая",
-};
 
 /** Карточка задачи (подборки/канбан/матрица): клик по тексту — инлайн-редактор,
  *  переход к файлу — только по имени страницы справа, правый клик — меню действий */
@@ -43,6 +41,27 @@ export function TaskCard(props: {
   const [draft, setDraft] = createSignal("");
   const [saving, setSaving] = createSignal(false);
   const [menuPos, setMenuPos] = createSignal<{ x: number; y: number } | null>(null);
+  let menuEl: HTMLDivElement | undefined;
+
+  /** открывает меню в точке клика, затем прижимает его к границам окна,
+   *  чтобы не вылезало за пределы экрана */
+  const openMenu = (pos: { x: number; y: number }) => {
+    setMenuPos(pos);
+    queueMicrotask(() => {
+      const el = menuEl;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const pad = 8;
+      let { x, y } = pos;
+      if (r.right > window.innerWidth - pad) {
+        x = Math.max(pad, window.innerWidth - r.width - pad);
+      }
+      if (r.bottom > window.innerHeight - pad) {
+        y = Math.max(pad, window.innerHeight - r.height - pad);
+      }
+      if (x !== pos.x || y !== pos.y) setMenuPos({ x, y });
+    });
+  };
   const [showChildren, setShowChildren] = createSignal(false);
   let textareaEl: HTMLTextAreaElement | undefined;
 
@@ -158,6 +177,11 @@ export function TaskCard(props: {
     }
   };
 
+  const statusColor = (marker: string): string =>
+    props.settings?.statuses.find((s) => s.marker === marker)?.color ??
+    STATUS_COLORS[marker] ??
+    "#888888";
+
   const levelRow = (key: "urgency" | "importance", title: string) => (
     <>
       <div class="block-menu-title">{title}</div>
@@ -168,22 +192,16 @@ export function TaskCard(props: {
             classList={{ active: (key === "urgency" ? t.urgency : t.importance) === l }}
             onClick={() => {
               setMenuPos(null);
-              void onLevel(key, l);
+              // повторное нажатие на активный уровень — снимает его
+              const cur = key === "urgency" ? t.urgency : t.importance;
+              void onLevel(key, cur === l ? null : l);
             }}
           >
+            <span class="status-dot" style={{ background: levelColor(l) }} />
             {LEVEL_LABELS[l]}
           </button>
         )}
       </For>
-      <button
-        class="block-menu-item"
-        onClick={() => {
-          setMenuPos(null);
-          void onLevel(key, null);
-        }}
-      >
-        убрать
-      </button>
     </>
   );
 
@@ -201,16 +219,19 @@ export function TaskCard(props: {
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        setMenuPos({ x: e.clientX, y: e.clientY });
+        openMenu({ x: e.clientX, y: e.clientY });
       }}
     >
       <div class="task-card-head">
         <StatusPrioDot
           status={t.status}
           priority={t.priority}
+          urgency={t.urgency}
+          importance={t.importance}
           settings={props.settings}
           onStatus={(m) => void onStatus(m)}
           onPriority={(p) => void onPriority(p)}
+          onMenu={(pos) => openMenu(pos)}
         />
         <Show
           when={editing()}
@@ -298,9 +319,9 @@ export function TaskCard(props: {
           </For>
         </div>
       </Show>
-      <Show when={props.detailed && t.props.length > 0}>
+      <Show when={props.detailed && t.props.some(([k]) => k !== "urgency" && k !== "importance")}>
         <div class="task-props">
-          <For each={t.props}>
+          <For each={t.props.filter(([k]) => k !== "urgency" && k !== "importance")}>
             {([k, v]) => (
               <div class="task-prop">
                 <span class="task-prop-key">{k}</span>
@@ -325,18 +346,12 @@ export function TaskCard(props: {
           </For>
         </div>
       </Show>
-      <Show when={t.urgency || t.importance || t.deadline}>
-        <div class="task-card-meta">
-          <Show when={t.urgency}>
-            {(u) => <span class="task-flag" title="срочность">⚡{u()}</span>}
-          </Show>
-          <Show when={t.importance}>
-            {(i) => <span class="task-flag" title="важность">★{i()}</span>}
-          </Show>
-          <Show when={t.deadline}>
-            {(d) => <span class="task-date">⏱ {d()}</span>}
-          </Show>
-        </div>
+      <Show when={t.deadline}>
+        {(d) => (
+          <div class="task-card-meta">
+            <span class="task-date">⏱ {d()}</span>
+          </div>
+        )}
       </Show>
 
       <Show when={menuPos()}>
@@ -344,6 +359,7 @@ export function TaskCard(props: {
           <>
             <div class="menu-backdrop" onClick={() => setMenuPos(null)} />
             <div
+              ref={menuEl}
               class="block-menu ctx-menu"
               style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
               onClick={(e) => e.stopPropagation()}
@@ -359,34 +375,33 @@ export function TaskCard(props: {
                       void onStatus(m);
                     }}
                   >
+                    <span class="status-dot" style={{ background: statusColor(m) }} />
                     {statusLabel(m)}
                   </button>
                 )}
               </For>
               <div class="block-menu-title">Приоритет</div>
-              <For each={PRIORITIES}>
+              <For each={[...PRIORITIES].reverse()}>
                 {(p) => (
                   <button
                     class="block-menu-item"
                     classList={{ active: t.priority === `[#${p}]` }}
                     onClick={() => {
                       setMenuPos(null);
-                      void onPriority(p);
+                      // повторное нажатие на активный приоритет — снимает его
+                      void onPriority(t.priority === `[#${p}]` ? null : p);
                     }}
                   >
+                    <span class={`prio-icon prio-${p.toLowerCase()}`}>
+                      {(() => {
+                        const Icon = PRIO_ICONS[p];
+                        return Icon ? <Icon size={12} strokeWidth={2.6} /> : p;
+                      })()}
+                    </span>
                     {p === "A" ? "высокий" : p === "B" ? "средний" : "низкий"}
                   </button>
                 )}
               </For>
-              <button
-                class="block-menu-item"
-                onClick={() => {
-                  setMenuPos(null);
-                  void onPriority(null);
-                }}
-              >
-                убрать приоритет
-              </button>
               {levelRow("urgency", "Срочность")}
               {levelRow("importance", "Важность")}
               <div class="block-menu-title">Прочее</div>

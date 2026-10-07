@@ -81,7 +81,10 @@ export function Topbar(props: {
       >
         <IconRefresh />
       </button>
-      <div class="topbar-search">
+      {/* контейнер поиска занимает всю ширину между кнопками — он тоже
+          drag-область (сам input остаётся кликабельным: Tauri проверяет
+          атрибут только на непосредственной цели mousedown) */}
+      <div class="topbar-search" data-tauri-drag-region>
         <SearchBar onOpenPage={props.onOpenPage} />
       </div>
       <button

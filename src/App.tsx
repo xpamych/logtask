@@ -59,6 +59,23 @@ function loadRecentPages(): string[] {
   }
 }
 
+/** свёрнутость боковых панелей между запусками (localStorage) */
+function loadCollapsed(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveCollapsed(key: string, v: boolean) {
+  try {
+    localStorage.setItem(key, v ? "1" : "0");
+  } catch {
+    /* игнорируем */
+  }
+}
+
 const App: Component = () => {
   const [summary, setSummary] = createSignal<GraphSummary | null>(null);
   const [pages, setPages] = createSignal<string[]>([]);
@@ -72,8 +89,8 @@ const App: Component = () => {
   const [settingsSection, setSettingsSection] = createSignal<SettingsSection | null>(null);
   const [sidebarW, setSidebarW] = createSignal(DEFAULT_SETTINGS.sidebarWidth);
   const [panelW, setPanelW] = createSignal(DEFAULT_SETTINGS.taskpanelWidth);
-  const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
-  const [panelCollapsed, setPanelCollapsed] = createSignal(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = createSignal(loadCollapsed("logtask:sidebarCollapsed"));
+  const [panelCollapsed, setPanelCollapsed] = createSignal(loadCollapsed("logtask:panelCollapsed"));
   const [recentPages, setRecentPages] = createSignal<string[]>(loadRecentPages());
   // граф явно закрыт пользователем — показываем экран приветствия
   const [graphClosed, setGraphClosed] = createSignal(false);
@@ -279,6 +296,24 @@ const App: Component = () => {
     openPage(newName);
   };
 
+  // страница удалена: чистим избранное и недавние, уходим на домашний вид
+  const deleteCurrentPage = () => {
+    const old = current();
+    if (!old) return;
+    const s = settings();
+    if (s.favorites.includes(old)) {
+      const next = { ...s, favorites: s.favorites.filter((f) => f !== old) };
+      setSettings(next);
+      void settingsSave(next).catch((e) => console.error("settings save:", e));
+    }
+    if (recentPages().includes(old)) {
+      const rec = recentPages().filter((r) => r !== old);
+      setRecentPages(rec);
+      localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(rec));
+    }
+    showHome();
+  };
+
   // активный пункт навигации сайдбара
   const navView = (): "journal" | "pages" | "page" | "tasks" | "settings" =>
     settingsSection()
@@ -470,8 +505,18 @@ const App: Component = () => {
           onOpenPage={openPage}
           sidebarCollapsed={sidebarCollapsed()}
           panelCollapsed={panelCollapsed()}
-          onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
-          onTogglePanel={() => setPanelCollapsed((v) => !v)}
+          onToggleSidebar={() =>
+            setSidebarCollapsed((v) => {
+              saveCollapsed("logtask:sidebarCollapsed", !v);
+              return !v;
+            })
+          }
+          onTogglePanel={() =>
+            setPanelCollapsed((v) => {
+              saveCollapsed("logtask:panelCollapsed", !v);
+              return !v;
+            })
+          }
           systemTitlebar={settings().systemTitlebar}
           canBack={backStack().length > 0}
           canForward={fwdStack().length > 0}
@@ -542,6 +587,7 @@ const App: Component = () => {
                       favorite={settings().favorites.includes(name())}
                       onToggleFavorite={() => toggleFavorite(name())}
                       onRename={renameCurrentPage}
+                      onDeleted={deleteCurrentPage}
                     />
                   )}
                 </Show>

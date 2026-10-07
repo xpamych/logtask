@@ -6,7 +6,7 @@ import { IconArrowDown, IconArrowUp, IconMinus } from "~/components/icons";
 export const STATUS_COLORS: Record<string, string> = {
   LATER: "#888888",
   TODO: "#09bec8",
-  DOING: "#ff9800",
+  DOING: "#2196f3",
   REVIEW: "#9b59b6",
   DONE: "#4caf50",
   CANCELED: "#f44336",
@@ -24,13 +24,32 @@ export const MARKER_LABELS: Record<string, string> = {
 export const PRIORITIES = ["A", "B", "C"];
 /// значки приоритета: A — стрелка вверх (красная), B — тире (зелёное),
 /// C — стрелка вниз (серая)
-const PRIO_ICONS: Record<
+export const PRIO_ICONS: Record<
   string,
   (p: { size?: number; strokeWidth?: number }) => JSX.Element
 > = {
   A: IconArrowUp,
   B: IconMinus,
   C: IconArrowDown,
+};
+
+/// цвета уровней срочности/важности
+export function levelColor(level: string | null | undefined): string {
+  switch (level) {
+    case "high":
+      return "var(--danger)";
+    case "medium":
+      return "var(--warning)";
+    case "low":
+      return "var(--fg-muted)";
+    default:
+      return "transparent";
+  }
+}
+export const LEVEL_LABELS: Record<string, string> = {
+  low: "низкая",
+  medium: "средняя",
+  high: "высокая",
 };
 export const PRIO_LABELS: Record<string, string> = {
   A: "высокий",
@@ -57,9 +76,16 @@ function contrastOn(hex: string): string {
 export function StatusPrioDot(props: {
   status: string | null;
   priority: string | null;
+  /** срочность/важность — кольцо вокруг кружка: левая половина — срочность,
+   *  правая — важность (цвета levelColor) */
+  urgency?: string | null;
+  importance?: string | null;
   settings?: Settings | null;
   onStatus?: (marker: string) => void;
   onPriority?: (prio: string | null) => void;
+  /** если задан — клик по кружку открывает внешнее (полное) меню в этой позиции,
+   *  встроенный мини-попап не показывается */
+  onMenu?: (pos: { x: number; y: number }) => void;
 }): JSX.Element {
   const [popup, setPopup] = createSignal(false);
 
@@ -69,43 +95,72 @@ export function StatusPrioDot(props: {
     MARKER_LABELS[marker] ??
     marker;
 
+  // цвет статуса: из настроек пользователя, иначе дефолт
+  const statusColor = (marker: string): string =>
+    props.settings?.statuses.find((s) => s.marker === marker)?.color ??
+    STATUS_COLORS[marker] ??
+    "#888888";
+
+  // кольцо срочности/важности вокруг кружка (null — без кольца)
+  const ringColors = () =>
+    props.urgency || props.importance
+      ? { "--u": levelColor(props.urgency), "--i": levelColor(props.importance) }
+      : null;
+
+  const dot = (
+    <span
+      class="status-prio-dot clickable"
+      classList={{
+        empty: !props.status,
+        [`prio-${(props.priority?.[2] ?? "").toLowerCase()}`]:
+          !props.status && !!props.priority,
+      }}
+      style={{
+        background: props.status ? statusColor(props.status) : "transparent",
+        // иконка приоритета — контрастная к фону кружка
+        color: props.status ? contrastOn(statusColor(props.status)) : undefined,
+      }}
+      title={
+        (props.status ? statusLabel(props.status) : "Без статуса") +
+        (props.priority
+          ? `, приоритет ${PRIO_LABELS[props.priority[2]] ?? props.priority}`
+          : "") +
+        (props.urgency ? `, срочность ${LEVEL_LABELS[props.urgency] ?? props.urgency}` : "") +
+        (props.importance
+          ? `, важность ${LEVEL_LABELS[props.importance] ?? props.importance}`
+          : "") +
+        " — клик: изменить"
+      }
+      onClick={(e) => {
+        e.stopPropagation();
+        if (props.onMenu) {
+          props.onMenu({ x: e.clientX, y: e.clientY });
+        } else {
+          setPopup((v) => !v);
+        }
+      }}
+    >
+      {(() => {
+        const letter = props.priority?.[2];
+        const Icon = letter ? PRIO_ICONS[letter] : undefined;
+        if (!letter) return "";
+        return Icon ? <Icon size={11} strokeWidth={3.2} /> : letter;
+      })()}
+    </span>
+  );
+
   return (
     <>
-      <span
-        class="status-prio-dot clickable"
-        classList={{
-          empty: !props.status,
-          [`prio-${(props.priority?.[2] ?? "").toLowerCase()}`]:
-            !props.status && !!props.priority,
-        }}
-        style={{
-          background: props.status
-            ? (STATUS_COLORS[props.status] ?? "#888888")
-            : "transparent",
-          // иконка приоритета — контрастная к фону кружка
-          color: props.status
-            ? contrastOn(STATUS_COLORS[props.status] ?? "#888888")
-            : undefined,
-        }}
-        title={
-          (props.status ? statusLabel(props.status) : "Без статуса") +
-          (props.priority
-            ? `, приоритет ${PRIO_LABELS[props.priority[2]] ?? props.priority}`
-            : "") +
-          " — клик: изменить"
-        }
-        onClick={(e) => {
-          e.stopPropagation();
-          setPopup((v) => !v);
-        }}
-      >
-        {(() => {
-          const letter = props.priority?.[2];
-          const Icon = letter ? PRIO_ICONS[letter] : undefined;
-          if (!letter) return "";
-          return Icon ? <Icon size={11} strokeWidth={3.2} /> : letter;
-        })()}
-      </span>
+      <Show when={ringColors()} fallback={dot}>
+        {(r) => (
+          <span
+            class="status-prio-ring"
+            style={{ "--u": r()["--u"], "--i": r()["--i"] }}
+          >
+            {dot}
+          </span>
+        )}
+      </Show>
       <Show when={popup()}>
         <div class="mini-popup" onClick={(e) => e.stopPropagation()}>
           <div class="block-menu-title">Статус</div>
@@ -119,23 +174,21 @@ export function StatusPrioDot(props: {
                   props.onStatus?.(m);
                 }}
               >
-                <span
-                  class="status-dot"
-                  style={{ background: STATUS_COLORS[m] ?? "#888888" }}
-                />
+                <span class="status-dot" style={{ background: statusColor(m) }} />
                 {statusLabel(m)}
               </button>
             )}
           </For>
           <div class="block-menu-title">Приоритет</div>
-          <For each={PRIORITIES}>
+          <For each={[...PRIORITIES].reverse()}>
             {(p) => (
               <button
                 class="block-menu-item"
                 classList={{ active: props.priority === `[#${p}]` }}
                 onClick={() => {
                   setPopup(false);
-                  props.onPriority?.(p);
+                  // повторное нажатие на активный приоритет — снимает его
+                  props.onPriority?.(props.priority === `[#${p}]` ? null : p);
                 }}
               >
                 <span class={`prio-icon prio-${p.toLowerCase()}`}>
@@ -148,17 +201,6 @@ export function StatusPrioDot(props: {
               </button>
             )}
           </For>
-          <Show when={props.priority}>
-            <button
-              class="block-menu-item"
-              onClick={() => {
-                setPopup(false);
-                props.onPriority?.(null);
-              }}
-            >
-              убрать приоритет
-            </button>
-          </Show>
         </div>
       </Show>
     </>

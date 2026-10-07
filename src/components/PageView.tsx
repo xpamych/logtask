@@ -6,8 +6,10 @@ import {
   blockCreate,
   blockDelete,
   followLink,
+  pageDelete,
   pageGet,
   pageRename,
+  pageRevealInFiles,
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
@@ -26,6 +28,8 @@ export function PageView(props: {
   onToggleFavorite?: () => void;
   /** вызывается после успешного переименования страницы */
   onRename?: (newName: string) => void;
+  /** вызывается после удаления страницы (навигация прочь — забота родителя) */
+  onDeleted?: () => void;
 }): JSX.Element {
   const [page, setPage] = createSignal<PageDto | null>(null);
   const [backlinks, setBacklinks] = createSignal<[string, string][]>([]);
@@ -39,6 +43,26 @@ export function PageView(props: {
   const [renaming, setRenaming] = createSignal(false);
   const [renameDraft, setRenameDraft] = createSignal("");
   const [renameBusy, setRenameBusy] = createSignal(false);
+  // позиция выпадающего меню страницы (⋯ справа в заголовке)
+  const [menuPos, setMenuPos] = createSignal<{ x: number; y: number } | null>(null);
+
+  const onReveal = async () => {
+    try {
+      await pageRevealInFiles(props.name);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const onDeletePage = async () => {
+    if (!confirm(`Удалить страницу «${props.name}»? Файл будет стёрт с диска.`)) return;
+    try {
+      await pageDelete(props.name);
+      props.onDeleted?.();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
   let renameCancel = false;
   let renameInputEl: HTMLInputElement | undefined;
   let mainEl: HTMLElement | undefined;
@@ -237,7 +261,51 @@ export function PageView(props: {
                   <IconStar size={18} filled={props.favorite ?? false} />
                 </button>
               </Show>
+              <Show when={!virtual()}>
+                <button
+                  class="star-btn page-menu-btn"
+                  title="Действия со страницей"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setMenuPos(menuPos() ? null : { x: r.right - 180, y: r.bottom + 4 });
+                  }}
+                >
+                  ⋯
+                </button>
+              </Show>
             </h2>
+            <Show when={menuPos()}>
+              {(pos) => (
+                <>
+                  <div class="menu-backdrop" onClick={() => setMenuPos(null)} />
+                  <div
+                    class="block-menu ctx-menu"
+                    style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      class="block-menu-item"
+                      onClick={() => {
+                        setMenuPos(null);
+                        void onReveal();
+                      }}
+                    >
+                      Открыть в файловом менеджере
+                    </button>
+                    <button
+                      class="block-menu-item danger"
+                      onClick={() => {
+                        setMenuPos(null);
+                        void onDeletePage();
+                      }}
+                    >
+                      Удалить страницу
+                    </button>
+                  </div>
+                </>
+              )}
+            </Show>
             <Show when={p().preamble.length > 0}>
               <div class="page-preamble">
                 <RichText text={p().preamble.join("\n")} onOpenPage={props.onOpenPage} />

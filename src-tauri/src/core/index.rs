@@ -929,7 +929,7 @@ fn check_mtime(abs: &Path, known: Option<std::time::SystemTime>) -> std::io::Res
 }
 
 /// Путь к файлу страницы по умолчанию: journals/<name>.md или pages/<name>.md
-fn default_rel_path(name: &str, kind: super::model::PageKind) -> PathBuf {
+pub(crate) fn default_rel_path(name: &str, kind: super::model::PageKind) -> PathBuf {
     match kind {
         super::model::PageKind::Journal => PathBuf::from("journals").join(format!("{name}.md")),
         super::model::PageKind::Page => PathBuf::from("pages").join(format!("{name}.md")),

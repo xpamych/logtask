@@ -456,6 +456,48 @@ pub async fn page_rename(
     Ok(())
 }
 
+/// Абсолютный путь к .md файлу страницы (журнал или обычная страница)
+fn page_abs_path(state: &AppState, name: &str) -> Result<std::path::PathBuf, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    let page = graph.pages.get(name).ok_or("страница не найдена")?;
+    let rel = page
+        .path
+        .clone()
+        .unwrap_or_else(|| crate::core::index::default_rel_path(name, page.kind));
+    Ok(root.join(rel))
+}
+
+/// Показывает файл страницы в системном файловом менеджере
+/// (через Rust API opener-плагина, как open_external)
+#[tauri::command]
+pub fn page_reveal_in_files(name: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let abs = page_abs_path(&state, &name)?;
+    if !abs.exists() {
+        return Err(format!("файл не найден: {}", abs.display()));
+    }
+    tauri_plugin_opener::reveal_item_in_dir(&abs).map_err(|e| e.to_string())
+}
+
+/// Удаляет страницу: стирает её .md файл. Журналы удалять можно так же —
+/// это обычный файл. Индекс перестраивается через reindex_and_emit.
+#[tauri::command]
+pub async fn page_delete(
+    name: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let abs = page_abs_path(&state, &name)?;
+    if !abs.exists() {
+        return Err(format!("файл не найден: {}", abs.display()));
+    }
+    std::fs::remove_file(&abs).map_err(|e| format!("удаление {}: {e}", abs.display()))?;
+    mark_self_write(&state);
+    crate::watcher::reindex_and_emit(&app);
+    Ok(())
+}
+
 fn is_journal_name(name: &str) -> bool {
     let mut parts = name.split('_');
     let (y, m, d) = match (parts.next(), parts.next(), parts.next()) {

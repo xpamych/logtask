@@ -390,6 +390,8 @@ export function BlockView(props: {
       <StatusPrioDot
         status={b.status}
         priority={b.priority}
+        urgency={b.urgency}
+        importance={b.importance}
         settings={props.settings}
         onStatus={(m) => props.onStatusChange?.(b.uuid, m)}
         onPriority={(p) => void onPriority(p)}

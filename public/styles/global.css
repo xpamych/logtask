@@ -316,6 +316,17 @@ body.panel-resizing {
   font-size: 18px;
   margin: 0 0 16px;
   color: var(--fg);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* кнопка ⋯ меню страницы — прижата к правому краю заголовка */
+.day-title .page-menu-btn {
+  margin-left: auto;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 6px;
 }
 
 .placeholder {
@@ -719,6 +730,25 @@ body.panel-resizing {
   display: block;
 }
 
+/* кольцо срочности/важности: левая половина — срочность, правая — важность */
+.status-prio-ring {
+  display: inline-flex;
+  flex: none;
+  border-radius: 50%;
+  padding: 2.5px;
+  background: conic-gradient(var(--i, transparent) 0deg 180deg, var(--u, transparent) 180deg 360deg);
+  align-self: flex-start;
+  /* кружок 18px + кольцо 2×2.5px = 23px, центр первой строки ≈ 11px */
+  margin-top: 0;
+}
+
+/* внутри кольца кружок не должен иметь собственного верхнего отступа —
+   иначе смещается относительно кольца */
+.status-prio-ring .status-prio-dot {
+  margin-top: 0;
+  align-self: center;
+}
+
 .prio-icon {
   font-weight: 700;
   display: inline-flex;
@@ -897,6 +927,28 @@ body.panel-resizing {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+}
+
+/* в шапке карточки текст мельче (13px/1.35 → центр строки ≈ 9px),
+   подгоняем маркеры под него (только прямые дети — не кружок внутри кольца) */
+.task-card-head > .status-prio-ring {
+  /* 23px высота → центр 11.5px, поднимаем к центру строки */
+  margin-top: -3px;
+}
+
+.task-card-head > .status-prio-dot {
+  margin-top: 0;
+}
+
+.task-card-head > .status-prio-dot.empty {
+  /* 8px точка → центр строки */
+  margin-top: 5px;
+}
+
+.task-card-head > .status-prio-dot.empty.prio-a,
+.task-card-head > .status-prio-dot.empty.prio-b,
+.task-card-head > .status-prio-dot.empty.prio-c {
+  margin-top: 0;
 }
 
 .task-card-head .task-card-text {
@@ -2329,4 +2381,11 @@ textarea.push-body {
   vertical-align: -2px;
   margin-right: 3px;
   color: var(--fg-muted);
+}
+
+/* индикаторы в пунктах контекстного меню карточки */
+.block-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }

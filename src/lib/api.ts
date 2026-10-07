@@ -88,6 +88,16 @@ export async function pageRename(oldName: string, newName: string): Promise<void
   return invoke<void>("page_rename", { oldName, newName });
 }
 
+/** Показать .md файл страницы в системном файловом менеджере */
+export async function pageRevealInFiles(name: string): Promise<void> {
+  return invoke<void>("page_reveal_in_files", { name });
+}
+
+/** Удалить страницу (её .md файл) */
+export async function pageDelete(name: string): Promise<void> {
+  return invoke<void>("page_delete", { name });
+}
+
 export interface TaskDto {
   uuid: string;
   page: string;
