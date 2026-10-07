@@ -203,7 +203,7 @@ body.panel-resizing {
   top: 52px;
   left: 8px;
   right: 8px;
-  z-index: 20;
+  z-index: 60; /* выше .menu-backdrop (50) */
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -2259,6 +2259,7 @@ textarea.push-body {
   position: fixed;
   right: auto;
   top: auto;
+  z-index: 60; /* выше .menu-backdrop (50), иначе клики уходят в подложку */
   max-height: 70vh;
   overflow-y: auto;
   min-width: 170px;
