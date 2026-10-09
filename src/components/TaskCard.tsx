@@ -14,6 +14,48 @@ import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot, MARKERS, STATUS_COLORS } from "./StatusPrioDot";
 
+/** служебные свойства, не показываемые в карточке (видны в редакторе блока) */
+const HIDDEN_PROPS = new Set([
+  "urgency",
+  "importance",
+  "deadline",
+  "source",
+  "source-id",
+  "synced-at",
+]);
+
+/** русские подписи известных свойств; неизвестные показываются как есть */
+const PROP_LABELS: Record<string, string> = {
+  assignee: "Исполнитель",
+  author: "Автор",
+  created: "Создана",
+  url: "Ссылка",
+  milestone: "Веха",
+  "sync-conflict": "Конфликт синхронизации",
+  "sync-missing": "Нет на сервере с",
+};
+
+/** свойства-даты: ISO → человекочитаемый вид */
+const DATE_PROPS = new Set(["created", "sync-conflict", "sync-missing"]);
+
+/** ISO-дата/время → «26 июля 2026»; не распарсилось — исходная строка */
+function formatDate(v: string): string {
+  // микросекунды из Python ISO усекаем до миллисекунд
+  const norm = v.replace(/(\.\d{3})\d+/, "$1");
+  const d = new Date(norm);
+  if (Number.isNaN(d.getTime())) return v;
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** короткий текст ссылки: домен без схемы и пути */
+function urlLabel(v: string): string {
+  try {
+    return new URL(v).hostname;
+  } catch {
+    return v;
+  }
+}
+
 /** Карточка задачи (подборки/канбан/матрица): клик по тексту — инлайн-редактор,
  *  переход к файлу — только по имени страницы справа, правый клик — меню действий */
 export function TaskCard(props: {
@@ -258,14 +300,16 @@ export function TaskCard(props: {
           </For>
         </div>
       </Show>
-      <Show when={props.detailed && t.props.some(([k]) => k !== "urgency" && k !== "importance")}>
+      <Show when={props.detailed && t.props.some(([k]) => !HIDDEN_PROPS.has(k))}>
         <div class="task-props">
-          <For each={t.props.filter(([k]) => k !== "urgency" && k !== "importance")}>
+          <For each={t.props.filter(([k]) => !HIDDEN_PROPS.has(k))}>
             {([k, v]) => (
               <div class="task-prop">
-                <span class="task-prop-key">{k}</span>
+                <span class="task-prop-key">{PROP_LABELS[k] ?? k}</span>
                 <span class="task-prop-val">
-                  {/^https?:\/\//.test(v) ? (
+                  {k === "milestone" ? (
+                    <span class="task-prop-badge">{v}</span>
+                  ) : /^https?:\/\//.test(v) ? (
                     <span
                       class="wikilink"
                       title={`Открыть в браузере: ${v}`}
@@ -274,8 +318,10 @@ export function TaskCard(props: {
                         void openExternal(v);
                       }}
                     >
-                      {v}
+                      {urlLabel(v)}
                     </span>
+                  ) : DATE_PROPS.has(k) ? (
+                    <span title={v}>{formatDate(v)}</span>
                   ) : (
                     v
                   )}

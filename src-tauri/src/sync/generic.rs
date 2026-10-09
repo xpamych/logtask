@@ -45,6 +45,7 @@ pub async fn fetch(
             author: field("author"),
             created: field("created"),
             url: field("url"),
+            milestone: field("milestone"),
             page: cfg.page.clone(),
         });
     }
@@ -129,6 +130,7 @@ mod tests {
                 ("priority".into(), "$.priority".into()),
                 ("assignee".into(), "$.assignee".into()),
                 ("url".into(), "$.url".into()),
+                ("milestone".into(), "$.milestone_version".into()),
             ]
             .into_iter()
             .collect(),
@@ -156,7 +158,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "tasks": [
                     {"id": 347, "title": "Список", "state": "in_progress", "priority": "high",
-                     "assignee": "xpamych", "url": "https://x/347"},
+                     "assignee": "xpamych", "url": "https://x/347", "milestone_version": "1.4.0"},
                     {"id": "no-title-task", "state": "new"},
                     {"title": "без id — пропустить"}
                 ]
@@ -172,6 +174,7 @@ mod tests {
         assert_eq!(tasks[0].status, Status::Doing);
         assert_eq!(tasks[0].priority, Some(Priority::A));
         assert_eq!(tasks[0].assignee.as_deref(), Some("xpamych"));
+        assert_eq!(tasks[0].milestone.as_deref(), Some("1.4.0"));
         assert_eq!(tasks[0].page, "PPDB - TODO");
         assert_eq!(tasks[1].status, Status::Todo);
         std::env::remove_var("LOGTASK_SECRET_TEST_TOK");

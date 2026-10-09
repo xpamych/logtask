@@ -1897,6 +1897,17 @@ select.settings-select {
   white-space: nowrap;
 }
 
+/* значок вехи (версии релиза) */
+.task-prop-badge {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--bg-alt);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* markdown-отображение (RichText): разметка скрыта, только стили */
 .md-line {
   display: block;

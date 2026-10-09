@@ -15,6 +15,8 @@ pub struct RemoteTask {
     pub author: Option<String>,
     pub created: Option<String>,
     pub url: Option<String>,
+    /// веха/версия релиза, к которой привязана задача (например "1.4.0")
+    pub milestone: Option<String>,
     /// страница назначения в графе (для форжей зависит от репозитория)
     pub page: String,
 }

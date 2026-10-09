@@ -97,6 +97,7 @@ mod tests {
             author: None,
             created: None,
             url: None,
+            milestone: None,
             page: "PPDB - TODO".into(),
         }
     }

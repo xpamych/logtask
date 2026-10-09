@@ -32,7 +32,7 @@ Logseq (`TODO`/`DOING`/…) или буква приоритета (`A`/`B`/`C`)
 | `state` | форжи | `open` / `closed` / `all` |
 | `url`, `method`, `headers` | generic | запрос задач; значения могут содержать `${secret:имя}` |
 | `itemsPath` | generic | JSONPath до массива задач |
-| `fields` | generic | JSONPath до полей: `id/title/status/priority/assignee/author/created/url` |
+| `fields` | generic | JSONPath до полей: `id/title/status/priority/assignee/author/created/url/milestone` |
 | `statusMap` | generic | значение сервера → маркер Logseq |
 | `priorityMap` | generic | значение сервера → буква A/B/C |
 | `push` | generic | write-back: `url` (с `{id}` и `{status}`), `method`, `bodyTemplate` (с `{id}`/`{status}`), `statusMapOut` |
@@ -59,8 +59,17 @@ Manager), сервис `logtask`, ключ `<хэш пути графа>/<имя
   url:: https://…
   assignee:: xpamych
   created:: 2026-07-15
+  milestone:: 1.4.0
   synced-at:: 2026-10-04T12:00:00+03:00
 ```
+
+`milestone::` — веха/версия релиза: для generic берётся из поля `fields.milestone`
+(у PPDB — `$.milestone_version`), для форжей — из milestone issue. Снятие вехи
+на сервере удаляет свойство при следующем обновлении блока.
+
+В карточке задачи (подборки) служебные свойства `source`/`source-id`/`synced-at`
+не показываются (остаются в файле и видны при редактировании блока); даты
+выводятся в человекочитаемом виде, веха — значком.
 
 Служебная пометка: `sync-missing:: <дата>` (задача исчезла с сервера, локально
 изменена). Находится через Запросы по свойству.

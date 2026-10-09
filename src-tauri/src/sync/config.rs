@@ -82,7 +82,7 @@ pub struct SourceConfig {
     /// JSONPath до массива задач, например "$.tasks[*]"
     #[serde(default)]
     pub items_path: String,
-    /// JSONPath до полей: id/title/status/priority/assignee/author/created/url
+    /// JSONPath до полей: id/title/status/priority/assignee/author/created/url/milestone
     #[serde(default)]
     pub fields: HashMap<String, String>,
     /// значение сервера → маркер Logseq ("new" → "TODO")

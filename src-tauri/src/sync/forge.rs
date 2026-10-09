@@ -145,6 +145,11 @@ pub async fn fetch_gitea(
                     .get("html_url")
                     .and_then(|u| u.as_str())
                     .map(String::from),
+                milestone: item
+                    .get("milestone")
+                    .and_then(|m| m.get("title"))
+                    .and_then(|t| t.as_str())
+                    .map(String::from),
                 page: page.clone(),
             });
         }
@@ -263,6 +268,11 @@ pub async fn fetch_github(
                 url: item
                     .get("html_url")
                     .and_then(|u| u.as_str())
+                    .map(String::from),
+                milestone: item
+                    .get("milestone")
+                    .and_then(|m| m.get("title"))
+                    .and_then(|t| t.as_str())
                     .map(String::from),
                 page: page.clone(),
             });
@@ -385,6 +395,11 @@ pub async fn fetch_gitlab(
                 url: item
                     .get("web_url")
                     .and_then(|u| u.as_str())
+                    .map(String::from),
+                milestone: item
+                    .get("milestone")
+                    .and_then(|m| m.get("title"))
+                    .and_then(|t| t.as_str())
                     .map(String::from),
                 page: page.clone(),
             });

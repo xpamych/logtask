@@ -395,6 +395,9 @@ fn task_props(cfg: &SourceConfig, t: &RemoteTask) -> Vec<(String, String)> {
     if let Some(c) = &t.created {
         v.push(("created".to_string(), sanitize(c)));
     }
+    if let Some(m) = &t.milestone {
+        v.push(("milestone".to_string(), sanitize(m)));
+    }
     v
 }
 
@@ -433,6 +436,10 @@ fn update_task(
         b.set_priority(priority);
         for (k, v) in &props {
             b.set_prop(k, Some(v));
+        }
+        // веха снята на сервере — снимаем и в блоке
+        if t.milestone.is_none() {
+            b.set_prop("milestone", None);
         }
         b.set_prop("sync-conflict", None);
         b.set_prop("sync-missing", None);
@@ -596,6 +603,7 @@ mod tests {
             author: None,
             created: Some("2026-07-15".into()),
             url: Some("https://x/1".into()),
+            milestone: Some("1.4.0".into()),
             page: "PPDB - TODO".into(),
         }
     }
@@ -636,7 +644,34 @@ mod tests {
         assert!(text.contains("source:: ppdb"), "файл:\n{text}");
         assert!(text.contains("source-id:: ppdb-1"), "файл:\n{text}");
         assert!(text.contains("assignee:: xpamych"), "файл:\n{text}");
+        assert!(text.contains("milestone:: 1.4.0"), "файл:\n{text}");
         assert!(st.tasks.contains_key("ppdb-1"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn milestone_cleared_when_removed_on_server() {
+        let root = temp_graph("milestone-clear");
+        let cfg = test_cfg();
+        let mut st = SourceState::default();
+        run_merge(
+            &root,
+            &cfg,
+            &[task("ppdb-1", "Задача", Status::Todo)],
+            &mut st,
+        );
+        assert!(
+            page_text(&root, "PPDB - TODO").contains("milestone:: 1.4.0"),
+            "веха должна быть записана при импорте"
+        );
+
+        // на сервере веху сняли и сменили статус — блок обновляется
+        let mut t = task("ppdb-1", "Задача", Status::Done);
+        t.milestone = None;
+        let (report, _) = run_merge(&root, &cfg, &[t], &mut st);
+        assert_eq!(report.updated, 1);
+        let text = page_text(&root, "PPDB - TODO");
+        assert!(!text.contains("milestone::"), "файл:\n{text}");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
