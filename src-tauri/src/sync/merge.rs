@@ -8,7 +8,7 @@
 //! - первый синк задачи (нет TaskState): сервер — источник истины, Update
 //!   без пометки конфликта (миграция со страниц, созданных плагином TE).
 
-use super::remote::RemoteTask;
+use super::remote::{self, RemoteTask};
 use super::state::TaskState;
 use crate::core::model::Block;
 
@@ -70,7 +70,10 @@ pub fn decide(
         (Some(_), Some(_), None) => Action::Update,
         (Some(r), Some(b), Some(p)) => {
             let local_changed = block_fingerprint(b) != p.fingerprint;
-            let remote_changed = r.status.to_marker() != p.remote_status;
+            // сервер менялся: статус или любое синхронизируемое поле
+            // (перенос в другую веху, смена исполнителя, правка заголовка)
+            let remote_changed = r.status.to_marker() != p.remote_status
+                || remote::remote_fingerprint(r) != p.remote_hash;
             match (local_changed, remote_changed) {
                 (false, false) => Action::Keep,
                 (false, true) => Action::Update,
@@ -110,6 +113,16 @@ mod tests {
         TaskState {
             remote_status: status.into(),
             fingerprint: fp.into(),
+            remote_hash: String::new(),
+        }
+    }
+
+    /// состояние, как после успешного синка этой задачи
+    fn prev_for(t: &RemoteTask, fp: &str) -> TaskState {
+        TaskState {
+            remote_status: t.status.to_marker().into(),
+            fingerprint: fp.into(),
+            remote_hash: remote::remote_fingerprint(t),
         }
     }
 
@@ -163,7 +176,7 @@ mod tests {
     #[test]
     fn only_remote_changed_updates() {
         let b = block_of("- TODO Задача\n  source-id:: 1\n");
-        let p = prev("TODO", &block_fingerprint(&b));
+        let p = prev_for(&task("1", Status::Todo), &block_fingerprint(&b));
         assert_eq!(
             decide(Some(&task("1", Status::Done)), Some(&b), Some(&p)),
             Action::Update
@@ -171,11 +184,21 @@ mod tests {
     }
 
     #[test]
+    fn remote_field_change_without_status_updates() {
+        // статус тот же, но на сервере поменялось поле (веха) — обновляем
+        let b = block_of("- TODO Задача\n  source-id:: 1\n");
+        let p = prev_for(&task("1", Status::Todo), &block_fingerprint(&b));
+        let mut changed = task("1", Status::Todo);
+        changed.milestone = Some("1.5.0".into());
+        assert_eq!(decide(Some(&changed), Some(&b), Some(&p)), Action::Update);
+    }
+
+    #[test]
     fn only_local_changed_pushes() {
         let local = block_of("- DONE Задача\n  source-id:: 1\n");
         // в state лежит отпечаток версии с TODO — локально поменяли
         let synced = block_of("- TODO Задача\n  source-id:: 1\n");
-        let p = prev("TODO", &block_fingerprint(&synced));
+        let p = prev_for(&task("1", Status::Todo), &block_fingerprint(&synced));
         assert_eq!(
             decide(Some(&task("1", Status::Todo)), Some(&local), Some(&p)),
             Action::Push
@@ -186,7 +209,7 @@ mod tests {
     fn both_changed_is_conflict() {
         let local = block_of("- CANCELED Задача\n  source-id:: 1\n");
         let synced = block_of("- TODO Задача\n  source-id:: 1\n");
-        let p = prev("TODO", &block_fingerprint(&synced));
+        let p = prev_for(&task("1", Status::Todo), &block_fingerprint(&synced));
         assert_eq!(
             decide(Some(&task("1", Status::Done)), Some(&local), Some(&p)),
             Action::Conflict
@@ -196,7 +219,7 @@ mod tests {
     #[test]
     fn nothing_changed_is_keep() {
         let b = block_of("- TODO Задача\n  source-id:: 1\n");
-        let p = prev("TODO", &block_fingerprint(&b));
+        let p = prev_for(&task("1", Status::Todo), &block_fingerprint(&b));
         assert_eq!(
             decide(Some(&task("1", Status::Todo)), Some(&b), Some(&p)),
             Action::Keep

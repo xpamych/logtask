@@ -50,6 +50,26 @@ pub fn map_status_out(marker: &str, map: &HashMap<String, String>) -> String {
         .unwrap_or_else(|| marker.to_string())
 }
 
+/// Отпечаток серверных данных задачи: статус + все синхронизируемые поля.
+/// Меняется при любом изменении на сервере (перенос в другую веху, новый
+/// исполнитель, правка заголовка) — merge тогда обновляет блок.
+pub fn remote_fingerprint(t: &RemoteTask) -> String {
+    let mut s = String::new();
+    s.push_str(t.status.to_marker());
+    s.push('|');
+    s.push_str(t.title.trim());
+    if let Some(p) = t.priority {
+        s.push_str(&format!("|{p:?}"));
+    }
+    for v in [&t.assignee, &t.author, &t.created, &t.url, &t.milestone] {
+        s.push('|');
+        if let Some(v) = v {
+            s.push_str(v.trim());
+        }
+    }
+    super::fnv1a_hex(s.as_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

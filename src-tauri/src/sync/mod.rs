@@ -488,6 +488,7 @@ fn refresh_task_states(
                     .map(|s| s.to_marker().to_string())
                     .unwrap_or_else(|| t.status.to_marker().to_string()),
                 fingerprint: merge::block_fingerprint(block),
+                remote_hash: remote::remote_fingerprint(t),
             },
         );
     }
@@ -672,6 +673,29 @@ mod tests {
         assert_eq!(report.updated, 1);
         let text = page_text(&root, "PPDB - TODO");
         assert!(!text.contains("milestone::"), "файл:\n{text}");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn milestone_change_on_server_updates_block() {
+        // статус тот же, на сервере перенесли в другую веху — блок обновляется
+        let root = temp_graph("milestone-change");
+        let cfg = test_cfg();
+        let mut st = SourceState::default();
+        run_merge(
+            &root,
+            &cfg,
+            &[task("ppdb-1", "Задача", Status::Todo)],
+            &mut st,
+        );
+
+        let mut t = task("ppdb-1", "Задача", Status::Todo);
+        t.milestone = Some("1.5.0".into());
+        let (report, _) = run_merge(&root, &cfg, &[t], &mut st);
+        assert_eq!(report.updated, 1);
+        let text = page_text(&root, "PPDB - TODO");
+        assert!(text.contains("milestone:: 1.5.0"), "файл:\n{text}");
+        assert!(!text.contains("milestone:: 1.4.0"), "файл:\n{text}");
         std::fs::remove_dir_all(&root).unwrap();
     }
 

@@ -1,6 +1,7 @@
 //! Состояние синхронизации: .logtask/integrations-state.json.
-//! По каждому source-id — серверный статус и отпечаток блока на момент
-//! последнего синка (база для merge) + время/ошибка последнего синка.
+//! По каждому source-id — серверный статус, отпечаток серверных данных и
+//! отпечаток блока на момент последнего синка (база для merge) + время/ошибка
+//! последнего синка.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -32,6 +33,11 @@ pub struct TaskState {
     pub remote_status: String,
     /// отпечаток блока (merge::block_fingerprint) на момент синка
     pub fingerprint: String,
+    /// отпечаток серверных данных (remote::remote_fingerprint) на момент
+    /// синка; пустой у состояний, записанных до появления поля — первый
+    /// синк после обновления обновит такие блоки
+    #[serde(default)]
+    pub remote_hash: String,
 }
 
 fn state_path(root: &Path) -> std::path::PathBuf {
@@ -90,6 +96,7 @@ mod tests {
             TaskState {
                 remote_status: "TODO".into(),
                 fingerprint: "abc123".into(),
+                remote_hash: "h".into(),
             },
         );
         save(&root, &st).unwrap();
@@ -104,6 +111,21 @@ mod tests {
     }
 
     #[test]
+    fn loads_legacy_state_without_remote_hash() {
+        // состояния, записанные до появления remoteHash, читаются с пустым хэшом
+        let root = temp_root("legacy");
+        std::fs::create_dir_all(root.join(".logtask")).unwrap();
+        std::fs::write(
+            root.join(".logtask/integrations-state.json"),
+            r#"{"sources":{"ppdb":{"tasks":{"1":{"remoteStatus":"TODO","fingerprint":"f"}}}}}"#,
+        )
+        .unwrap();
+        let st = load(&root);
+        assert_eq!(st.sources["ppdb"].tasks["1"].remote_hash, "");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn record_error_keeps_tasks() {
         let root = temp_root("error");
         let mut st = SyncState::default();
@@ -112,6 +134,7 @@ mod tests {
             TaskState {
                 remote_status: "DONE".into(),
                 fingerprint: "f".into(),
+                remote_hash: "h".into(),
             },
         );
         save(&root, &st).unwrap();
