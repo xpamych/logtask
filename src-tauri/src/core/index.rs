@@ -301,6 +301,25 @@ impl Graph {
         Ok(Some(page_name))
     }
 
+    /// Создаёт пустой файл pages/<name>.md. Индекс не трогает —
+    /// переиндексация делается снаружи (watcher::reindex_and_emit).
+    /// Файл, уже существующий на диске, не затирается.
+    pub fn create_page_file(name: &str, root: &Path) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("имя страницы пустое".into());
+        }
+        if name.contains('/') || name.contains('\\') {
+            return Err(format!("недопустимое имя страницы: {name}"));
+        }
+        let abs = root.join("pages").join(format!("{name}.md"));
+        if abs.exists() {
+            return Err(format!("файл уже существует: {}", abs.display()));
+        }
+        super::fswrite::atomic_write(&abs, "")
+            .map_err(|e| format!("запись {}: {e}", abs.display()))
+    }
+
     /// Меняет статус задачи (drag&drop в канбане, кружок статуса, меню).
     /// Учёт времени привязан к статусу «В работе»: переход в DOING запускает
     /// CLOCK, выход из DOING останавливает (если идёт).
