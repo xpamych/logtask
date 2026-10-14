@@ -48,6 +48,7 @@ pub fn run() {
             commands::page_rename,
             commands::page_reveal_in_files,
             commands::page_delete,
+            commands::page_create,
             commands::follow_link,
             commands::search,
             commands::backlinks_get,

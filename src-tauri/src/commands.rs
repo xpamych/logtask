@@ -498,6 +498,37 @@ pub async fn page_delete(
     Ok(())
 }
 
+/// Создаёт пустую страницу pages/<name>.md и возвращает её.
+/// Если страница с таким именем (без учёта регистра) уже есть —
+/// не создаёт ничего, возвращает существующую.
+#[tauri::command]
+pub async fn page_create(
+    name: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<PageDto, String> {
+    let name = name.trim().to_string();
+    {
+        let graph = state.graph.read();
+        let graph = graph.as_ref().ok_or("граф не загружен")?;
+        if let Some(existing) = graph
+            .pages
+            .keys()
+            .find(|k| k.to_lowercase() == name.to_lowercase())
+            .cloned()
+        {
+            return page_get_impl(graph, &existing);
+        }
+    }
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    Graph::create_page_file(&name, &root).map_err(|e| e.to_string())?;
+    mark_self_write(&state);
+    crate::watcher::reindex_and_emit(&app);
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    page_get_impl(graph, &name)
+}
+
 fn is_journal_name(name: &str) -> bool {
     let mut parts = name.split('_');
     let (y, m, d) = match (parts.next(), parts.next(), parts.next()) {

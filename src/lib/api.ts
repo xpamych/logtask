@@ -98,6 +98,11 @@ export async function pageDelete(name: string): Promise<void> {
   return invoke<void>("page_delete", { name });
 }
 
+/** Создать пустую страницу (pages/<name>.md); если уже есть — вернуть существующую */
+export async function pageCreate(name: string): Promise<PageDto> {
+  return invoke<PageDto>("page_create", { name });
+}
+
 export interface TaskDto {
   uuid: string;
   page: string;
