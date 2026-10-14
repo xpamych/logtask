@@ -23,5 +23,12 @@ export function highlightCode(code: string, lang?: string): HastRoot {
       // грамматика упала — пробуем автоопределение
     }
   }
-  return lowlight.highlightAuto(code) as HastRoot;
+  const auto = lowlight.highlightAuto(code) as HastRoot;
+  // автоопределение может не распознать язык (relevance 0) и вернуть
+  // пустое дерево — показываем код как есть, без подсветки,
+  // иначе блок кода «исчезает» из рендера
+  if (auto.children.length === 0 && code.trim()) {
+    return { children: [{ type: "text", value: code }] };
+  }
+  return auto;
 }
