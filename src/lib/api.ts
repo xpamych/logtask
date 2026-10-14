@@ -115,7 +115,7 @@ export interface TaskFilter {
 export type SortDirection = "asc" | "desc";
 
 export interface SortRule {
-  field: string; // "status" | "priority" | "urgency" | "importance"
+  field: string; // "status" | "priority" | "urgency" | "importance"; created_at — no-op, в UI не показывается
   direction: SortDirection;
 }
 

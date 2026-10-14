@@ -5,7 +5,8 @@ import {
   importLogseqQueries,
   queriesList,
   queriesSave,
-  tasksByFilter,
+  SORT_FIELDS,
+  tasksByQuery,
 } from "~/lib/api";
 import { QueryEditor } from "./QueryEditor";
 import { TaskCard } from "./TaskCard";
@@ -73,6 +74,13 @@ export function filterSummary(q: SavedQuery, settings?: Settings | null): string
   if (q.filter.quadrant) {
     parts.push(`квадрант «${QUADRANT_LABELS[q.filter.quadrant] ?? q.filter.quadrant}»`);
   }
+  if (q.sort.length > 0) {
+    const labelOf = (f: string) => SORT_FIELDS.find((s) => s.key === f)?.label ?? f;
+    parts.push(
+      "сортировка: " +
+        q.sort.map((r) => `${labelOf(r.field)} ${r.direction === "desc" ? "↓" : "↑"}`).join(", "),
+    );
+  }
   return parts.join(" · ");
 }
 
@@ -94,7 +102,7 @@ export function Queries(props: {
       const qs = await queriesList();
       setQueries(qs);
       for (const q of qs) {
-        const tasks = await tasksByFilter(q.filter);
+        const tasks = await tasksByQuery(q);
         setResults((prev) => ({ ...prev, [q.title]: tasks }));
         // не перезаписываем ручную свёртку при перезагрузке по graph-changed
         setCollapsed((prev) =>
@@ -158,7 +166,7 @@ export function Queries(props: {
   const applyTemplate = (t: (typeof TEMPLATES)[number]) => {
     void persist([
       ...queries(),
-      { title: t.title, filter: { ...t.filter }, sort: [], collapsed: false },
+      { title: t.title, filter: { ...t.filter }, sort: [{ field: "priority", direction: "desc" }], collapsed: false },
     ]);
   };
 
