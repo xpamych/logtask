@@ -104,23 +104,22 @@ export function BlockView(props: {
     const doc = document as Document & {
       caretRangeFromPoint?: (x: number, y: number) => Range | null;
     };
-    const range = doc.caretRangeFromPoint?.(x, y);
-    if (!range || !container.contains(range.startContainer)) return null;
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-    let off = 0;
-    let node = walker.nextNode();
-    while (node) {
-      if (node === range.startContainer) {
-        // между контентом и extra-строками в источнике есть "\n",
-        // который не является текстовым узлом — компенсируем
-        const inExtra =
-          range.startContainer.parentElement?.closest(".block-extra") !== null;
-        return off + range.startOffset + (inExtra ? 1 : 0);
-      }
-      off += (node.textContent ?? "").length;
-      node = walker.nextNode();
-    }
-    return null;
+    const caret = doc.caretRangeFromPoint?.(x, y);
+    if (!caret || !container.contains(caret.startContainer)) return null;
+    // длина текста от начала контейнера до точки клика — не зависит от
+    // того, вернул движок текстовый узел или элемент
+    const pre = document.createRange();
+    pre.selectNodeContents(container);
+    pre.setEnd(caret.startContainer, caret.startOffset);
+    let off = pre.toString().length;
+    // между контентом и extra-строками в источнике есть "\n",
+    // который не является текстовым узлом — компенсируем
+    const node =
+      caret.startContainer.nodeType === Node.TEXT_NODE
+        ? caret.startContainer.parentElement
+        : (caret.startContainer as HTMLElement);
+    if (node?.closest(".block-extra")) off += 1;
+    return off;
   };
 
   const startEdit = (e?: MouseEvent) => {
