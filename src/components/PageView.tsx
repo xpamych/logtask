@@ -74,14 +74,23 @@ export function PageView(props: {
     queueMicrotask(() => composerEl?.focus());
   };
 
-  const submitComposer = async () => {
-    if (!composing()) return;
+  // keepOpen (Enter): блок сохраняется, редактор очищается и остаётся
+  // открытым для следующей записи; blur/Escape закрывают редактор
+  const submitComposer = async (keepOpen: boolean) => {
     const text = (composerEl?.value ?? "").trim();
-    setComposing(false);
-    if (!text) return;
+    if (!text) {
+      setComposing(false);
+      return;
+    }
     try {
       await blockCreate(props.name, text, null);
       await load();
+      if (keepOpen && composerEl) {
+        composerEl.value = "";
+        composerEl.focus();
+      } else {
+        setComposing(false);
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -91,7 +100,7 @@ export function PageView(props: {
     if (e.isComposing) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      void submitComposer();
+      void submitComposer(true);
     } else if (e.key === "Escape") {
       e.preventDefault();
       setComposing(false);
@@ -349,18 +358,16 @@ export function PageView(props: {
                 />
               )}
             </For>
-            <Show when={p().blocks.length === 0}>
+            <Show when={virtual() && p().blocks.length === 0}>
+              <div class="placeholder">
+                Страница ещё не создана — ниже блоки, где она упоминается
+              </div>
+            </Show>
+            <Show when={!virtual()}>
               <Show
-                when={!virtual()}
+                when={composing()}
                 fallback={
-                  <div class="placeholder">
-                    Страница ещё не создана — ниже блоки, где она упоминается
-                  </div>
-                }
-              >
-                <Show
-                  when={composing()}
-                  fallback={
+                  <Show when={p().blocks.length === 0}>
                     <button
                       class="placeholder placeholder-btn"
                       title="Нажмите, чтобы добавить запись"
@@ -368,20 +375,20 @@ export function PageView(props: {
                     >
                       Страница пуста
                     </button>
-                  }
-                >
-                  <div class="block composer-row">
-                    <span class="status-prio-dot empty" />
-                    <textarea
-                      ref={composerEl}
-                      class="block-edit composer-input"
-                      placeholder="Новая запись…"
-                      rows={1}
-                      onKeyDown={onComposerKeyDown}
-                      onBlur={() => void submitComposer()}
-                    />
-                  </div>
-                </Show>
+                  </Show>
+                }
+              >
+                <div class="block composer-row">
+                  <span class="status-prio-dot empty" />
+                  <textarea
+                    ref={composerEl}
+                    class="block-edit"
+                    placeholder="Новая запись…"
+                    rows={1}
+                    onKeyDown={onComposerKeyDown}
+                    onBlur={() => void submitComposer(false)}
+                  />
+                </div>
               </Show>
             </Show>
           </section>

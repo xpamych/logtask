@@ -351,14 +351,6 @@ body.panel-resizing {
   padding-left: 10px;
 }
 
-.composer-input.block-edit {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 2px 6px 2px 0;
-  resize: none;
-}
-
 .muted {
   color: var(--fg-muted);
   font-size: 12px;
@@ -1233,18 +1225,19 @@ body.panel-resizing {
   background: rgba(255, 255, 255, 0.05);
 }
 
+/* инлайн-редактирование блока: без рамки и фона — текст остаётся на месте,
+   как в Logseq; «поле ввода» только в карточке задачи (.task-card-edit) */
 .block-edit {
   width: 100%;
   min-height: 20px;
-  padding: 2px 6px;
-  background: var(--bg);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
+  padding: 2px 6px 2px 0;
+  background: transparent;
+  border: none;
   color: var(--fg);
   font: inherit;
   font-size: 13px;
   line-height: 1.4;
-  resize: vertical;
+  resize: none;
   outline: none;
 }
 
@@ -2316,9 +2309,15 @@ textarea.push-body {
 }
 
 /* инлайн-редактор в карточке задачи */
+/* в карточке задачи редактор — с рамкой, отдельным полем поверх карточки */
 .task-card-edit {
   flex: 1;
   min-width: 0;
+  padding: 2px 6px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  resize: vertical;
 }
 
 .task-card-text {

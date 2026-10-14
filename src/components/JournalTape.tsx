@@ -126,15 +126,25 @@ export function JournalTape(props: {
     queueMicrotask(() => composerEl?.focus());
   };
 
-  const submitComposer = async () => {
+  // keepOpen (Enter): запись сохраняется, редактор очищается и остаётся
+  // открытым для следующей; blur/Escape закрывают редактор
+  const submitComposer = async (keepOpen: boolean) => {
     const day = composerDay();
     if (!day) return;
     const text = (composerEl?.value ?? "").trim();
-    setComposerDay(null);
-    if (!text) return;
+    if (!text) {
+      setComposerDay(null);
+      return;
+    }
     try {
       await blockCreate(day, text, null);
       await reload();
+      if (keepOpen && composerEl) {
+        composerEl.value = "";
+        composerEl.focus();
+      } else {
+        setComposerDay(null);
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -144,7 +154,7 @@ export function JournalTape(props: {
     if (e.isComposing) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      void submitComposer();
+      void submitComposer(true);
     } else if (e.key === "Escape") {
       e.preventDefault();
       setComposerDay(null);
@@ -213,10 +223,10 @@ export function JournalTape(props: {
                       />
                     )}
                   </For>
-                  <Show when={tapeBlocks(page()).length === 0}>
-                    <Show
-                      when={composerDay() === name}
-                      fallback={
+                  <Show
+                    when={composerDay() === name}
+                    fallback={
+                      <Show when={tapeBlocks(page()).length === 0}>
                         <button
                           class="placeholder placeholder-btn"
                           title="Нажмите, чтобы добавить запись"
@@ -224,20 +234,20 @@ export function JournalTape(props: {
                         >
                           В этот день записей нет
                         </button>
-                      }
-                    >
-                      <div class="block composer-row">
-                        <span class="status-prio-dot empty" />
-                        <textarea
-                          ref={composerEl}
-                          class="block-edit composer-input"
-                          placeholder="Новая запись…"
-                          rows={1}
-                          onKeyDown={onComposerKeyDown}
-                          onBlur={() => void submitComposer()}
-                        />
-                      </div>
-                    </Show>
+                      </Show>
+                    }
+                  >
+                    <div class="block composer-row">
+                      <span class="status-prio-dot empty" />
+                      <textarea
+                        ref={composerEl}
+                        class="block-edit"
+                        placeholder="Новая запись…"
+                        rows={1}
+                        onKeyDown={onComposerKeyDown}
+                        onBlur={() => void submitComposer(false)}
+                      />
+                    </div>
                   </Show>
                   <BacklinksPanel name={name} />
                 </>
