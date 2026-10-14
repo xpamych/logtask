@@ -93,14 +93,13 @@ pub struct SavedQuery {
     pub collapsed: bool,
 }
 
-/// Сортировка по priority→Z как в config.edn `sort-by-priority`
-fn priority_key(block: &Block) -> u8 {
-    match block.priority {
-        Some(super::model::Priority::A) => 0,
-        Some(super::model::Priority::B) => 1,
-        Some(super::model::Priority::C) => 2,
-        None => 3,
-    }
+/// Ключ сортировки по маркеру приоритета; None — у блоков без приоритета
+fn priority_key(block: &Block) -> Option<u8> {
+    block.priority.map(|p| match p {
+        super::model::Priority::A => 0,
+        super::model::Priority::B => 1,
+        super::model::Priority::C => 2,
+    })
 }
 
 fn level_key(l: Level) -> u8 {
@@ -120,19 +119,24 @@ impl Graph {
         }
         out.sort_by(|(_, a), (_, b)| {
             for rule in &q.sort {
-                let cmp = match rule.field {
-                    SortField::Status => a
-                        .status
-                        .map(|s| s.order())
-                        .unwrap_or(99)
-                        .cmp(&b.status.map(|s| s.order()).unwrap_or(99)),
-                    SortField::Priority => priority_key(a).cmp(&priority_key(b)),
-                    SortField::Urgency => {
-                        level_key(a.effective_urgency()).cmp(&level_key(b.effective_urgency()))
+                let key = |blk: &Block| -> Option<u8> {
+                    match rule.field {
+                        SortField::Status => blk.status.map(|s| s.order()),
+                        SortField::Priority => priority_key(blk),
+                        SortField::Urgency => Some(level_key(blk.effective_urgency())),
+                        SortField::Importance => Some(level_key(blk.effective_importance())),
+                        SortField::CreatedAt => None, // no-op: created_at у блоков нет
                     }
-                    SortField::Importance => level_key(a.effective_importance())
-                        .cmp(&level_key(b.effective_importance())),
-                    SortField::CreatedAt => std::cmp::Ordering::Equal, // пока no-op: created_at у блоков нет
+                };
+                // None (нет значения) — всегда в конце, при любом направлении
+                let cmp = match (key(a), key(b)) {
+                    (None, None) => std::cmp::Ordering::Equal,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (Some(x), Some(y)) => match rule.direction {
+                        SortDirection::Asc => x.cmp(&y),
+                        SortDirection::Desc => y.cmp(&x),
+                    },
                 };
                 if cmp != std::cmp::Ordering::Equal {
                     return cmp;
@@ -246,5 +250,64 @@ mod tests {
     fn sort_rule_default_direction_is_asc() {
         let r: SortRule = serde_json::from_str(r#"{"field":"urgency"}"#).unwrap();
         assert_eq!(r, rule(SortField::Urgency, SortDirection::Asc));
+    }
+
+    use crate::core::index::IndexStats;
+    use crate::core::model::PageKind;
+
+    fn graph_from(content: &str) -> Graph {
+        let mut g = Graph::default();
+        let mut stats = IndexStats {
+            pages: 0,
+            journals: 0,
+            blocks: 0,
+            tasks: 0,
+            links: 0,
+        };
+        g.index_file_content("тест", PageKind::Page, content, None, &mut stats, None);
+        g
+    }
+
+    fn query_with(sort: Vec<SortRule>) -> SavedQuery {
+        SavedQuery {
+            title: "t".into(),
+            filter: TaskFilter::default(),
+            sort,
+            collapsed: false,
+        }
+    }
+
+    fn contents(g: &Graph, q: &SavedQuery) -> Vec<String> {
+        g.query(q)
+            .into_iter()
+            .map(|(_, b)| b.content.clone())
+            .collect()
+    }
+
+    #[test]
+    fn query_sorts_by_priority_desc_with_none_last() {
+        // каноническая позиция [#X] — сразу после маркера статуса (как в Logseq);
+        // тогда парсер вырезает его из content и кладёт в block.priority
+        let g = graph_from("- TODO [#A] А\n- DOING [#C] Б\n- LATER В\n");
+        let q = query_with(vec![rule(SortField::Priority, SortDirection::Desc)]);
+        assert_eq!(contents(&g, &q), vec!["Б", "А", "В"]);
+    }
+
+    #[test]
+    fn query_sort_none_last_also_when_asc() {
+        let g = graph_from("- TODO [#A] А\n- LATER В\n");
+        let q = query_with(vec![rule(SortField::Priority, SortDirection::Asc)]);
+        assert_eq!(contents(&g, &q), vec!["А", "В"]);
+    }
+
+    #[test]
+    fn query_sort_chain_uses_second_field_as_tiebreak() {
+        // одинаковая важность (medium из [#B]) → решает статус asc: LATER раньше DOING
+        let g = graph_from("- DOING [#B] Б\n- LATER [#B] В\n");
+        let q = query_with(vec![
+            rule(SortField::Importance, SortDirection::Desc),
+            rule(SortField::Status, SortDirection::Asc),
+        ]);
+        assert_eq!(contents(&g, &q), vec!["В", "Б"]);
     }
 }
