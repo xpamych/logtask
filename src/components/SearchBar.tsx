@@ -1,7 +1,7 @@
 import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import type { SearchHit } from "~/lib/api";
-import { search } from "~/lib/api";
+import { pageCreate, search } from "~/lib/api";
 import { RichText } from "./RichText";
 
 /** Строка поиска по страницам и блокам — вверху центрального окна */
@@ -10,6 +10,7 @@ export function SearchBar(props: {
 }): JSX.Element {
   const [query, setQuery] = createSignal("");
   const [hits, setHits] = createSignal<SearchHit[]>([]);
+  const [error, setError] = createSignal("");
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   // поколение запроса: устаревший in-flight search не перезапишет свежие hits
@@ -21,6 +22,7 @@ export function SearchBar(props: {
 
   const onQuery = (value: string) => {
     setQuery(value);
+    setError("");
     if (searchTimer !== undefined) clearTimeout(searchTimer);
     const gen = ++searchGen;
     if (!value.trim()) {
@@ -37,10 +39,32 @@ export function SearchBar(props: {
     }, 120);
   };
 
-  const pick = (page: string) => {
-    props.onOpenPage(page);
+  const reset = () => {
     setQuery("");
     setHits([]);
+    setError("");
+  };
+
+  const pick = (page: string) => {
+    props.onOpenPage(page);
+    reset();
+  };
+
+  /** Есть ли в графе страница с именем, точно совпадающим с запросом */
+  const exactMatch = (): boolean => {
+    const q = query().trim().toLowerCase();
+    return hits().some((h) => h.kind === "page" && h.page.toLowerCase() === q);
+  };
+
+  const create = async () => {
+    const name = query().trim();
+    if (!name) return;
+    try {
+      const page = await pageCreate(name);
+      pick(page.name);
+    } catch (e) {
+      setError(String(e));
+    }
   };
 
   return (
@@ -52,14 +76,15 @@ export function SearchBar(props: {
         onInput={(e) => onQuery(e.currentTarget.value)}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
-            setQuery("");
-            setHits([]);
+            reset();
+          } else if (e.key === "Enter" && !exactMatch()) {
+            void create();
           }
         }}
       />
       <Show when={query().trim()}>
         <div class="searchbar-results">
-          <Show when={hits().length === 0}>
+          <Show when={hits().length === 0 && !error()}>
             <div class="searchbar-empty">Ничего не найдено</div>
           </Show>
           <For each={hits().slice(0, 40)}>
@@ -72,6 +97,16 @@ export function SearchBar(props: {
               </button>
             )}
           </For>
+          <Show when={error()}>
+            <div class="searchbar-empty">{error()}</div>
+          </Show>
+          <Show when={!exactMatch()}>
+            <button class="search-hit search-create" onClick={() => void create()}>
+              <span class="search-hit-page">
+                + Создать страницу «{query().trim()}»
+              </span>
+            </button>
+          </Show>
         </div>
       </Show>
     </div>

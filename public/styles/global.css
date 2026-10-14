@@ -620,6 +620,11 @@ body.panel-resizing {
   max-width: 100%;
 }
 
+.search-create .search-hit-page {
+  color: var(--accent);
+  font-style: italic;
+}
+
 .wikilink {
   background: none;
   border: none;
