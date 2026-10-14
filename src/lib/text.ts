@@ -129,6 +129,11 @@ export interface InlineSegment {
   text: string;
   target?: string;
   children?: InlineSegment[];
+  /** полупрозрачный диапазон [start, end) во входной строке parseInline —
+   *  нужен для перевода позиции клика в отрендеренном тексте обратно
+   *  в позицию в исходнике */
+  start: number;
+  end: number;
 }
 
 // порядок альтернатив важен: картинки и md-ссылки раньше [[ссылок]],
@@ -154,13 +159,15 @@ export function parseInline(input: string): InlineSegment[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(input)) !== null) {
     if (m.index > pos) {
-      segments.push({ type: "text", text: input.slice(pos, m.index) });
+      segments.push({ type: "text", text: input.slice(pos, m.index), start: pos, end: m.index });
     }
-    const [full, imgEmbed, imgMd, mdLink, link, tag, bold, italic, strike, code, highlight, bareUrl] = m;
+    const start = m.index;
+    const end = m.index + m[0].length;
+    const [, imgEmbed, imgMd, mdLink, link, tag, bold, italic, strike, code, highlight, bareUrl] = m;
     if (imgEmbed !== undefined) {
       // logseq-вставка: ![[../assets/x.png]]
       const path = imgEmbed.slice(3, -2).trim();
-      segments.push({ type: "image", text: path, target: path });
+      segments.push({ type: "image", text: path, target: path, start, end });
     } else if (imgMd !== undefined) {
       // markdown-картинка: ![alt](path)
       const inner = /!\[([^\]]*)\]\(([^)]+)\)/.exec(imgMd);
@@ -168,6 +175,8 @@ export function parseInline(input: string): InlineSegment[] {
         type: "image",
         text: inner?.[1] ?? "",
         target: (inner?.[2] ?? "").trim(),
+        start,
+        end,
       });
     } else if (mdLink !== undefined) {
       // markdown-ссылка: [текст](https://…)
@@ -176,6 +185,8 @@ export function parseInline(input: string): InlineSegment[] {
         type: "url",
         text: inner?.[1] ?? mdLink,
         target: trimUrlTail((inner?.[2] ?? "").trim()),
+        start,
+        end,
       });
     } else if (bareUrl !== undefined) {
       // голый URL — кликабельный
@@ -183,50 +194,60 @@ export function parseInline(input: string): InlineSegment[] {
         type: "url",
         text: trimUrlTail(bareUrl),
         target: trimUrlTail(bareUrl),
+        start,
+        end,
       });
     } else if (link !== undefined) {
       const inner = link.slice(2, -2);
       const pipe = inner.indexOf("|");
       const target = (pipe === -1 ? inner : inner.slice(0, pipe)).trim();
       const label = (pipe === -1 ? inner : inner.slice(pipe + 1)).trim();
-      segments.push({ type: "link", text: label, target });
+      segments.push({ type: "link", text: label, target, start, end });
     } else if (tag !== undefined) {
       let target = tag.slice(1);
       if (target.startsWith("[[") && target.endsWith("]]")) {
         target = target.slice(2, -2);
       }
-      segments.push({ type: "tag", text: tag, target: target.trim() });
+      segments.push({ type: "tag", text: tag, target: target.trim(), start, end });
     } else if (bold !== undefined) {
       segments.push({
         type: "bold",
         text: bold,
         children: parseInline(bold.slice(2, -2)),
+        start,
+        end,
       });
     } else if (italic !== undefined) {
       segments.push({
         type: "italic",
         text: italic,
         children: parseInline(italic.slice(1, -1)),
+        start,
+        end,
       });
     } else if (strike !== undefined) {
       segments.push({
         type: "strike",
         text: strike,
         children: parseInline(strike.slice(2, -2)),
+        start,
+        end,
       });
     } else if (code !== undefined) {
-      segments.push({ type: "code", text: code.slice(1, -1) });
+      segments.push({ type: "code", text: code.slice(1, -1), start, end });
     } else if (highlight !== undefined) {
       segments.push({
         type: "highlight",
         text: highlight,
         children: parseInline(highlight.slice(2, -2)),
+        start,
+        end,
       });
     }
-    pos = m.index + full.length;
+    pos = end;
   }
   if (pos < input.length) {
-    segments.push({ type: "text", text: input.slice(pos) });
+    segments.push({ type: "text", text: input.slice(pos), start: pos, end: input.length });
   }
   return segments;
 }
@@ -271,4 +292,101 @@ export function splitMdBlocks(text: string): MdBlock[] {
     blocks.push({ kind: "code", text: buf.join("\n"), lang: codeLang });
   }
   return blocks;
+}
+
+/** Листовой сегмент с абсолютными диапазонами [start, end) в исходной
+ *  строке: bold/italic/strike/highlight развёрнуты (маркеры сняты),
+ *  code — без бэктиков. Картинки не дают текста и пропускаются. */
+export interface FlatSegment {
+  text: string;
+  start: number;
+  end: number;
+}
+
+export function flatInline(input: string): FlatSegment[] {
+  const out: FlatSegment[] = [];
+  const walk = (segs: InlineSegment[], base: number) => {
+    for (const s of segs) {
+      switch (s.type) {
+        case "bold":
+        case "strike":
+        case "highlight":
+          walk(s.children ?? [], base + s.start + 2);
+          break;
+        case "italic":
+          walk(s.children ?? [], base + s.start + 1);
+          break;
+        case "code":
+          out.push({ text: s.text, start: base + s.start + 1, end: base + s.end - 1 });
+          break;
+        case "image":
+          break;
+        default:
+          out.push({ text: s.text, start: base + s.start, end: base + s.end });
+      }
+    }
+  };
+  walk(parseInline(input), 0);
+  return out;
+}
+
+/**
+ * Карта «позиция каретки в отрендеренном тексте → смещение в исходнике».
+ * Повторяет трансформации RichText: trim, ограждения ``` не показываются,
+ * у заголовков снимается "# ", инлайн-разметка заменяется видимым текстом.
+ * Строки в DOM идут блоками без текстовых разделителей, поэтому в карте
+ * их текст конкатенируется; строки внутри код-блоков разделены реальными
+ * "\n" (pre), они учитываются.
+ * Возвращает массив длины renderedLen+1: map[i] — смещение в `input`
+ * каретки, стоящей перед i-м отрендеренным символом. Для сегментов, чей
+ * видимый текст короче/длиннее исходного ([[page|label]], [txt](url)),
+ * позиция внутри сегмента мапится пропорционально.
+ */
+export function renderSourceMap(input: string): number[] {
+  const map: number[] = [];
+  let rendered = 0;
+  // каретка j внутри сегмента [srcStart, srcEnd) с видимым текстом длины L
+  const pushMapping = (len: number, srcStart: number, srcEnd: number) => {
+    const srcL = srcEnd - srcStart;
+    for (let j = 0; j <= len; j++) {
+      map[rendered + j] = srcStart + Math.round((j * srcL) / Math.max(len, 1));
+    }
+    rendered += len;
+  };
+
+  const lead = input.length - input.trimStart().length;
+  const trimmed = input.trim();
+  let inCode = false;
+  let firstCodeLine = false;
+  let lineStart = lead; // смещение начала текущей строки в input
+  for (const line of trimmed.split("\n")) {
+    if (line.trim().startsWith("```")) {
+      inCode = !inCode;
+      firstCodeLine = inCode;
+      lineStart += line.length + 1;
+      continue;
+    }
+    if (inCode) {
+      // строки кода в <pre> разделены реальными "\n" — это видимые символы
+      if (!firstCodeLine) {
+        pushMapping(1, lineStart - 1, lineStart - 1);
+      }
+      firstCodeLine = false;
+      pushMapping(line.length, lineStart, lineStart + line.length);
+    } else {
+      const h = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (h) {
+        const textStart = lineStart + h[1].length + 1;
+        for (const leaf of flatInline(h[2])) {
+          pushMapping(leaf.text.length, textStart + leaf.start, textStart + leaf.end);
+        }
+      } else {
+        for (const leaf of flatInline(line)) {
+          pushMapping(leaf.text.length, lineStart + leaf.start, lineStart + leaf.end);
+        }
+      }
+    }
+    lineStart += line.length + 1;
+  }
+  return map;
 }

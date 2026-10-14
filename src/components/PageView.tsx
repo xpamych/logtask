@@ -13,7 +13,7 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
-import { refreshGuarded } from "~/lib/editState";
+import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { IconStar } from "~/components/icons";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
@@ -189,6 +189,21 @@ export function PageView(props: {
     }
   };
 
+  /// переход кареткой из редактора блока к соседнему (стрелка вверх/вниз):
+  /// сосед входит в редактирование, курсор — в его начало или конец
+  const onBlockNavigate = (uuid: string, dir: -1 | 1): boolean => {
+    const list = page()?.blocks ?? [];
+    const i = list.findIndex((x) => x.uuid === uuid);
+    const neighbor = i >= 0 ? list[i + dir] : undefined;
+    if (!neighbor) return false;
+    setEditingBlock(neighbor.uuid);
+    setPendingEdit({
+      uuid: neighbor.uuid,
+      at: dir === 1 ? 0 : neighbor.source.length,
+    });
+    return true;
+  };
+
   // последний сфокусированный блок: повторный скролл к нему не нужен
   let lastFocused: string | null = null;
 
@@ -354,6 +369,7 @@ export function PageView(props: {
                   onChanged={load}
                   onStatusChange={onStatusChange}
                   onDelete={onDelete}
+                  onNavigate={onBlockNavigate}
                   settings={props.settings}
                 />
               )}

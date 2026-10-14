@@ -1,6 +1,7 @@
-import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
+import { renderSourceMap } from "~/lib/text";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot } from "./StatusPrioDot";
@@ -32,6 +33,9 @@ export function BlockView(props: {
   onChanged?: () => void;
   onStatusChange?: (uuid: string, marker: string) => void;
   onDelete?: (uuid: string) => void | Promise<void>;
+  /** переход кареткой на соседний блок (стрелки в редакторе);
+   *  возвращает false, если соседа нет */
+  onNavigate?: (uuid: string, dir: -1 | 1) => boolean;
   settings?: Settings | null;
 }): JSX.Element {
   const b = props.block;
@@ -98,80 +102,91 @@ export function BlockView(props: {
     });
   };
 
-  /** смещение (в символах) точки клика внутри отрендеренного текста блока */
-  const clickOffset = (container: HTMLElement, x: number, y: number): number | null => {
-    const text = b.content + (b.extra.length ? "\n" + b.extra.join("\n") : "");
-    if (!text) return 0;
-    // caretRangeFromPoint в WebKitGTK нет — измеряем текст «зеркалом»:
-    // невидимый div с теми же шрифтом/шириной/переносами, маркер на конце
-    // текста даёт позицию каретки; бинарный поиск — ближайшая к клику
-    const rect = container.getBoundingClientRect();
-    const px = x - rect.left;
-    const py = y - rect.top;
-    const cs = getComputedStyle(container);
-    const mirror = document.createElement("div");
-    // свойства по одному: computed font-shorthand в WebKit может быть пустым
-    mirror.style.cssText =
-      "position:absolute;visibility:hidden;top:-9999px;left:-9999px;" +
-      "white-space:pre-wrap;word-break:break-word;box-sizing:border-box;";
-    mirror.style.width = `${container.clientWidth}px`;
-    mirror.style.fontFamily = cs.fontFamily;
-    mirror.style.fontSize = cs.fontSize;
-    mirror.style.fontWeight = cs.fontWeight;
-    mirror.style.fontStyle = cs.fontStyle;
-    mirror.style.lineHeight = cs.lineHeight;
-    mirror.style.letterSpacing = cs.letterSpacing;
-    mirror.style.wordSpacing = cs.wordSpacing;
-    mirror.style.padding = cs.padding;
-    const textNode = document.createTextNode("");
-    const marker = document.createElement("span");
-    mirror.append(textNode, marker);
-    document.body.appendChild(mirror);
-    // каретка(n): координаты позиции между символами n-1 и n
-    const caretAt = (n: number) => {
-      textNode.data = text.slice(0, n);
-      return { top: marker.offsetTop, left: marker.offsetLeft };
-    };
-    // наибольшее n, где каретка не позже точки клика (в порядке чтения)
-    let lo = 0;
-    let hi = text.length;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      const p = caretAt(mid);
-      if (p.top < py || (p.top === py && p.left <= px)) lo = mid;
-      else hi = mid - 1;
+  /** длина текста (в символах) от начала root до DOM-точки (node, offset) */
+  const domOffset = (root: HTMLElement, node: Node, offset: number): number => {
+    const r = document.createRange();
+    r.selectNodeContents(root);
+    r.setEnd(node, offset);
+    return r.toString().length;
+  };
+
+  /** позиция каретки в extra-строках → смещение в b.source: в исходнике
+   *  у extra-строк есть отступы, а между ними — строки свойств/логбука;
+   *  каждую extra-строку матчим по тексту к её строке исходника */
+  const extraToSource = (off: number): number => {
+    const joined = b.extra.join("\n");
+    const map = renderSourceMap(joined);
+    const pos = map[Math.min(off, map.length - 1)];
+    const lines = joined.split("\n");
+    let lineIdx = 0;
+    let col = pos;
+    let acc = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (pos <= acc + lines[i].length) {
+        lineIdx = i;
+        col = Math.min(pos - acc, lines[i].length);
+        break;
+      }
+      acc += lines[i].length + 1;
+      lineIdx = i;
+      col = lines[i].length;
     }
-    // уточнение: каретка должна быть БЛИЖАЙШЕЙ к клику, а не просто левее —
-    // клик правее середины символа ставит курсор за символом
-    if (lo < text.length) {
-      const p0 = caretAt(lo);
-      const p1 = caretAt(lo + 1);
-      const nearer =
-        p1.top === p0.top ? p1.left - px < px - p0.left : py - p0.top > p1.top - py;
-      if (nearer) lo += 1;
+    // ищем строку исходника, соответствующую extra[lineIdx]: пропускаем
+    // свойства/логбук/пустые, у Raw-строк в исходнике есть префикс-отступ
+    const srcLines = b.source.split("\n");
+    let extraIdx = 0;
+    let lineStart = srcLines[0].length + 1;
+    for (let j = 1; j < srcLines.length; j++) {
+      const l = srcLines[j];
+      const t = l.trimStart();
+      const structural =
+        t === "" ||
+        t.startsWith(":LOGBOOK:") ||
+        t.startsWith(":END:") ||
+        t.startsWith("CLOCK:") ||
+        /^[^\s:]+::/.test(t);
+      if (!structural && l.endsWith(b.extra[extraIdx])) {
+        if (extraIdx === lineIdx) {
+          const indentLen = l.length - b.extra[extraIdx].length;
+          return lineStart + indentLen + col;
+        }
+        extraIdx++;
+      }
+      lineStart += l.length + 1;
     }
-    mirror.remove();
-    return lo;
+    return b.source.length;
+  };
+
+  /** DOM-каретка после клика → смещение в редактируемом исходнике блока */
+  const caretToSource = (container: HTMLElement, node: Node, offset: number): number => {
+    // edit_source = [приоритет "[#X] "] + content + продолжения
+    const prioLen = /^\[#.\]\s*/.exec(b.source)?.[0].length ?? 0;
+    const anchorEl =
+      node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+    const extraEl = container.querySelector(".block-extra");
+    if (extraEl && anchorEl && extraEl.contains(anchorEl)) {
+      return extraToSource(domOffset(extraEl as HTMLElement, node, offset));
+    }
+    const map = renderSourceMap(b.content);
+    const off = Math.min(domOffset(container, node, offset), map.length - 1);
+    return prioLen + map[off];
   };
 
   const startEdit = (e?: MouseEvent) => {
+    // клик по тексту: браузер сам ставит DOM-каретку в точный символ —
+    // читаем её ДО того, как редактор подменит разметку
+    let clickPos: number | null = null;
+    if (e) {
+      const container = e.currentTarget as HTMLElement;
+      const sel = window.getSelection();
+      if (sel?.anchorNode && container.contains(sel.anchorNode)) {
+        clickPos = caretToSource(container, sel.anchorNode, sel.anchorOffset);
+      }
+    }
     // редактор правит блок целиком (как в Logseq): контент + продолжения
     setDraft(b.source);
     setEditing(true);
     setEditingBlock(b.uuid);
-    // позиция клика в отрендеренном тексте; в источнике перед контентом
-    // ещё маркер/приоритет — его длина = разности длин источника и текста
-    let clickPos: number | null = null;
-    if (e) {
-      const container = e.currentTarget as HTMLElement;
-      const off = clickOffset(container, e.clientX, e.clientY);
-      if (off !== null) {
-        const renderedLen =
-          b.content.length + (b.extra.length ? 1 + b.extra.join("\n").length : 0);
-        const prefixLen = Math.max(0, b.source.length - renderedLen);
-        clickPos = prefixLen + off;
-      }
-    }
     queueMicrotask(() => {
       const el = textareaEl;
       if (!el) return;
@@ -239,31 +254,31 @@ export function BlockView(props: {
     setDraft(b.source);
   };
 
-  // продолжение редактирования после склейки: страница перезагрузилась,
-  // этот экземпляр — выживший блок (uuid из pendingEdit) → сразу входим
-  // в редактирование и ставим курсор в точку стыка
-  {
+  // вход в редактирование по сигналу через pendingEdit: продолжение после
+  // склейки/разбиения (страница перезагрузилась, это выживший блок) или
+  // навигация стрелками от соседнего блока (тот уже смонтирован — поэтому
+  // эффект, а не разовая проверка в теле компонента)
+  createEffect(() => {
     const pending = pendingEdit();
-    if (pending && pending.uuid === b.uuid) {
-      setPendingEdit(null);
-      startEdit();
-      queueMicrotask(() => {
-        const el = textareaEl;
-        if (!el) return;
-        const lines = el.value.split("\n");
-        let pos: number;
-        if (pending.atLine !== undefined || pending.minusLines !== undefined) {
-          // курсор в начало строки стыка (склейка теперь многострочная)
-          const idx = pending.atLine ?? lines.length - (pending.minusLines ?? 0);
-          const clamped = Math.min(Math.max(0, idx), lines.length - 1);
-          pos = lines.slice(0, clamped).reduce((s, l) => s + l.length + 1, 0);
-        } else {
-          pos = Math.min(pending.at ?? 0, el.value.length);
-        }
-        el.setSelectionRange(pos, pos);
-      });
-    }
-  }
+    if (!pending || pending.uuid !== b.uuid || editing()) return;
+    setPendingEdit(null);
+    startEdit();
+    queueMicrotask(() => {
+      const el = textareaEl;
+      if (!el) return;
+      const lines = el.value.split("\n");
+      let pos: number;
+      if (pending.atLine !== undefined || pending.minusLines !== undefined) {
+        // курсор в начало строки стыка (склейка теперь многострочная)
+        const idx = pending.atLine ?? lines.length - (pending.minusLines ?? 0);
+        const clamped = Math.min(Math.max(0, idx), lines.length - 1);
+        pos = lines.slice(0, clamped).reduce((s, l) => s + l.length + 1, 0);
+      } else {
+        pos = Math.min(pending.at ?? 0, el.value.length);
+      }
+      el.setSelectionRange(pos, pos);
+    });
+  });
 
   /// Backspace в самом начале блока: склеивание с вышестоящим (как в Logseq).
   /// Редактирование продолжается уже в склеенном блоке (новый uuid),
@@ -368,6 +383,28 @@ export function BlockView(props: {
       const el = e.currentTarget as HTMLTextAreaElement;
       void moveIndent(e.shiftKey, el.selectionStart);
       return;
+    }
+    // Стрелка вверх на первой строке / вниз на последней — переход
+    // в соседний блок (в конец предыдущего / начало следующего), как в Logseq
+    if (
+      (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+      !e.shiftKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.metaKey &&
+      props.onNavigate
+    ) {
+      const el = e.currentTarget as HTMLTextAreaElement;
+      const atFirstLine = !el.value.slice(0, el.selectionStart).includes("\n");
+      const atLastLine = !el.value.slice(el.selectionEnd).includes("\n");
+      const dir = e.key === "ArrowUp" ? -1 : 1;
+      if ((e.key === "ArrowUp" ? atFirstLine : atLastLine)) {
+        if (props.onNavigate(b.uuid, dir)) {
+          e.preventDefault();
+          void save();
+          return;
+        }
+      }
     }
     // Backspace в позиции 0 (ничего не выделено) — склеивание с блоком выше;
     // Delete в конце текста — приклеить нижестоящий блок к текущему

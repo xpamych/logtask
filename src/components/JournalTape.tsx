@@ -11,7 +11,7 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName, journalLogseqTitle } from "~/lib/text";
-import { refreshGuarded } from "~/lib/editState";
+import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
 
@@ -114,6 +114,28 @@ export function JournalTape(props: {
     } catch (e) {
       setError(String(e));
     }
+  };
+
+  /// переход кареткой из редактора блока к соседнему в ленте дня
+  /// (стрелка вверх/вниз): сосед входит в редактирование, курсор —
+  /// в его начало или конец
+  const onBlockNavigate = (uuid: string, dir: -1 | 1): boolean => {
+    for (const name of days()) {
+      const page = pages()[name];
+      if (!page) continue;
+      const list = tapeBlocks(page);
+      const i = list.findIndex((x) => x.uuid === uuid);
+      if (i < 0) continue;
+      const neighbor = list[i + dir];
+      if (!neighbor) return false; // край дня: выше/ниже только соседний день
+      setEditingBlock(neighbor.uuid);
+      setPendingEdit({
+        uuid: neighbor.uuid,
+        at: dir === 1 ? 0 : neighbor.source.length,
+      });
+      return true;
+    }
+    return false;
   };
 
   // инлайн-редактор новой записи в пустом дне: открывается по клику
@@ -219,6 +241,7 @@ export function JournalTape(props: {
                         onChanged={reload}
                         onStatusChange={onStatusChange}
                         onDelete={onDelete}
+                        onNavigate={onBlockNavigate}
                         settings={props.settings}
                       />
                     )}
