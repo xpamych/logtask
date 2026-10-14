@@ -237,6 +237,21 @@ const App: Component = () => {
     onCleanup(() => window.removeEventListener("mousedown", onMouseNav));
   });
 
+  onMount(() => {
+    // Ctrl+Q — выход из приложения (linux-конвенция);
+    // e.code, а не e.key — работает и в русской раскладке
+    const onQuit = (e: KeyboardEvent) => {
+      if (e.code === "KeyQ" && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+          getCurrentWindow().close(),
+        );
+      }
+    };
+    window.addEventListener("keydown", onQuit);
+    onCleanup(() => window.removeEventListener("keydown", onQuit));
+  });
+
   const openPage = (name: string, uuid?: string) => {
     if (!name) return;
     navigate({ kind: "page", name });
