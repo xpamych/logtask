@@ -100,26 +100,44 @@ export function BlockView(props: {
 
   /** смещение (в символах) точки клика внутри отрендеренного текста блока */
   const clickOffset = (container: HTMLElement, x: number, y: number): number | null => {
-    // caretRangeFromPoint — нестандартный, но поддерживается WebKitGTK
-    const doc = document as Document & {
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    const text = b.content + (b.extra.length ? "\n" + b.extra.join("\n") : "");
+    if (!text) return 0;
+    // caretRangeFromPoint в WebKitGTK нет — измеряем текст «зеркалом»:
+    // невидимый div с теми же шрифтом/шириной/переносами, маркер на конце
+    // текста даёт позицию каретки; бинарный поиск — ближайшая к клику
+    const rect = container.getBoundingClientRect();
+    const px = x - rect.left;
+    const py = y - rect.top;
+    const cs = getComputedStyle(container);
+    const mirror = document.createElement("div");
+    mirror.style.cssText =
+      "position:absolute;visibility:hidden;top:-9999px;left:-9999px;" +
+      "white-space:pre-wrap;word-break:break-word;";
+    mirror.style.width = `${container.clientWidth}px`;
+    mirror.style.font = cs.font;
+    mirror.style.fontSize = cs.fontSize;
+    mirror.style.lineHeight = cs.lineHeight;
+    mirror.style.letterSpacing = cs.letterSpacing;
+    const textNode = document.createTextNode("");
+    const marker = document.createElement("span");
+    mirror.append(textNode, marker);
+    document.body.appendChild(mirror);
+    // каретка(n): координаты позиции между символами n-1 и n
+    const caretAt = (n: number) => {
+      textNode.data = text.slice(0, n);
+      return { top: marker.offsetTop, left: marker.offsetLeft };
     };
-    const caret = doc.caretRangeFromPoint?.(x, y);
-    if (!caret || !container.contains(caret.startContainer)) return null;
-    // длина текста от начала контейнера до точки клика — не зависит от
-    // того, вернул движок текстовый узел или элемент
-    const pre = document.createRange();
-    pre.selectNodeContents(container);
-    pre.setEnd(caret.startContainer, caret.startOffset);
-    let off = pre.toString().length;
-    // между контентом и extra-строками в источнике есть "\n",
-    // который не является текстовым узлом — компенсируем
-    const node =
-      caret.startContainer.nodeType === Node.TEXT_NODE
-        ? caret.startContainer.parentElement
-        : (caret.startContainer as HTMLElement);
-    if (node?.closest(".block-extra")) off += 1;
-    return off;
+    // наибольшее n, где каретка не позже точки клика (в порядке чтения)
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      const p = caretAt(mid);
+      if (p.top < py || (p.top === py && p.left <= px)) lo = mid;
+      else hi = mid - 1;
+    }
+    mirror.remove();
+    return lo;
   };
 
   const startEdit = (e?: MouseEvent) => {
