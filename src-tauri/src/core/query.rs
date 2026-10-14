@@ -32,7 +32,7 @@ pub struct TaskFilter {
     pub quadrant: Option<Quadrant>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SortField {
     Status,
@@ -42,6 +42,45 @@ pub enum SortField {
     CreatedAt,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortDirection {
+    #[default]
+    Asc,
+    Desc,
+}
+
+/// Правило сортировки подборки: поле + направление.
+/// Принимает и старый формат (`"priority"` = Asc) для совместимости
+/// со старыми `.logtask/queries.json`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SortRule {
+    pub field: SortField,
+    pub direction: SortDirection,
+}
+
+impl<'de> Deserialize<'de> for SortRule {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            Legacy(SortField),
+            Full {
+                field: SortField,
+                #[serde(default)]
+                direction: SortDirection,
+            },
+        }
+        Ok(match Repr::deserialize(deserializer)? {
+            Repr::Legacy(field) => SortRule {
+                field,
+                direction: SortDirection::Asc,
+            },
+            Repr::Full { field, direction } => SortRule { field, direction },
+        })
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedQuery {
@@ -49,7 +88,7 @@ pub struct SavedQuery {
     #[serde(default)]
     pub filter: TaskFilter,
     #[serde(default)]
-    pub sort: Vec<SortField>,
+    pub sort: Vec<SortRule>,
     #[serde(default)]
     pub collapsed: bool,
 }
@@ -80,8 +119,8 @@ impl Graph {
             return out;
         }
         out.sort_by(|(_, a), (_, b)| {
-            for field in &q.sort {
-                let cmp = match field {
+            for rule in &q.sort {
+                let cmp = match rule.field {
                     SortField::Status => a
                         .status
                         .map(|s| s.order())
@@ -163,5 +202,49 @@ impl Graph {
             quadrants[idx].push(entry);
         }
         quadrants
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule(field: SortField, direction: SortDirection) -> SortRule {
+        SortRule { field, direction }
+    }
+
+    #[test]
+    fn sort_rule_legacy_format_deserializes_as_asc() {
+        let q: SavedQuery = serde_json::from_str(
+            r#"{"title":"t","sort":["priority","status"]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            q.sort,
+            vec![
+                rule(SortField::Priority, SortDirection::Asc),
+                rule(SortField::Status, SortDirection::Asc),
+            ]
+        );
+    }
+
+    #[test]
+    fn sort_rule_new_format_roundtrip() {
+        let q = SavedQuery {
+            title: "t".into(),
+            filter: TaskFilter::default(),
+            sort: vec![rule(SortField::Importance, SortDirection::Desc)],
+            collapsed: false,
+        };
+        let json = serde_json::to_string(&q).unwrap();
+        assert!(json.contains(r#""sort":[{"field":"importance","direction":"desc"}]"#));
+        let back: SavedQuery = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.sort, q.sort);
+    }
+
+    #[test]
+    fn sort_rule_default_direction_is_asc() {
+        let r: SortRule = serde_json::from_str(r#"{"field":"urgency"}"#).unwrap();
+        assert_eq!(r, rule(SortField::Urgency, SortDirection::Asc));
     }
 }
