@@ -98,18 +98,57 @@ export function BlockView(props: {
     });
   };
 
-  const startEdit = () => {
+  /** смещение (в символах) точки клика внутри отрендеренного текста блока */
+  const clickOffset = (container: HTMLElement, x: number, y: number): number | null => {
+    // caretRangeFromPoint — нестандартный, но поддерживается WebKitGTK
+    const doc = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    };
+    const range = doc.caretRangeFromPoint?.(x, y);
+    if (!range || !container.contains(range.startContainer)) return null;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let off = 0;
+    let node = walker.nextNode();
+    while (node) {
+      if (node === range.startContainer) {
+        // между контентом и extra-строками в источнике есть "\n",
+        // который не является текстовым узлом — компенсируем
+        const inExtra =
+          range.startContainer.parentElement?.closest(".block-extra") !== null;
+        return off + range.startOffset + (inExtra ? 1 : 0);
+      }
+      off += (node.textContent ?? "").length;
+      node = walker.nextNode();
+    }
+    return null;
+  };
+
+  const startEdit = (e?: MouseEvent) => {
     // редактор правит блок целиком (как в Logseq): контент + продолжения
     setDraft(b.source);
     setEditing(true);
     setEditingBlock(b.uuid);
+    // позиция клика в отрендеренном тексте; в источнике перед контентом
+    // ещё маркер/приоритет — его длина = разности длин источника и текста
+    let clickPos: number | null = null;
+    if (e) {
+      const container = e.currentTarget as HTMLElement;
+      const off = clickOffset(container, e.clientX, e.clientY);
+      if (off !== null) {
+        const renderedLen =
+          b.content.length + (b.extra.length ? 1 + b.extra.join("\n").length : 0);
+        const prefixLen = Math.max(0, b.source.length - renderedLen);
+        clickPos = prefixLen + off;
+      }
+    }
     queueMicrotask(() => {
       const el = textareaEl;
       if (!el) return;
       el.focus();
       // фокус ставит каретку в конец текста и ускролливает большой блок —
-      // возвращаем курсор и скролл в начало
-      el.setSelectionRange(0, 0);
+      // возвращаем скролл в начало; курсор — в точку клика (или в начало)
+      const pos = Math.min(clickPos ?? 0, el.value.length);
+      el.setSelectionRange(pos, pos);
       el.scrollTop = 0;
     });
   };
@@ -180,8 +219,16 @@ export function BlockView(props: {
       queueMicrotask(() => {
         const el = textareaEl;
         if (!el) return;
-        const firstLineLen = el.value.split("\n")[0].length;
-        const pos = pending.at ?? Math.max(0, firstLineLen - (pending.minus ?? 0));
+        const lines = el.value.split("\n");
+        let pos: number;
+        if (pending.atLine !== undefined || pending.minusLines !== undefined) {
+          // курсор в начало строки стыка (склейка теперь многострочная)
+          const idx = pending.atLine ?? lines.length - (pending.minusLines ?? 0);
+          const clamped = Math.min(Math.max(0, idx), lines.length - 1);
+          pos = lines.slice(0, clamped).reduce((s, l) => s + l.length + 1, 0);
+        } else {
+          pos = Math.min(pending.at ?? 0, el.value.length);
+        }
         el.setSelectionRange(pos, pos);
       });
     }
@@ -191,12 +238,14 @@ export function BlockView(props: {
   /// Редактирование продолжается уже в склеенном блоке (новый uuid),
   /// курсор — в точке стыка
   const mergeUp = async () => {
-    const movedLen = draft().split("\n")[0].trim().length;
+    // строки черновика: первая станет отдельной строкой после вышестоящего
+    // блока, за ней — trailing; стык = начало строки «curLines-я с конца»
+    const curLines = draft().split("\n").length;
     try {
       const res = await blockMergeUp(b.uuid);
       if (res) {
         setEditingBlock(res.uuid);
-        setPendingEdit({ uuid: res.uuid, minus: movedLen });
+        setPendingEdit({ uuid: res.uuid, minusLines: curLines });
         props.onChanged?.();
       }
       // первый блок страницы — не с кем, остаёмся в редактировании
@@ -207,12 +256,13 @@ export function BlockView(props: {
 
   /// Delete в конце блока: нижестоящий приклеивается к текущему
   const mergeDown = async () => {
-    const at = draft().split("\n")[0].length;
+    // стык = первая строка, которую добавит нижестоящий блок
+    const atLine = draft().split("\n").length;
     try {
       const res = await blockMergeDown(b.uuid);
       if (res) {
         setEditingBlock(res.uuid);
-        setPendingEdit({ uuid: res.uuid, at });
+        setPendingEdit({ uuid: res.uuid, atLine });
         props.onChanged?.();
       }
       // последний блок — не с кем, остаёмся в редактировании
