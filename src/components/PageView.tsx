@@ -370,14 +370,17 @@ export function PageView(props: {
                     </button>
                   }
                 >
-                  <textarea
-                    ref={composerEl}
-                    class="block-edit day-composer"
-                    placeholder="Новая запись…"
-                    rows={1}
-                    onKeyDown={onComposerKeyDown}
-                    onBlur={() => void submitComposer()}
-                  />
+                  <div class="block composer-row">
+                    <span class="status-prio-dot empty" />
+                    <textarea
+                      ref={composerEl}
+                      class="block-edit composer-input"
+                      placeholder="Новая запись…"
+                      rows={1}
+                      onKeyDown={onComposerKeyDown}
+                      onBlur={() => void submitComposer()}
+                    />
+                  </div>
                 </Show>
               </Show>
             </Show>

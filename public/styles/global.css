@@ -345,8 +345,18 @@ body.panel-resizing {
   color: var(--fg);
 }
 
-.day-composer {
-  width: 100%;
+/* инлайн-редактор новой записи: выглядит как обычный блок (точка-маркер +
+   текст без рамки), а не отдельное поле ввода */
+.composer-row {
+  padding-left: 10px;
+}
+
+.composer-input {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 2px 6px 2px 0;
+  resize: none;
 }
 
 .muted {
