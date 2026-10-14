@@ -31,8 +31,41 @@ fn create_page_rejects_slash() {
     fs::create_dir_all(dir.join("pages")).unwrap();
 
     let err = Graph::create_page_file("Foo/Bar", &dir).expect_err("ошибка на /");
-    assert!(err.contains("недопустимое"), "{err}");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("недопустимое"), "{err}");
     assert!(!dir.join("pages/Foo").exists(), "ничего не создано");
+}
+
+#[test]
+fn create_page_rejects_backslash() {
+    let dir = std::env::temp_dir().join("logtask_page_create_test_backslash");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("pages")).unwrap();
+
+    let err = Graph::create_page_file("Foo\\Bar", &dir).expect_err("ошибка на \\");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("недопустимое"), "{err}");
+    assert!(
+        !dir.join("pages").join("Foo").exists(),
+        "ничего не создано"
+    );
+}
+
+#[test]
+fn create_page_rejects_empty_name() {
+    let dir = std::env::temp_dir().join("logtask_page_create_test_empty");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("pages")).unwrap();
+
+    for bad in ["", "   "] {
+        let err = Graph::create_page_file(bad, &dir).expect_err("ошибка на пустое имя");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("пустое"), "{err}");
+    }
+    assert!(
+        fs::read_dir(dir.join("pages")).unwrap().next().is_none(),
+        "ничего не создано"
+    );
 }
 
 #[test]
@@ -44,6 +77,7 @@ fn create_page_does_not_overwrite_existing_file() {
     fs::write(&file, "- TODO не трогать\n").unwrap();
 
     let err = Graph::create_page_file("Уже есть", &dir).expect_err("ошибка на существующий файл");
-    assert!(err.contains("уже существует"), "{err}");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(err.to_string().contains("уже существует"), "{err}");
     assert_eq!(fs::read_to_string(&file).unwrap(), "- TODO не трогать\n");
 }

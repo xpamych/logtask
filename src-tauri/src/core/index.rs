@@ -303,21 +303,38 @@ impl Graph {
 
     /// Создаёт пустой файл pages/<name>.md. Индекс не трогает —
     /// переиндексация делается снаружи (watcher::reindex_and_emit).
-    /// Файл, уже существующий на диске, не затирается.
-    pub fn create_page_file(name: &str, root: &Path) -> Result<(), String> {
+    /// Файл, уже существующий на диске, не затирается: создание идёт
+    /// атомарно-эксклюзивно (create_new), гонки с внешними писателями нет.
+    pub fn create_page_file(name: &str, root: &Path) -> std::io::Result<()> {
+        use std::fs::OpenOptions;
+        use std::io::ErrorKind;
+
         let name = name.trim();
         if name.is_empty() {
-            return Err("имя страницы пустое".into());
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidInput,
+                "имя страницы пустое",
+            ));
         }
         if name.contains('/') || name.contains('\\') {
-            return Err(format!("недопустимое имя страницы: {name}"));
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidInput,
+                format!("недопустимое имя страницы: {name}"),
+            ));
         }
         let abs = root.join("pages").join(format!("{name}.md"));
-        if abs.exists() {
-            return Err(format!("файл уже существует: {}", abs.display()));
-        }
-        super::fswrite::atomic_write(&abs, "")
-            .map_err(|e| format!("запись {}: {e}", abs.display()))
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&abs)
+            .and_then(|f| f.sync_all())
+            .map_err(|e| {
+                if e.kind() == ErrorKind::AlreadyExists {
+                    std::io::Error::new(e.kind(), format!("файл уже существует: {}", abs.display()))
+                } else {
+                    std::io::Error::new(e.kind(), format!("создание {}: {e}", abs.display()))
+                }
+            })
     }
 
     /// Меняет статус задачи (drag&drop в канбане, кружок статуса, меню).
