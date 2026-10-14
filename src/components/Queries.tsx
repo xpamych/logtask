@@ -75,10 +75,10 @@ export function filterSummary(q: SavedQuery, settings?: Settings | null): string
     parts.push(`квадрант «${QUADRANT_LABELS[q.filter.quadrant] ?? q.filter.quadrant}»`);
   }
   if (q.sort.length > 0) {
-    const labelOf = (f: string) => SORT_FIELDS.find((s) => s.key === f)?.label ?? f;
+    const sortLabel = (f: string) => SORT_FIELDS.find((s) => s.key === f)?.label ?? f;
     parts.push(
       "сортировка: " +
-        q.sort.map((r) => `${labelOf(r.field)} ${r.direction === "desc" ? "↓" : "↑"}`).join(", "),
+        q.sort.map((r) => `${sortLabel(r.field)} ${r.direction === "desc" ? "↓" : "↑"}`).join(", "),
     );
   }
   return parts.join(" · ");

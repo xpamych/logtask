@@ -1,6 +1,7 @@
 import { For, Show, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
-import type { SavedQuery, Settings } from "~/lib/api";
+import { SORT_FIELDS } from "~/lib/api";
+import type { SavedQuery, Settings, SortRule } from "~/lib/api";
 
 const QUADRANTS = [
   { key: "do", label: "Сделать (срочно и важно)" },
@@ -61,6 +62,32 @@ export function QueryEditor(props: {
       return { ...d, filter: { ...d.filter, status } };
     });
   };
+
+  const addSortRule = () => {
+    const used = draft().sort.map((r) => r.field);
+    const next = SORT_FIELDS.find((f) => !used.includes(f.key)) ?? SORT_FIELDS[0];
+    setDraft((d) => ({
+      ...d,
+      sort: [...d.sort, { field: next.key, direction: next.defaultDir }],
+    }));
+  };
+
+  const updateSortRule = (i: number, patch: Partial<SortRule>) =>
+    setDraft((d) => ({
+      ...d,
+      sort: d.sort.map((r, j) => (j === i ? { ...r, ...patch } : r)),
+    }));
+
+  const moveSortRule = (i: number, delta: number) =>
+    setDraft((d) => {
+      const sort = [...d.sort];
+      const [r] = sort.splice(i, 1);
+      sort.splice(i + delta, 0, r);
+      return { ...d, sort };
+    });
+
+  const removeSortRule = (i: number) =>
+    setDraft((d) => ({ ...d, sort: d.sort.filter((_, j) => j !== i) }));
 
   const save = () => {
     const q = draft();
@@ -218,6 +245,59 @@ export function QueryEditor(props: {
               </For>
             </select>
           </label>
+
+          <div class="settings-section">Сортировка (первое поле — главное)</div>
+          <For each={draft().sort}>
+            {(rule, i) => (
+              <div class="sort-rule-row">
+                <select
+                  class="status-label-input"
+                  value={rule.field}
+                  onChange={(e) =>
+                    updateSortRule(i(), { field: e.currentTarget.value })
+                  }
+                >
+                  <For each={SORT_FIELDS}>
+                    {(f) => <option value={f.key}>{f.label}</option>}
+                  </For>
+                </select>
+                <select
+                  class="status-label-input"
+                  value={rule.direction}
+                  onChange={(e) =>
+                    updateSortRule(i(), {
+                      direction: e.currentTarget.value as SortRule["direction"],
+                    })
+                  }
+                >
+                  <option value="asc">по возрастанию</option>
+                  <option value="desc">по убыванию</option>
+                </select>
+                <button
+                  class="btn"
+                  disabled={i() === 0}
+                  onClick={() => moveSortRule(i(), -1)}
+                  title="Выше"
+                >
+                  ↑
+                </button>
+                <button
+                  class="btn"
+                  disabled={i() === draft().sort.length - 1}
+                  onClick={() => moveSortRule(i(), 1)}
+                  title="Ниже"
+                >
+                  ↓
+                </button>
+                <button class="btn" onClick={() => removeSortRule(i())} title="Убрать">
+                  ✕
+                </button>
+              </div>
+            )}
+          </For>
+          <button class="btn" onClick={addSortRule}>
+            ＋ Добавить поле сортировки
+          </button>
 
           <label class="settings-row">
             <span class="settings-label">Свёрнута по умолчанию</span>
