@@ -134,10 +134,17 @@ export interface TaskFilter {
   quadrant: string | null;
 }
 
+export type SortDirection = "asc" | "desc";
+
+export interface SortRule {
+  field: string; // "status" | "priority" | "urgency" | "importance"; created_at — no-op, в UI не показывается
+  direction: SortDirection;
+}
+
 export interface SavedQuery {
   title: string;
   filter: TaskFilter;
-  sort: string[];
+  sort: SortRule[];
   collapsed: boolean;
 }
 
@@ -145,9 +152,16 @@ export async function kanban(): Promise<TaskColumn[]> {
   return invoke<TaskColumn[]>("kanban");
 }
 
-export async function tasksByFilter(filter: TaskFilter): Promise<TaskDto[]> {
-  return invoke<TaskDto[]>("tasks_by_filter", { filter });
+export async function tasksByQuery(q: SavedQuery): Promise<TaskDto[]> {
+  return invoke<TaskDto[]>("tasks_by_query", { q });
 }
+
+export const SORT_FIELDS: { key: string; label: string; defaultDir: SortDirection }[] = [
+  { key: "status", label: "Статус", defaultDir: "asc" },
+  { key: "priority", label: "Приоритет", defaultDir: "desc" },
+  { key: "urgency", label: "Срочность", defaultDir: "desc" },
+  { key: "importance", label: "Важность", defaultDir: "desc" },
+];
 
 export async function queriesList(): Promise<SavedQuery[]> {
   return invoke<SavedQuery[]>("queries_list");

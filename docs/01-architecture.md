@@ -76,7 +76,7 @@ Backlinks — обратный индекс `page-name → ссылающиес�
 ## IPC (Tauri commands, см. `lib.rs`)
 - Чтение: `graph_load`, `graph_summary`, `journal_list`, `journal_prev`,
   `page_get`, `page_list`, `follow_link`, `search`, `backlinks_get`
-- Списки задач: `kanban`, `tasks_by_filter`, `matrix`
+- Списки задач: `kanban`, `tasks_by_query`, `matrix`
 - Сохранённые запросы: `queries_list`, `queries_save`, `import_logseq_queries`
 - Правки: `task_set_status`, `task_set_quadrant`, `task_set_priority`,
   `block_update_text`, `block_delete`, `block_create`, `block_set_prop`

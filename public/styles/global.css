@@ -1523,6 +1523,17 @@ select.settings-select {
   letter-spacing: 0.06em;
 }
 
+.sort-rule-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.sort-rule-row select {
+  flex: 1;
+}
+
 .status-row {
   display: flex;
   align-items: center;

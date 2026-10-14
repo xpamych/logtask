@@ -675,15 +675,15 @@ pub async fn kanban(state: tauri::State<'_, AppState>) -> Result<Vec<TaskColumn>
         .collect())
 }
 
-/// Задачи по фильтру (для saved-запросов)
+/// Задачи по сохранённой подборке (фильтр + сортировка)
 #[tauri::command]
-pub fn tasks_by_filter(
-    filter: crate::core::query::TaskFilter,
+pub fn tasks_by_query(
+    q: crate::core::query::SavedQuery,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<TaskDto>, String> {
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
-    let entries = strip_nested_tasks(graph, graph.filter_tasks(&filter));
+    let entries = strip_nested_tasks(graph, graph.query(&q));
     Ok(entries
         .into_iter()
         .map(|(id, block)| task_dto(graph, id, block))

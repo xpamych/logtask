@@ -32,7 +32,7 @@ pub struct TaskFilter {
     pub quadrant: Option<Quadrant>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SortField {
     Status,
@@ -42,6 +42,45 @@ pub enum SortField {
     CreatedAt,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortDirection {
+    #[default]
+    Asc,
+    Desc,
+}
+
+/// Правило сортировки подборки: поле + направление.
+/// Принимает и старый формат (`"priority"` = Asc) для совместимости
+/// со старыми `.logtask/queries.json`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SortRule {
+    pub field: SortField,
+    pub direction: SortDirection,
+}
+
+impl<'de> Deserialize<'de> for SortRule {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            Legacy(SortField),
+            Full {
+                field: SortField,
+                #[serde(default)]
+                direction: SortDirection,
+            },
+        }
+        Ok(match Repr::deserialize(deserializer)? {
+            Repr::Legacy(field) => SortRule {
+                field,
+                direction: SortDirection::Asc,
+            },
+            Repr::Full { field, direction } => SortRule { field, direction },
+        })
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedQuery {
@@ -49,19 +88,18 @@ pub struct SavedQuery {
     #[serde(default)]
     pub filter: TaskFilter,
     #[serde(default)]
-    pub sort: Vec<SortField>,
+    pub sort: Vec<SortRule>,
     #[serde(default)]
     pub collapsed: bool,
 }
 
-/// Сортировка по priority→Z как в config.edn `sort-by-priority`
-fn priority_key(block: &Block) -> u8 {
-    match block.priority {
-        Some(super::model::Priority::A) => 0,
-        Some(super::model::Priority::B) => 1,
-        Some(super::model::Priority::C) => 2,
-        None => 3,
-    }
+/// Ключ сортировки по маркеру приоритета; None — у блоков без приоритета
+fn priority_key(block: &Block) -> Option<u8> {
+    block.priority.map(|p| match p {
+        super::model::Priority::A => 0,
+        super::model::Priority::B => 1,
+        super::model::Priority::C => 2,
+    })
 }
 
 fn level_key(l: Level) -> u8 {
@@ -80,20 +118,25 @@ impl Graph {
             return out;
         }
         out.sort_by(|(_, a), (_, b)| {
-            for field in &q.sort {
-                let cmp = match field {
-                    SortField::Status => a
-                        .status
-                        .map(|s| s.order())
-                        .unwrap_or(99)
-                        .cmp(&b.status.map(|s| s.order()).unwrap_or(99)),
-                    SortField::Priority => priority_key(a).cmp(&priority_key(b)),
-                    SortField::Urgency => {
-                        level_key(a.effective_urgency()).cmp(&level_key(b.effective_urgency()))
+            for rule in &q.sort {
+                let key = |blk: &Block| -> Option<u8> {
+                    match rule.field {
+                        SortField::Status => blk.status.map(|s| s.order()),
+                        SortField::Priority => priority_key(blk),
+                        SortField::Urgency => Some(level_key(blk.effective_urgency())),
+                        SortField::Importance => Some(level_key(blk.effective_importance())),
+                        SortField::CreatedAt => None, // no-op: created_at у блоков нет
                     }
-                    SortField::Importance => level_key(a.effective_importance())
-                        .cmp(&level_key(b.effective_importance())),
-                    SortField::CreatedAt => std::cmp::Ordering::Equal, // пока no-op: created_at у блоков нет
+                };
+                // None (нет значения) — всегда в конце, при любом направлении
+                let cmp = match (key(a), key(b)) {
+                    (None, None) => std::cmp::Ordering::Equal,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (Some(x), Some(y)) => match rule.direction {
+                        SortDirection::Asc => x.cmp(&y),
+                        SortDirection::Desc => y.cmp(&x),
+                    },
                 };
                 if cmp != std::cmp::Ordering::Equal {
                     return cmp;
@@ -163,5 +206,108 @@ impl Graph {
             quadrants[idx].push(entry);
         }
         quadrants
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule(field: SortField, direction: SortDirection) -> SortRule {
+        SortRule { field, direction }
+    }
+
+    #[test]
+    fn sort_rule_legacy_format_deserializes_as_asc() {
+        let q: SavedQuery = serde_json::from_str(
+            r#"{"title":"t","sort":["priority","status"]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            q.sort,
+            vec![
+                rule(SortField::Priority, SortDirection::Asc),
+                rule(SortField::Status, SortDirection::Asc),
+            ]
+        );
+    }
+
+    #[test]
+    fn sort_rule_new_format_roundtrip() {
+        let q = SavedQuery {
+            title: "t".into(),
+            filter: TaskFilter::default(),
+            sort: vec![rule(SortField::Importance, SortDirection::Desc)],
+            collapsed: false,
+        };
+        let json = serde_json::to_string(&q).unwrap();
+        assert!(json.contains(r#""sort":[{"field":"importance","direction":"desc"}]"#));
+        let back: SavedQuery = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.sort, q.sort);
+    }
+
+    #[test]
+    fn sort_rule_default_direction_is_asc() {
+        let r: SortRule = serde_json::from_str(r#"{"field":"urgency"}"#).unwrap();
+        assert_eq!(r, rule(SortField::Urgency, SortDirection::Asc));
+    }
+
+    use crate::core::index::IndexStats;
+    use crate::core::model::PageKind;
+
+    fn graph_from(content: &str) -> Graph {
+        let mut g = Graph::default();
+        let mut stats = IndexStats {
+            pages: 0,
+            journals: 0,
+            blocks: 0,
+            tasks: 0,
+            links: 0,
+        };
+        g.index_file_content("тест", PageKind::Page, content, None, &mut stats, None);
+        g
+    }
+
+    fn query_with(sort: Vec<SortRule>) -> SavedQuery {
+        SavedQuery {
+            title: "t".into(),
+            filter: TaskFilter::default(),
+            sort,
+            collapsed: false,
+        }
+    }
+
+    fn contents(g: &Graph, q: &SavedQuery) -> Vec<String> {
+        g.query(q)
+            .into_iter()
+            .map(|(_, b)| b.content.clone())
+            .collect()
+    }
+
+    #[test]
+    fn query_sorts_by_priority_desc_with_none_last() {
+        // каноническая позиция [#X] — сразу после маркера статуса (как в Logseq);
+        // тогда парсер вырезает его из content и кладёт в block.priority
+        let g = graph_from("- TODO [#A] А\n- DOING [#C] Б\n- LATER В\n");
+        let q = query_with(vec![rule(SortField::Priority, SortDirection::Desc)]);
+        assert_eq!(contents(&g, &q), vec!["Б", "А", "В"]);
+    }
+
+    #[test]
+    fn query_sort_none_last_also_when_asc() {
+        let g = graph_from("- TODO [#A] А\n- LATER В\n");
+        let q = query_with(vec![rule(SortField::Priority, SortDirection::Asc)]);
+        assert_eq!(contents(&g, &q), vec!["А", "В"]);
+    }
+
+    #[test]
+    fn query_sort_chain_uses_second_field_as_tiebreak() {
+        // одинаковая важность (medium из [#B]) → решает статус asc: LATER раньше DOING
+        let g = graph_from("- DOING [#B] Б\n- LATER [#B] В\n");
+        let q = query_with(vec![
+            rule(SortField::Importance, SortDirection::Desc),
+            rule(SortField::Status, SortDirection::Asc),
+        ]);
+        assert_eq!(contents(&g, &q), vec!["В", "Б"]);
     }
 }

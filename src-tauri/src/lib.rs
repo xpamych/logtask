@@ -52,7 +52,7 @@ pub fn run() {
             commands::search,
             commands::backlinks_get,
             commands::kanban,
-            commands::tasks_by_filter,
+            commands::tasks_by_query,
             commands::queries_list,
             commands::queries_save,
             commands::import_logseq_queries,
