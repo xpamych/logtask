@@ -141,6 +141,15 @@ export function BlockView(props: {
       if (p.top < py || (p.top === py && p.left <= px)) lo = mid;
       else hi = mid - 1;
     }
+    // уточнение: каретка должна быть БЛИЖАЙШЕЙ к клику, а не просто левее —
+    // клик правее середины символа ставит курсор за символом
+    if (lo < text.length) {
+      const p0 = caretAt(lo);
+      const p1 = caretAt(lo + 1);
+      const nearer =
+        p1.top === p0.top ? p1.left - px < px - p0.left : py - p0.top > p1.top - py;
+      if (nearer) lo += 1;
+    }
     mirror.remove();
     return lo;
   };
