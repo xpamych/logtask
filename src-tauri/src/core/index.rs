@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use uuid::Uuid;
 
-use super::model::{Block, Graph, LinkTarget, Page, PageKind};
+use super::model::{Block, Graph, LinkTarget, Page, PageKind, Trailing};
 use super::parser::parse_document;
 
 /// Имена журналов: "2026_09_11" — валидная дата
@@ -441,9 +441,13 @@ impl Graph {
     }
 
     /// Склеивает блок с блоком выше (Backspace в начале блока, как в Logseq):
-    /// текст дописывается в конец вышестоящего, дочерние переезжают к нему,
-    /// текущий блок удаляется. Вышестоящий — предыдущий в порядке документа.
-    /// Первому блоку страницы склеиваться не с кем → Ok(None).
+    /// первая строка текущего блока становится отдельной trailing-строкой
+    /// сразу после последней строки вышестоящего (маркер статуса/приоритета
+    /// становится обычным текстом, отступ строки сохраняется), дочерние
+    /// переезжают к вышестоящему с отступами по уровням (канонический tab
+    /// на уровень), текущий блок удаляется. Вышестоящий — предыдущий
+    /// в порядке документа. Первому блоку страницы склеиваться не с кем →
+    /// Ok(None).
     /// Возвращает (страница, позиция выжившего блока в порядке документа) —
     /// uuid после перезаписи страницы и полной переиндексации меняются
     /// дважды, поэтому наружу отдаём позицию, а uuid вычисляет команда
@@ -482,7 +486,15 @@ impl Graph {
         let prev_id = page.order[pos - 1];
 
         // данные текущего блока
-        let (cur_content, cur_trailing, cur_children, cur_indent, cur_indent_str, cur_parent) = {
+        let (
+            cur_content,
+            cur_trailing,
+            cur_children,
+            cur_indent,
+            cur_indent_str,
+            cur_marker,
+            cur_parent,
+        ) = {
             let b = &self.blocks[id];
             (
                 b.content.clone(),
@@ -490,6 +502,7 @@ impl Graph {
                 b.children.clone(),
                 b.indent,
                 b.raw.indent_str.clone(),
+                b.raw.marker_str.clone(),
                 b.parent,
             )
         };
@@ -498,34 +511,35 @@ impl Graph {
             (b.indent, b.raw.indent_str.clone())
         };
 
-        // единица отступа поддерева: из первого ребёнка, иначе tab
-        let unit = cur_children
-            .first()
-            .and_then(|c| self.blocks.get(c))
-            .and_then(|c| c.raw.indent_str.strip_prefix(&cur_indent_str))
-            .unwrap_or("\t")
-            .to_string();
-        let old_prefix = format!("{cur_indent_str}{unit}");
-        let new_prefix = format!("{pred_indent_str}{unit}");
-
-        // текст дописываем в вышестоящий (через пробел, если оба непустые)
+        // первая строка склеиваемого блока становится отдельной строкой
+        // сразу после последней строки вышестоящего (trailing-строкой):
+        // маркер статуса/приоритета становится обычным текстом, как в
+        // Logseq при переносе «TODO foo» в другую строку; отступ строки
+        // сохраняется; без вставки пробелов и триммов контента
+        let line = if cur_marker.trim().is_empty() {
+            cur_content.clone()
+        } else {
+            format!("{} {}", cur_marker.trim(), cur_content)
+        };
         {
             let prev = self.blocks.get_mut(&prev_id).expect("prev блок");
-            let joined = match (
-                prev.content.trim_end().is_empty(),
-                cur_content.trim().is_empty(),
-            ) {
-                (true, true) => String::new(),
-                (true, false) => cur_content.trim().to_string(),
-                (false, true) => prev.content.clone(),
-                (false, false) => format!("{} {}", prev.content.trim_end(), cur_content.trim()),
-            };
-            prev.set_content(&joined);
+            // Blank-разделители после последней строки блока съедаются
+            while prev.raw.trailing.last().is_some_and(|t| matches!(t, Trailing::Blank)) {
+                prev.raw.trailing.pop();
+            }
+            prev.raw.trailing.push(Trailing::Raw {
+                indent: cur_indent_str.clone(),
+                text: line,
+            });
+            // остальные trailing-строки склеиваемого дописываются следом
             prev.raw.trailing.extend(cur_trailing);
             prev.children.extend(cur_children.iter().copied());
         }
 
-        // поддерево переезжает: уровни и отступы сдвигаются к новому родителю
+        // поддерево переезжает: уровни и отступы сдвигаются к новому
+        // родителю; indent_str пересчитывается по уровням — канонический
+        // tab на каждый уровень глубины (как пишет Logtask), независимо
+        // от исходного стиля отступов
         let mut descendants = cur_children.clone();
         let mut stack = cur_children.clone();
         while let Some(c) = stack.pop() {
@@ -538,14 +552,9 @@ impl Graph {
             let Some(b) = self.blocks.get_mut(&d) else {
                 continue;
             };
-            b.indent = pred_indent + (b.indent - cur_indent);
-            let suffix = b
-                .raw
-                .indent_str
-                .strip_prefix(&old_prefix)
-                .unwrap_or("")
-                .to_string();
-            b.raw.indent_str = format!("{new_prefix}{suffix}");
+            let delta = b.indent - cur_indent;
+            b.indent = pred_indent + delta;
+            b.raw.indent_str = format!("{pred_indent_str}{}", "\t".repeat(delta as usize));
             if cur_children.contains(&d) {
                 b.parent = Some(prev_id);
             }
