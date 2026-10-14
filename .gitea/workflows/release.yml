@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    env:
+      GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ gitea.repository }}
+      TAG: ${{ gitea.ref_name }}
+      API: ${{ gitea.api_url }}
+    steps:
+      - name: Исходники (клон из Gitea)
+        run: git clone --depth 1 --branch "$TAG" "https://git.alr-pkg.ru/${REPO}.git" src
+
+      - name: Системные зависимости Tauri
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends \
+            build-essential pkg-config curl jq file ca-certificates \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - name: Node 24
+        run: |
+          curl -fsSLO https://nodejs.org/dist/v24.11.0/node-v24.11.0-linux-x64.tar.xz
+          tar -xJf node-v24.11.0-linux-x64.tar.xz -C /opt
+          echo "/opt/node-v24.11.0-linux-x64/bin" >> "$GITHUB_PATH"
+
+      - name: Rust stable
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Зависимости npm
+        working-directory: src
+        run: npm ci
+
+      - name: Сборка приложения
+        working-directory: src
+        run: npm run app:build
+
+      - name: Формирование архива
+        working-directory: src
+        run: |
+          mkdir -p pkg/logtask-linux-x86_64
+          cp target/release/logtask pkg/logtask-linux-x86_64/
+          cp public/icon.png pkg/logtask-linux-x86_64/logtask.png
+          printf '%s\n' \
+            '[Desktop Entry]' \
+            'Name=Logtask' \
+            'Comment=Журнал по дням и задачи над md-файлами Logseq' \
+            'Exec=logtask' \
+            'Icon=logtask' \
+            'Terminal=false' \
+            'Type=Application' \
+            'Categories=Utility;Office;' \
+            > pkg/logtask-linux-x86_64/logtask.desktop
+          tar -czf logtask-linux-x86_64.tar.gz -C pkg logtask-linux-x86_64
+          tar -tzf logtask-linux-x86_64.tar.gz
+
+      - name: Артефакт сборки
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: logtask-linux-x86_64
+          path: src/logtask-linux-x86_64.tar.gz
+
+      - name: Создание релиза в Gitea
+        working-directory: src
+        run: |
+          set -e
+          BODY="$(git tag -l "$TAG" --format='%(contents)')"
+          AUTH="Authorization: token $GITEA_TOKEN"
+          JSON=$(jq -n --arg t "$TAG" --arg n "Logtask $TAG" --arg b "$BODY" \
+            '{tag_name:$t, name:$n, body:$b, draft:false, prerelease:false}')
+          RESP=$(curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
+            "$API/repos/$REPO/releases" -d "$JSON") \
+            || RESP=$(curl -sf -H "$AUTH" "$API/repos/$REPO/releases/tags/$TAG")
+          REL_ID=$(echo "$RESP" | jq -r .id)
+          echo "release id: $REL_ID"
+          curl -sf -X POST -H "$AUTH" \
+            "$API/repos/$REPO/releases/$REL_ID/assets?name=logtask-linux-x86_64.tar.gz" \
+            -F "attachment=@logtask-linux-x86_64.tar.gz"
+          echo "Архив прикреплён к релизу $TAG"
