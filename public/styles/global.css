@@ -1288,38 +1288,6 @@ body.panel-resizing {
   color: var(--accent);
 }
 
-.block-add-btn {
-  display: block;
-  margin: 10px 0 4px;
-  padding: 5px 12px;
-  background: none;
-  border: 1px dashed var(--border);
-  border-radius: 5px;
-  color: var(--fg-muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.block-add-btn:hover {
-  color: var(--fg);
-  border-color: var(--accent);
-}
-
-.block-add-row {
-  margin: 8px 0;
-}
-
-.block-add-input {
-  width: 100%;
-  padding: 5px 9px;
-  background: var(--bg);
-  border: 1px solid var(--accent);
-  border-radius: 5px;
-  color: var(--fg);
-  font-size: 13px;
-  outline: none;
-}
-
 /* автодополнение [[ */
 
 .ac-list {

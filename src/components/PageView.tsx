@@ -37,8 +37,10 @@ export function PageView(props: {
   const [error, setError] = createSignal<string | null>(null);
   // виртуальная страница: файла нет, но есть ссылки на неё (как в Logseq)
   const [virtual, setVirtual] = createSignal(false);
-  const [adding, setAdding] = createSignal(false);
-  const [newText, setNewText] = createSignal("");
+  // инлайн-редактор первой записи на пустой странице: открывается по клику
+  // на «Страница пуста», Enter/blur сохраняет, Escape отменяет
+  const [composing, setComposing] = createSignal(false);
+  let composerEl: HTMLTextAreaElement | undefined;
   // инлайн-переименование страницы по клику на заголовок
   const [renaming, setRenaming] = createSignal(false);
   const [renameDraft, setRenameDraft] = createSignal("");
@@ -66,7 +68,35 @@ export function PageView(props: {
   let renameCancel = false;
   let renameInputEl: HTMLInputElement | undefined;
   let mainEl: HTMLElement | undefined;
-  let addInputEl: HTMLInputElement | undefined;
+
+  const openComposer = () => {
+    setComposing(true);
+    queueMicrotask(() => composerEl?.focus());
+  };
+
+  const submitComposer = async () => {
+    if (!composing()) return;
+    const text = (composerEl?.value ?? "").trim();
+    setComposing(false);
+    if (!text) return;
+    try {
+      await blockCreate(props.name, text, null);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const onComposerKeyDown = (e: KeyboardEvent) => {
+    if (e.isComposing) return;
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void submitComposer();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setComposing(false);
+    }
+  };
 
   const startRename = () => {
     setRenameDraft(props.name);
@@ -144,22 +174,6 @@ export function PageView(props: {
   const onDelete = async (uuid: string) => {
     try {
       await blockDelete(uuid);
-      await load();
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const createBlock = async () => {
-    const text = newText().trim();
-    if (!text) {
-      setAdding(false);
-      return;
-    }
-    try {
-      await blockCreate(props.name, text, "TODO");
-      setNewText("");
-      setAdding(false);
       await load();
     } catch (e) {
       setError(String(e));
@@ -335,41 +349,37 @@ export function PageView(props: {
                 />
               )}
             </For>
-            <Show when={!virtual()}>
-              <Show when={adding()}>
-                <div class="block-add-row">
-                  <input
-                    ref={addInputEl}
-                    class="block-add-input"
-                    placeholder="новая задача…"
-                    value={newText()}
-                    onInput={(e) => setNewText(e.currentTarget.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void createBlock();
-                      } else if (e.key === "Escape") {
-                        setAdding(false);
-                        setNewText("");
-                      }
-                    }}
-                    onBlur={() => void createBlock()}
-                  />
-                </div>
-              </Show>
-              <button class="block-add-btn" onClick={() => {
-                setAdding(true);
-                queueMicrotask(() => addInputEl?.focus());
-              }}>
-                ＋ добавить блок
-              </button>
-            </Show>
             <Show when={p().blocks.length === 0}>
-              <div class="placeholder">
-                {virtual()
-                  ? "Страница ещё не создана — ниже блоки, где она упоминается"
-                  : "Страница пуста"}
-              </div>
+              <Show
+                when={!virtual()}
+                fallback={
+                  <div class="placeholder">
+                    Страница ещё не создана — ниже блоки, где она упоминается
+                  </div>
+                }
+              >
+                <Show
+                  when={composing()}
+                  fallback={
+                    <button
+                      class="placeholder placeholder-btn"
+                      title="Нажмите, чтобы добавить запись"
+                      onClick={openComposer}
+                    >
+                      Страница пуста
+                    </button>
+                  }
+                >
+                  <textarea
+                    ref={composerEl}
+                    class="block-edit day-composer"
+                    placeholder="Новая запись…"
+                    rows={1}
+                    onKeyDown={onComposerKeyDown}
+                    onBlur={() => void submitComposer()}
+                  />
+                </Show>
+              </Show>
             </Show>
           </section>
         )}
