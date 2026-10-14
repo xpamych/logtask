@@ -1226,7 +1226,9 @@ body.panel-resizing {
 }
 
 /* инлайн-редактирование блока: без рамки и фона — текст остаётся на месте,
-   как в Logseq; «поле ввода» только в карточке задачи (.task-card-edit) */
+   как в Logseq; «поле ввода» только в карточке задачи (.task-card-edit).
+   Шрифт и высота строки наследуются от блока — редактирование не дёргает
+   вёрстку */
 .block-edit {
   width: 100%;
   min-height: 20px;
@@ -1235,8 +1237,7 @@ body.panel-resizing {
   border: none;
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
-  line-height: 1.4;
+  line-height: inherit;
   resize: none;
   outline: none;
 }
