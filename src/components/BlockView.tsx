@@ -110,14 +110,19 @@ export function BlockView(props: {
     const py = y - rect.top;
     const cs = getComputedStyle(container);
     const mirror = document.createElement("div");
+    // свойства по одному: computed font-shorthand в WebKit может быть пустым
     mirror.style.cssText =
       "position:absolute;visibility:hidden;top:-9999px;left:-9999px;" +
-      "white-space:pre-wrap;word-break:break-word;";
+      "white-space:pre-wrap;word-break:break-word;box-sizing:border-box;";
     mirror.style.width = `${container.clientWidth}px`;
-    mirror.style.font = cs.font;
+    mirror.style.fontFamily = cs.fontFamily;
     mirror.style.fontSize = cs.fontSize;
+    mirror.style.fontWeight = cs.fontWeight;
+    mirror.style.fontStyle = cs.fontStyle;
     mirror.style.lineHeight = cs.lineHeight;
     mirror.style.letterSpacing = cs.letterSpacing;
+    mirror.style.wordSpacing = cs.wordSpacing;
+    mirror.style.padding = cs.padding;
     const textNode = document.createTextNode("");
     const marker = document.createElement("span");
     mirror.append(textNode, marker);
