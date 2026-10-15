@@ -7,7 +7,8 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    # ubuntu-22.04 (glibc 2.35): минимум для webkit2gtk-4.1, работает на RED OS 8
+    runs-on: ubuntu-22.04
     env:
       GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ gitea.repository }}
