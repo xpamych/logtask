@@ -2,6 +2,7 @@ import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { stablePosition } from "~/lib/graph/layout";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
+import { mergeRenderEdges } from "./renderEdges";
 
 interface Camera {
   x: number;
@@ -275,10 +276,9 @@ export class WebGlRenderer {
 
     const styles = getComputedStyle(document.body);
     const edgeColor = color(styles.getPropertyValue("--fg-muted") || "#777777", 0.42);
-    const reverse = new Set(this.scene.edges.map((edge) => `${edge.target}->${edge.source}`));
     const lines: number[] = [];
     const arrows: number[] = [];
-    for (const edge of this.scene.edges) {
+    for (const edge of mergeRenderEdges(this.scene.edges)) {
       const source = this.positions.get(edge.source);
       const target = this.positions.get(edge.target);
       if (!source || !target) continue;
@@ -297,20 +297,22 @@ export class WebGlRenderer {
       const dx = target.x - source.x;
       const dy = target.y - source.y;
       const length = Math.max(0.001, Math.hypot(dx, dy));
-      const offset = reverse.has(edge.id) ? 5 : 0;
-      const ox = (-dy / length) * offset;
-      const oy = (dx / length) * offset;
-      this.line(lines, source.x + ox, source.y + oy, target.x + ox, target.y + oy, rgba);
+      this.line(lines, source.x, source.y, target.x, target.y, rgba);
       if (this.settings?.arrows) {
-        const targetNode = this.scene.nodes.find((node) => node.id === edge.target);
-        const radius = targetNode ? this.nodeRadius(targetNode) : 5;
-        const ux = dx / length;
-        const uy = dy / length;
-        const tip: [number, number] = [target.x + ox - ux * radius, target.y + oy - uy * radius];
-        const size = 5 + Math.min(4, edge.weight / 2);
-        this.triangle(arrows, tip,
-          [tip[0] - ux * size - uy * size * 0.6, tip[1] - uy * size + ux * size * 0.6],
-          [tip[0] - ux * size + uy * size * 0.6, tip[1] - uy * size - ux * size * 0.6], rgba);
+        for (const direction of [1, -1]) {
+          if ((direction === 1 && !edge.forward) || (direction === -1 && !edge.backward)) continue;
+          const endpoint = direction === 1 ? target : source;
+          const endpointId = direction === 1 ? edge.target : edge.source;
+          const targetNode = this.scene.nodes.find((node) => node.id === endpointId);
+          const radius = targetNode ? this.nodeRadius(targetNode) : 5;
+          const ux = (dx / length) * direction;
+          const uy = (dy / length) * direction;
+          const tip: [number, number] = [endpoint.x - ux * radius, endpoint.y - uy * radius];
+          const size = 5 + Math.min(4, edge.weight / 2);
+          this.triangle(arrows, tip,
+            [tip[0] - ux * size - uy * size * 0.6, tip[1] - uy * size + ux * size * 0.6],
+            [tip[0] - ux * size + uy * size * 0.6, tip[1] - uy * size - ux * size * 0.6], rgba);
+        }
       }
     }
     this.drawGeometry(gl.LINES, lines);

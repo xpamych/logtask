@@ -13,6 +13,7 @@ import {
   ping,
   settingsGet,
   settingsSave,
+  visualGraphLayoutSave,
 } from "~/lib/api";
 import { AllPages } from "~/components/AllPages";
 import { Contents } from "~/components/Contents";
@@ -27,6 +28,9 @@ import { Topbar } from "~/components/Topbar";
 import Welcome from "~/components/Welcome";
 import { DEFAULT_GRAPH_VIEW_SETTINGS } from "~/lib/graph/defaults";
 import { GraphView } from "~/components/graph/GraphView";
+import { GraphSettings } from "~/components/graph/GraphSettings";
+import { LocalGraph } from "~/components/graph/LocalGraph";
+import { todayJournalName } from "~/lib/text";
 
 const RECENT_PAGES_KEY = "logtask:recentPages";
 
@@ -89,6 +93,9 @@ const App: Component = () => {
   const [showAllPages, setShowAllPages] = createSignal(false);
   const [showTasks, setShowTasks] = createSignal(false);
   const [showGraph, setShowGraph] = createSignal(false);
+  const [rightTab, setRightTab] = createSignal<"toc" | "local" | "graphSettings">("toc");
+  const [graphFocusId, setGraphFocusId] = createSignal<string | undefined>();
+  const [layoutResetKey, setLayoutResetKey] = createSignal(0);
   const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
   const [settingsSection, setSettingsSection] = createSignal<SettingsSection | null>(null);
   const [sidebarW, setSidebarW] = createSignal(DEFAULT_SETTINGS.sidebarWidth);
@@ -276,7 +283,11 @@ const App: Component = () => {
 
   const showAllPagesView = () => navigate({ kind: "pages" });
 
-  const showGraphView = () => navigate({ kind: "graph" });
+  const showGraphView = (id?: string) => {
+    setGraphFocusId(id);
+    setRightTab("graphSettings");
+    navigate({ kind: "graph" });
+  };
 
   const showSettingsView = (section: SettingsSection) =>
     navigate({ kind: "settings", section });
@@ -615,6 +626,8 @@ const App: Component = () => {
                           saveSettingsAuto({ ...settings(), graphView })
                         }
                         onOpenPage={openPage}
+                        initialSelectedId={graphFocusId()}
+                        layoutResetKey={layoutResetKey()}
                       />
                     </Show>
                   }
@@ -649,14 +662,38 @@ const App: Component = () => {
             <PanelResizer side="right" start={panelW} onResize={setPanelW} onCommit={commitWidths} />
             <aside class="taskpanel">
               <div class="tabs">
-                <button class="tab active">Оглавление</button>
+                <Show when={!showGraph()}>
+                  <button class="tab" classList={{ active: rightTab() === "toc" }} onClick={() => setRightTab("toc")}>Оглавление</button>
+                  <button class="tab" classList={{ active: rightTab() === "local" }} onClick={() => setRightTab("local")}>Связи</button>
+                </Show>
+                <Show when={showGraph()}>
+                  <button class="tab active">Настройки графа</button>
+                </Show>
               </div>
               <div class="taskpanel-body">
-                <Contents
-                  page={current()}
-                  refreshKey={refreshKey()}
-                  onOpenPage={openPage}
-                />
+                <Show when={showGraph()}>
+                  <GraphSettings
+                    settings={settings().graphView}
+                    onChange={(graphView) => saveSettingsAuto({ ...settings(), graphView })}
+                    onRecalculate={() => {
+                      void visualGraphLayoutSave("global", []).then(() => setLayoutResetKey((key) => key + 1));
+                    }}
+                    onReset={() => saveSettingsAuto({ ...settings(), graphView: DEFAULT_GRAPH_VIEW_SETTINGS })}
+                  />
+                </Show>
+                <Show when={!showGraph() && rightTab() === "toc"}>
+                  <Contents page={current()} refreshKey={refreshKey()} onOpenPage={openPage} />
+                </Show>
+                <Show when={!showGraph() && rightTab() === "local"}>
+                  <LocalGraph
+                    page={current() ?? todayJournalName()}
+                    refreshKey={refreshKey()}
+                    settings={settings().graphView}
+                    onSettingsChange={(graphView) => saveSettingsAuto({ ...settings(), graphView })}
+                    onOpenPage={openPage}
+                    onOpenGlobal={showGraphView}
+                  />
+                </Show>
                 <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>
               </div>
             </aside>

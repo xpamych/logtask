@@ -2557,3 +2557,106 @@ textarea.push-body {
   border: 0 !important;
   white-space: nowrap !important;
 }
+
+.graph-settings {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.graph-settings section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.graph-settings h2 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+.graph-settings-title,
+.graph-group-row,
+.local-graph-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-settings-title {
+  justify-content: space-between;
+}
+
+.graph-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.graph-field input,
+.graph-field textarea,
+.graph-field select,
+.graph-group-row input {
+  min-width: 0;
+  width: 100%;
+}
+
+.graph-check,
+.graph-group-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.graph-range {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.graph-range input {
+  width: 100%;
+}
+
+.graph-group {
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.graph-group-row input[type="color"] {
+  width: 34px;
+  padding: 1px;
+}
+
+.graph-settings-actions {
+  padding-bottom: 12px;
+}
+
+.local-graph {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.local-graph-header {
+  justify-content: space-between;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.local-graph-header label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}

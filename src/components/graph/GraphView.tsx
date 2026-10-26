@@ -12,6 +12,7 @@ export function GraphView(props: {
   onSettingsChange: (settings: GraphViewSettings) => void;
   onOpenPage: (name: string) => void;
   initialSelectedId?: string;
+  layoutResetKey?: number;
 }) {
   const [snapshot, setSnapshot] = createSignal<GraphSnapshotDto | null>(null);
   const [error, setError] = createSignal<string | null>(null);
@@ -91,6 +92,7 @@ export function GraphView(props: {
               settings={props.settings}
               scope="global"
               focusId={props.initialSelectedId}
+              resetLayoutKey={props.layoutResetKey}
               highlight={highlight()}
               onOpenPage={props.onOpenPage}
               onSelectNode={select}

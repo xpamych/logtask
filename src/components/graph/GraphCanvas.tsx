@@ -14,6 +14,7 @@ export function GraphCanvas(props: {
   settings: GraphViewSettings;
   scope: string;
   focusId?: string;
+  resetLayoutKey?: number;
   highlight?: Set<string>;
   onOpenPage: (name: string) => void;
   onSelectNode?: (id: string | null) => void;
@@ -59,6 +60,13 @@ export function GraphCanvas(props: {
 
   createEffect(() => {
     if (props.focusId) renderer?.centerOn(props.focusId);
+  });
+
+  createEffect(() => {
+    if (props.resetLayoutKey === undefined) return;
+    positions = [];
+    saved = [];
+    update();
   });
 
   createEffect(() => {
