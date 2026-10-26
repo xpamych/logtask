@@ -1,6 +1,7 @@
 mod commands;
 pub mod config_edn;
 pub mod core;
+pub mod graph_layout;
 mod recent;
 mod settings;
 mod state;

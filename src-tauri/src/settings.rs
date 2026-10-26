@@ -27,6 +27,70 @@ fn default_true() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GraphColorGroup {
+    pub id: String,
+    pub query: String,
+    pub color: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub clustered: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GraphViewSettings {
+    pub search: String,
+    pub show_journals: bool,
+    pub show_tags: bool,
+    pub show_assets: bool,
+    pub only_existing: bool,
+    pub hide_orphans: bool,
+    pub exclusions: Vec<String>,
+    pub groups: Vec<GraphColorGroup>,
+    pub arrows: bool,
+    pub node_scale: f64,
+    pub edge_scale: f64,
+    pub label_threshold: f64,
+    pub center_force: f64,
+    pub repel_force: f64,
+    pub link_force: f64,
+    pub link_distance: f64,
+    pub alpha_decay: f64,
+    pub local_depth: u8,
+    pub journal_aggregation: String,
+    pub cluster_threshold: usize,
+}
+
+impl Default for GraphViewSettings {
+    fn default() -> Self {
+        Self {
+            search: String::new(),
+            show_journals: false,
+            show_tags: false,
+            show_assets: false,
+            only_existing: true,
+            hide_orphans: false,
+            exclusions: Vec::new(),
+            groups: Vec::new(),
+            arrows: true,
+            node_scale: 1.0,
+            edge_scale: 1.0,
+            label_threshold: 0.35,
+            center_force: 0.08,
+            repel_force: 120.0,
+            link_force: 0.6,
+            link_distance: 90.0,
+            alpha_decay: 0.03,
+            local_depth: 1,
+            journal_aggregation: "month".into(),
+            cluster_threshold: 20,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
     /// "system" | "dark" | "light"
     #[serde(default = "default_theme")]
@@ -61,6 +125,8 @@ pub struct Settings {
     /// источники синхронизации задач (раздел «Интеграции»)
     #[serde(default)]
     pub integrations: crate::sync::config::IntegrationsConfig,
+    #[serde(default)]
+    pub graph_view: GraphViewSettings,
 }
 
 fn default_theme() -> String {
@@ -155,6 +221,7 @@ impl Default for Settings {
             home_view: default_home_view(),
             statuses: default_statuses(),
             integrations: Default::default(),
+            graph_view: Default::default(),
         }
     }
 }
@@ -226,6 +293,48 @@ mod tests {
         assert!(!loaded.statuses[0].visible);
         assert_eq!(loaded.home_view, "journal");
         assert_eq!(loaded.statuses.len(), 6);
+    }
+
+    #[test]
+    fn graph_view_settings_default_for_old_settings() {
+        let dir = std::env::temp_dir().join("logtask_settings_graph_defaults");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".logtask")).unwrap();
+        std::fs::write(dir.join(".logtask/settings.json"), "{}").unwrap();
+        let loaded = load(&dir);
+        assert!(!loaded.graph_view.show_journals);
+        assert!(!loaded.graph_view.show_tags);
+        assert!(!loaded.graph_view.show_assets);
+        assert!(loaded.graph_view.only_existing);
+        assert!(!loaded.graph_view.hide_orphans);
+        assert_eq!(loaded.graph_view.local_depth, 1);
+        assert_eq!(loaded.graph_view.journal_aggregation, "month");
+        assert_eq!(loaded.graph_view.cluster_threshold, 20);
+    }
+
+    #[test]
+    fn graph_view_settings_roundtrip_preserves_groups_and_physics() {
+        let dir = std::env::temp_dir().join("logtask_settings_graph_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut settings = Settings::default();
+        settings.graph_view.search = "проект".into();
+        settings.graph_view.local_depth = 3;
+        settings.graph_view.repel_force = 180.0;
+        settings.graph_view.groups.push(GraphColorGroup {
+            id: "active".into(),
+            query: "tag:active".into(),
+            color: "#09bec8".into(),
+            enabled: true,
+            clustered: true,
+        });
+        save(&dir, &settings).unwrap();
+        let loaded = load(&dir);
+        assert_eq!(loaded.graph_view.search, "проект");
+        assert_eq!(loaded.graph_view.local_depth, 3);
+        assert_eq!(loaded.graph_view.repel_force, 180.0);
+        assert_eq!(loaded.graph_view.groups.len(), 1);
+        assert_eq!(loaded.graph_view.groups[0].query, "tag:active");
+        assert!(loaded.graph_view.groups[0].clustered);
     }
 
     #[test]
