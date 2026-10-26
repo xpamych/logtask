@@ -25,6 +25,7 @@ import { Sidebar } from "~/components/Sidebar";
 import { TasksPage } from "~/components/TasksPage";
 import { Topbar } from "~/components/Topbar";
 import Welcome from "~/components/Welcome";
+import { DEFAULT_GRAPH_VIEW_SETTINGS } from "~/lib/graph/defaults";
 
 const RECENT_PAGES_KEY = "logtask:recentPages";
 
@@ -47,28 +48,7 @@ const DEFAULT_SETTINGS: Settings = {
     { marker: "CANCELED", label: "Отменено", color: "#f44336", visible: true, shortcut: null },
   ],
   integrations: { sources: [] },
-  graphView: {
-    search: "",
-    showJournals: false,
-    showTags: false,
-    showAssets: false,
-    onlyExisting: true,
-    hideOrphans: false,
-    exclusions: [],
-    groups: [],
-    arrows: true,
-    nodeScale: 1,
-    edgeScale: 1,
-    labelThreshold: 0.35,
-    centerForce: 0.08,
-    repelForce: 120,
-    linkForce: 0.6,
-    linkDistance: 90,
-    alphaDecay: 0.03,
-    localDepth: 1,
-    journalAggregation: "month",
-    clusterThreshold: 20,
-  },
+  graphView: DEFAULT_GRAPH_VIEW_SETTINGS,
 };
 
 function loadRecentPages(): string[] {
