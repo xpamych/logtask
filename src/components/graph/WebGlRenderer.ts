@@ -66,6 +66,7 @@ export class WebGlRenderer {
   private highlighted = new Set<string>();
   private hovered: string | null = null;
   onCameraChange: ((camera: Camera) => void) | null = null;
+  onFrameTime: ((milliseconds: number) => void) | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -254,6 +255,7 @@ export class WebGlRenderer {
 
   private draw() {
     if (!this.canvas.width || !this.canvas.height) return;
+    const started = performance.now();
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
@@ -336,6 +338,7 @@ export class WebGlRenderer {
     }
     this.drawGeometry(gl.TRIANGLES, triangles);
     this.drawLabels();
+    this.onFrameTime?.(performance.now() - started);
   }
 
   private drawLabels() {

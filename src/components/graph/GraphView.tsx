@@ -4,6 +4,7 @@ import { visualGraphSnapshot } from "~/lib/api";
 import { LatestSnapshotLoader } from "~/lib/graph/live";
 import { createLayoutSaver } from "~/lib/graph/layoutSaver";
 import { loadCamera, loadExpanded, saveCamera, saveExpanded } from "~/lib/graph/persistence";
+import { qualityForSettings } from "~/lib/graph/performance";
 import { clusterGraph, filterGraph, projectPathToClusters } from "~/lib/graph/model";
 import { selectGraphNode, selectionHighlight } from "~/lib/graph/selection";
 import type { GraphSelection } from "~/lib/graph/selection";
@@ -22,6 +23,8 @@ export function GraphView(props: {
   const [error, setError] = createSignal<string | null>(null);
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded(props.graphRoot, "global"));
   const [selection, setSelection] = createSignal<GraphSelection | null>(null);
+  const [quality, setQuality] = createSignal(0);
+  const effectiveSettings = createMemo(() => qualityForSettings(props.settings, quality()));
   const saver = createLayoutSaver("global");
   const loader = new LatestSnapshotLoader(visualGraphSnapshot, (result) => {
     setError(null);
@@ -33,7 +36,7 @@ export function GraphView(props: {
   });
   const scene = createMemo(() => {
     const current = filtered();
-    return current ? clusterGraph(current, props.settings, expanded()) : null;
+    return current ? clusterGraph(current, effectiveSettings(), expanded()) : null;
   });
   const highlight = createMemo(() => {
     const current = filtered();
@@ -101,7 +104,7 @@ export function GraphView(props: {
           {(current) => (
             <GraphCanvas
               scene={current()}
-              settings={props.settings}
+              settings={effectiveSettings()}
               scope="global"
               focusId={props.initialSelectedId}
               resetLayoutKey={props.layoutResetKey}
@@ -110,6 +113,7 @@ export function GraphView(props: {
               onOpenPage={props.onOpenPage}
               onPositions={saver.schedule}
               onCameraChange={(camera) => saveCamera(props.graphRoot, "global", camera)}
+              onQuality={setQuality}
               onSelectNode={select}
               onToggleCluster={toggleCluster}
               onHideNode={(id) => props.onSettingsChange({

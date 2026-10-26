@@ -5,6 +5,7 @@ import { mergeLayout } from "~/lib/graph/layout";
 import { startLayoutWorker } from "~/lib/graph/layout";
 import type { SceneGraph } from "~/lib/graph/model";
 import type { CameraState } from "~/lib/graph/persistence";
+import { QualityController } from "~/lib/graph/performance";
 import { nextGraphFocusIndex } from "~/lib/graph/selection";
 import { GraphMenu } from "./GraphMenu";
 import type { GraphMenuState } from "./GraphMenu";
@@ -24,6 +25,7 @@ export function GraphCanvas(props: {
   onHideNode?: (id: string) => void;
   onPositions?: (entries: GraphLayoutEntry[]) => void;
   onCameraChange?: (camera: { x: number; y: number; zoom: number }) => void;
+  onQuality?: (level: number) => void;
 }) {
   let container!: HTMLDivElement;
   let canvas!: HTMLCanvasElement;
@@ -37,6 +39,15 @@ export function GraphCanvas(props: {
   const [menu, setMenu] = createSignal<GraphMenuState | null>(null);
   const [hovered, setHovered] = createSignal<string | null>(null);
   const [focusIndex, setFocusIndex] = createSignal(0);
+  const quality = new QualityController();
+  let lastQuality = 0;
+  const reportFrame = (milliseconds: number) => {
+    const level = quality.sample(milliseconds);
+    if (level !== lastQuality) {
+      lastQuality = level;
+      props.onQuality?.(level);
+    }
+  };
 
   const update = () => {
     if (!initialized || !worker) return;
@@ -85,6 +96,7 @@ export function GraphCanvas(props: {
       renderer = new WebGlRenderer(canvas, labels);
       renderer.setScene(props.scene, props.settings);
       renderer.onCameraChange = (camera) => props.onCameraChange?.(camera);
+      renderer.onFrameTime = reportFrame;
       worker = startLayoutWorker({
         onPositions: (entries) => {
           positions = entries;
@@ -94,6 +106,7 @@ export function GraphCanvas(props: {
         onSettled: () => props.onPositions?.(positions),
       });
       initialized = true;
+      performance.mark("logtask:graph-interactive");
       void visualGraphLayoutGet(props.scope)
         .catch(() => [])
         .then((entries) => {
@@ -125,9 +138,28 @@ export function GraphCanvas(props: {
       }, { rootMargin: "200px" });
       observer.observe(container);
     }
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      pause();
+    };
+    const onContextRestored = () => {
+      const camera = renderer?.getCamera();
+      renderer?.dispose();
+      renderer = new WebGlRenderer(canvas, labels);
+      renderer.setScene(props.scene, props.settings);
+      renderer.setPositions(positions);
+      if (camera) renderer.setCamera(camera);
+      renderer.onCameraChange = (next) => props.onCameraChange?.(next);
+      renderer.onFrameTime = reportFrame;
+      resume();
+    };
+    canvas.addEventListener("webglcontextlost", onContextLost);
+    canvas.addEventListener("webglcontextrestored", onContextRestored);
     document.addEventListener("visibilitychange", resume);
     onCleanup(() => {
       container.removeEventListener("contentvisibilityautostatechange", onVisibility);
+      canvas.removeEventListener("webglcontextlost", onContextLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
       document.removeEventListener("visibilitychange", resume);
       observer?.disconnect();
       worker?.stop();
