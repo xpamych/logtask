@@ -2411,3 +2411,100 @@ textarea.push-body {
   align-items: center;
   gap: 6px;
 }
+
+/* Визуальный граф: WebGL-сцена и подписи отдельным canvas */
+.graph-view {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.graph-header {
+  min-height: 56px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.graph-header h1 {
+  margin: 0 0 3px;
+  font-size: 16px;
+}
+
+.graph-stats {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.graph-canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.graph-canvas,
+.graph-labels {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-canvas {
+  cursor: grab;
+}
+
+.graph-canvas:active {
+  cursor: grabbing;
+}
+
+.graph-canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.graph-labels {
+  pointer-events: none;
+}
+
+.graph-toolbar {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-panel);
+  box-shadow: 0 3px 16px rgb(0 0 0 / 18%);
+}
+
+.graph-toolbar button {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 3px 8px;
+}
+
+.graph-error {
+  position: absolute;
+  inset: 20px;
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-canvas-wrap * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

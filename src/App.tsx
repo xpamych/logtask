@@ -26,6 +26,7 @@ import { TasksPage } from "~/components/TasksPage";
 import { Topbar } from "~/components/Topbar";
 import Welcome from "~/components/Welcome";
 import { DEFAULT_GRAPH_VIEW_SETTINGS } from "~/lib/graph/defaults";
+import { GraphView } from "~/components/graph/GraphView";
 
 const RECENT_PAGES_KEY = "logtask:recentPages";
 
@@ -87,6 +88,7 @@ const App: Component = () => {
   const [focusUuid, setFocusUuid] = createSignal<string | null>(null);
   const [showAllPages, setShowAllPages] = createSignal(false);
   const [showTasks, setShowTasks] = createSignal(false);
+  const [showGraph, setShowGraph] = createSignal(false);
   const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
   const [settingsSection, setSettingsSection] = createSignal<SettingsSection | null>(null);
   const [sidebarW, setSidebarW] = createSignal(DEFAULT_SETTINGS.sidebarWidth);
@@ -172,6 +174,7 @@ const App: Component = () => {
     | { kind: "journal" }
     | { kind: "tasks" }
     | { kind: "pages" }
+    | { kind: "graph" }
     | { kind: "settings"; section: SettingsSection }
     | { kind: "page"; name: string };
 
@@ -180,11 +183,13 @@ const App: Component = () => {
       ? { kind: "settings", section: settingsSection()! }
       : current()
         ? { kind: "page", name: current()! }
-        : showTasks()
-          ? { kind: "tasks" }
-          : showAllPages()
-            ? { kind: "pages" }
-            : { kind: "journal" };
+        : showGraph()
+          ? { kind: "graph" }
+          : showTasks()
+            ? { kind: "tasks" }
+            : showAllPages()
+              ? { kind: "pages" }
+              : { kind: "journal" };
 
   const [backStack, setBackStack] = createSignal<View[]>([]);
   const [fwdStack, setFwdStack] = createSignal<View[]>([]);
@@ -195,6 +200,7 @@ const App: Component = () => {
     setCurrent(v.kind === "page" ? v.name : null);
     setShowTasks(v.kind === "tasks");
     setShowAllPages(v.kind === "pages");
+    setShowGraph(v.kind === "graph");
   };
 
   const navigate = (v: View) => {
@@ -270,6 +276,8 @@ const App: Component = () => {
 
   const showAllPagesView = () => navigate({ kind: "pages" });
 
+  const showGraphView = () => navigate({ kind: "graph" });
+
   const showSettingsView = (section: SettingsSection) =>
     navigate({ kind: "settings", section });
 
@@ -332,16 +340,18 @@ const App: Component = () => {
   };
 
   // активный пункт навигации сайдбара
-  const navView = (): "journal" | "pages" | "page" | "tasks" | "settings" =>
+  const navView = (): "journal" | "pages" | "page" | "tasks" | "graph" | "settings" =>
     settingsSection()
       ? "settings"
       : current()
         ? "page"
-        : showTasks()
-          ? "tasks"
-          : showAllPages()
-            ? "pages"
-            : "journal";
+        : showGraph()
+          ? "graph"
+          : showTasks()
+            ? "tasks"
+            : showAllPages()
+              ? "pages"
+              : "journal";
 
   onMount(async () => {
     try {
@@ -557,6 +567,7 @@ const App: Component = () => {
               onShowJournal={showJournal}
               onShowTasks={showTasksPage}
               onShowAllPages={showAllPagesView}
+              onShowGraph={showGraphView}
               onOpenSettings={showSettingsView}
               onOpenGraph={openGraph}
               onCloseGraph={() => void closeGraph()}
@@ -571,24 +582,38 @@ const App: Component = () => {
                   when={current()}
                   fallback={
                     <Show
-                      when={showTasks()}
+                      when={showGraph()}
                       fallback={
                         <Show
-                          when={showAllPages()}
-                          fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+                          when={showTasks()}
+                          fallback={
+                            <Show
+                              when={showAllPages()}
+                              fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+                            >
+                              <AllPages
+                                pages={pages()}
+                                favorites={settings().favorites}
+                                onOpenPage={openPage}
+                                onToggleFavorite={toggleFavorite}
+                              />
+                            </Show>
+                          }
                         >
-                          <AllPages
-                            pages={pages()}
-                            favorites={settings().favorites}
+                          <TasksPage
+                            refreshKey={refreshKey()}
+                            settings={settings()}
                             onOpenPage={openPage}
-                            onToggleFavorite={toggleFavorite}
                           />
                         </Show>
                       }
                     >
-                      <TasksPage
+                      <GraphView
                         refreshKey={refreshKey()}
-                        settings={settings()}
+                        settings={settings().graphView}
+                        onSettingsChange={(graphView) =>
+                          saveSettingsAuto({ ...settings(), graphView })
+                        }
                         onOpenPage={openPage}
                       />
                     </Show>

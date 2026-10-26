@@ -14,8 +14,8 @@ import type { SettingsSection } from "./SettingsPage";
 
 export function Sidebar(props: {
   summary: GraphSummary | null;
-  /** активный пункт навигации: лента журнала / задачи / все страницы / открытая страница / настройки */
-  view: "journal" | "pages" | "page" | "tasks" | "settings";
+  /** активный пункт навигации */
+  view: "journal" | "pages" | "page" | "tasks" | "graph" | "settings";
   /** активный раздел настроек (null — настройки закрыты) */
   settingsSection: SettingsSection | null;
   /** состояние автосохранения настроек: точка у пункта «Настройки» */
@@ -27,6 +27,7 @@ export function Sidebar(props: {
   onShowJournal: () => void;
   onShowTasks: () => void;
   onShowAllPages: () => void;
+  onShowGraph: () => void;
   onOpenSettings: (section: SettingsSection) => void;
   onOpenGraph: (path: string) => void;
   onCloseGraph: () => void;
@@ -146,6 +147,13 @@ export function Sidebar(props: {
             onClick={props.onShowAllPages}
           >
             <IconFileText /> Все страницы
+          </button>
+          <button
+            class="nav-item"
+            classList={{ active: props.view === "graph" }}
+            onClick={props.onShowGraph}
+          >
+            <span aria-hidden="true">◉</span> Граф
           </button>
           <button
             class="nav-item nav-settings"
