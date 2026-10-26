@@ -1,9 +1,12 @@
-import { createEffect, onCleanup, onMount } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
-import { visualGraphLayoutGet } from "~/lib/api";
+import { assetOpen, assetReveal, visualGraphLayoutGet } from "~/lib/api";
 import { mergeLayout } from "~/lib/graph/layout";
 import { startLayoutWorker } from "~/lib/graph/layout";
 import type { SceneGraph } from "~/lib/graph/model";
+import { nextGraphFocusIndex } from "~/lib/graph/selection";
+import { GraphMenu } from "./GraphMenu";
+import type { GraphMenuState } from "./GraphMenu";
 import { WebGlRenderer } from "./WebGlRenderer";
 
 export function GraphCanvas(props: {
@@ -11,7 +14,11 @@ export function GraphCanvas(props: {
   settings: GraphViewSettings;
   scope: string;
   focusId?: string;
+  highlight?: Set<string>;
   onOpenPage: (name: string) => void;
+  onSelectNode?: (id: string | null) => void;
+  onToggleCluster?: (id: string) => void;
+  onHideNode?: (id: string) => void;
   onPositions?: (entries: GraphLayoutEntry[]) => void;
   onCameraChange?: (camera: { x: number; y: number; zoom: number }) => void;
 }) {
@@ -24,6 +31,9 @@ export function GraphCanvas(props: {
   let saved: GraphLayoutEntry[] = [];
   let initialized = false;
   let visible = true;
+  const [menu, setMenu] = createSignal<GraphMenuState | null>(null);
+  const [hovered, setHovered] = createSignal<string | null>(null);
+  const [focusIndex, setFocusIndex] = createSignal(0);
 
   const update = () => {
     if (!initialized || !worker) return;
@@ -49,6 +59,10 @@ export function GraphCanvas(props: {
 
   createEffect(() => {
     if (props.focusId) renderer?.centerOn(props.focusId);
+  });
+
+  createEffect(() => {
+    renderer?.setHighlight(props.highlight ?? new Set(), hovered());
   });
 
   onMount(() => {
@@ -108,6 +122,13 @@ export function GraphCanvas(props: {
   });
 
   let drag: { id: string | null; x: number; y: number; moved: boolean } | null = null;
+  const select = (id: string | null) => {
+    if (id && props.scene.nodes.find((node) => node.id === id)?.kind === "cluster") {
+      props.onToggleCluster?.(id);
+    } else {
+      props.onSelectNode?.(id);
+    }
+  };
   const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return;
     const rect = canvas.getBoundingClientRect();
@@ -120,10 +141,14 @@ export function GraphCanvas(props: {
     }
   };
   const onPointerMove = (event: PointerEvent) => {
-    if (!drag || !renderer) return;
+    if (!renderer) return;
+    if (!drag) {
+      setHovered(renderer.hitTest(event.clientX, event.clientY)?.id ?? null);
+      return;
+    }
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 0) drag.moved = true;
+    if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
     if (drag.id) {
       const rect = canvas.getBoundingClientRect();
       const point = renderer.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
@@ -135,9 +160,15 @@ export function GraphCanvas(props: {
     drag.y = event.clientY;
   };
   const onPointerUp = (event: PointerEvent) => {
+    if (drag && !drag.moved) select(drag.id);
     if (drag?.id) worker?.resume();
     drag = null;
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+  };
+  const focusedNode = () => props.scene.nodes[focusIndex()];
+  const pinFocused = (id: string, pinned: boolean) => {
+    const position = positions.find((entry) => entry.id === id);
+    if (position) worker?.drag(id, position.x, position.y, pinned);
   };
 
   return (
@@ -147,11 +178,25 @@ export function GraphCanvas(props: {
         ref={canvas}
         tabindex="0"
         role="application"
-        aria-label="Визуальный граф страниц. Стрелки перемещают камеру, плюс и минус меняют масштаб"
+        aria-label="Визуальный граф страниц. Стрелки перемещают камеру, Tab выбирает узлы, Enter подсвечивает"
+        aria-activedescendant="graph-active-node"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onPointerLeave={() => setHovered(null)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          const node = renderer?.hitTest(event.clientX, event.clientY);
+          if (node) {
+            setMenu({
+              node,
+              x: event.clientX,
+              y: event.clientY,
+              pinned: positions.find((entry) => entry.id === node.id)?.pinned ?? false,
+            });
+          }
+        }}
         onDblClick={(event) => {
           const node = renderer?.hitTest(event.clientX, event.clientY);
           if (node && node.kind !== "cluster" && node.kind !== "asset") props.onOpenPage(node.title);
@@ -162,7 +207,18 @@ export function GraphCanvas(props: {
           renderer?.zoomBy(event.deltaY < 0 ? 1.12 : 0.89, event.clientX - rect.left, event.clientY - rect.top);
         }}
         onKeyDown={(event) => {
-          if (event.key === "+" || event.key === "=") renderer?.zoomBy(1.15);
+          if (event.key === "Tab" && !event.ctrlKey) {
+            const delta = event.shiftKey ? -1 : 1;
+            setFocusIndex((index) => nextGraphFocusIndex(index, delta, props.scene.nodes.length));
+            const node = focusedNode();
+            if (node) renderer?.centerOn(node.id);
+          } else if (event.key === "Enter") {
+            const node = focusedNode();
+            if (node) select(node.id);
+          } else if (event.key === "Escape") {
+            props.onSelectNode?.(null);
+            setMenu(null);
+          } else if (event.key === "+" || event.key === "=") renderer?.zoomBy(1.15);
           else if (event.key === "-") renderer?.zoomBy(0.87);
           else if (event.key.startsWith("Arrow")) renderer?.panBy(
             event.key === "ArrowLeft" ? 40 : event.key === "ArrowRight" ? -40 : 0,
@@ -173,11 +229,29 @@ export function GraphCanvas(props: {
         }}
       />
       <canvas class="graph-labels" ref={labels} aria-hidden="true" />
+      <span id="graph-active-node" class="visually-hidden">
+        {focusedNode() ? `${focusedNode()!.title}, ${focusedNode()!.kind}, связей: ${focusedNode()!.degree}` : "Нет узлов"}
+      </span>
       <div class="graph-toolbar" aria-label="Управление масштабом">
         <button type="button" title="Приблизить" aria-label="Приблизить" onClick={() => renderer?.zoomBy(1.2)}>+</button>
         <button type="button" title="Отдалить" aria-label="Отдалить" onClick={() => renderer?.zoomBy(0.83)}>−</button>
         <button type="button" title="Вписать граф" onClick={() => renderer?.fit()}>Вписать</button>
       </div>
+      <Show when={menu()}>
+        {(current) => (
+          <GraphMenu
+            menu={current()}
+            onClose={() => setMenu(null)}
+            onOpenPage={props.onOpenPage}
+            onOpenAsset={(path) => void assetOpen(path)}
+            onRevealAsset={(path) => void assetReveal(path)}
+            onCopyLink={(name) => void navigator.clipboard.writeText(`[[${name}]]`)}
+            onPin={(pinned) => pinFocused(current().node.id, pinned)}
+            onHide={(id) => props.onHideNode?.(id)}
+            onToggleCluster={(id) => props.onToggleCluster?.(id)}
+          />
+        )}
+      </Show>
       <div class="graph-error" hidden={!container?.dataset.error}>{container?.dataset.error}</div>
     </div>
   );

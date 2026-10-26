@@ -2508,3 +2508,52 @@ textarea.push-body {
     transition: none !important;
   }
 }
+
+.graph-path-message {
+  margin-left: auto;
+  margin-right: 12px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.graph-node-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 210px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 30%);
+}
+
+.graph-node-menu button {
+  min-height: 28px;
+  padding: 6px 10px;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.graph-node-menu button:hover,
+.graph-node-menu button:focus-visible {
+  background: var(--bg-hover);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
