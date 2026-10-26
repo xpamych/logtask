@@ -40,8 +40,15 @@ src-tauri (команды) ←————→ SolidJS UI
   в памяти (`reload_page`), затем `mark_self_write` + `reindex_and_emit` —
   **полная переиндексация графа** (~72 мс) и emit `graph-changed`; эхо
   собственных записей в watcher подавляется окном 1.5 с (`last_self_write`).
-- Никакой БД на диске не нужна. Кэш на диск (опционально, для графов от
-  10 000 файлов) — фаза 7.
+- Никакой БД на диске не нужна. Исключение — производный, безопасно удаляемый
+  `.logtask/graph-layout.json`: только координаты и фиксация узлов визуального
+  графа, не источник данных.
+- `core/visual_graph.rs` проецирует страницы, теги, виртуальные страницы и
+  вложения в DTO, считает уникальные рёбра/степени, локальное окружение и BFS.
+  Глобальный и локальный графы рисуются WebGL2, force-layout работает в Web
+  Worker (`d3-force`). По `graph-changed` снимок запрашивается заново с
+  коалесцированием параллельных запросов; задержка обновления сцены ≤5 с на
+  обычном графе и ≤10 с на 10 000 узлов.
 
 ## Модель данных (Rust, `core/model.rs`)
 Отдельного `struct Task` нет: задача — это `Block`, у которого `is_task()`
@@ -67,15 +74,19 @@ struct Block {
     children: Vec<Uuid>, parent: Option<Uuid>,
     raw: BlockRaw,               // сырые фрагменты для round-trip
 }
-enum LinkTarget { Page(String) | Tag(String) | Block(String) }
+enum LinkTarget { Page(String) | Tag(String) | Block(String) | Asset(String) }
 ```
 Backlinks — обратный индекс `page-name → ссылающиеся блоки` (поле
 `Graph.backlinks`), считается в ядре, выдаётся командой `backlinks_get`,
-рендерится мгновенно.
+рендерится мгновенно. `Asset` участвует только в визуальном графе и не меняет
+backlinks или round-trip.
 
 ## IPC (Tauri commands, см. `lib.rs`)
 - Чтение: `graph_load`, `graph_summary`, `journal_list`, `journal_prev`,
   `page_get`, `page_list`, `follow_link`, `search`, `backlinks_get`
+- Визуальный граф: `visual_graph_snapshot`, `visual_graph_local`,
+  `visual_graph_path`, `visual_graph_layout_get`, `visual_graph_layout_save`,
+  `asset_open`, `asset_reveal`
 - Списки задач: `kanban`, `tasks_by_query`, `matrix`
 - Сохранённые запросы: `queries_list`, `queries_save`, `import_logseq_queries`
 - Правки: `task_set_status`, `task_set_quadrant`, `task_set_priority`,
@@ -94,7 +105,10 @@ Backlinks — обратный индекс `page-name → ссылающиес�
 - `<граф>/.logtask/settings.json` — настройки графа (`settings.rs`):
   `theme` (dark|light), `fontScale` (0.85…1.4), `weekStart` (0|1),
   `kanbanLimit`, `statuses` (маркер/label/цвет/visible/shortcut, порядок
-  канбана).
+  канбана), `graphView` (фильтры, цветовые группы, отображение, физика и
+  локальная глубина визуального графа).
+- `<граф>/.logtask/graph-layout.json` — производные координаты и фиксация
+  узлов визуального графа, независимые scope для global/local.
 - `<граф>/.logtask/queries.json` — сохранённые запросы (вкладка «Запросы»).
 - `<граф>/.logtask/integrations-state.json` — состояние синхронизации
   интеграций (последний синк/ошибка по источникам, отпечатки задач).
@@ -109,6 +123,10 @@ Backlinks — обратный индекс `page-name → ссылающиес�
 - переключение статуса/перетаскивание в матрице: одна IPC-команда —
   перезапись страницы + полная переиндексация графа (~72 мс на текущем
   графе), UI обновляется по `graph-changed`
+- визуальный граф: до 1 000 узлов TTI ≤2 с, повторное открытие ≤300 мс;
+  на 10 000 узлов / 25 000 рёбер UI остаётся отзывчивым. Замер на текущей
+  машине: первый интерактивный кадр 577 мс, повторный 147 мс, p95 frame time
+  16,7 мс; проекция + BFS в Rust 141 мс (`examples/bench_visual_graph.rs`).
 
 ## Что сознательно не делаем (v1)
 - плагины (всё настраивается в `settings.json`)
