@@ -1586,6 +1586,109 @@ fn default_queries() -> Vec<crate::core::query::SavedQuery> {
     }]
 }
 
+fn validate_visual_depth(depth: u8) -> Result<(), String> {
+    if (1..=3).contains(&depth) {
+        Ok(())
+    } else {
+        Err("глубина локального графа должна быть от 1 до 3".into())
+    }
+}
+
+fn validate_visual_endpoints(from: &str, to: &str) -> Result<(), String> {
+    if from.trim().is_empty() || to.trim().is_empty() {
+        Err("пустой узел кратчайшего пути".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_visual_layout_len(len: usize) -> Result<(), String> {
+    if len <= 50_000 {
+        Ok(())
+    } else {
+        Err("слишком много записей layout: максимум 50 000".into())
+    }
+}
+
+#[tauri::command]
+pub fn visual_graph_snapshot(
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::core::visual_graph::GraphSnapshotDto, String> {
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    Ok(graph.visual_snapshot())
+}
+
+#[tauri::command]
+pub fn visual_graph_local(
+    root: String,
+    depth: u8,
+    visible_ids: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::core::visual_graph::GraphSnapshotDto, String> {
+    validate_visual_depth(depth)?;
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    let visible = visible_ids.into_iter().collect();
+    Ok(graph.local_snapshot(&root, depth, &visible))
+}
+
+#[tauri::command]
+pub fn visual_graph_path(
+    visible_ids: Vec<String>,
+    from: String,
+    to: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<Vec<String>>, String> {
+    validate_visual_endpoints(&from, &to)?;
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    let visible = visible_ids.into_iter().collect();
+    Ok(graph.shortest_path(&visible, &from, &to))
+}
+
+#[tauri::command]
+pub fn visual_graph_layout_get(
+    scope: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<crate::graph_layout::GraphLayoutEntry>, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    Ok(crate::graph_layout::load(&root)
+        .into_iter()
+        .find(|saved| saved.scope == scope)
+        .map(|saved| saved.entries)
+        .unwrap_or_default())
+}
+
+#[tauri::command]
+pub fn visual_graph_layout_save(
+    scope: String,
+    entries: Vec<crate::graph_layout::GraphLayoutEntry>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    validate_visual_layout_len(entries.len())?;
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    crate::graph_layout::save_scope(&root, &scope, entries).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn asset_open(path: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let canon = resolve_asset_path(&root, &path)?;
+    tauri_plugin_opener::open_path(canon, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn asset_reveal(path: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let canon = resolve_asset_path(&root, &path)?;
+    tauri_plugin_opener::reveal_item_in_dir(canon).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn ping() -> &'static str {
     "logtask-core: ok"
@@ -1887,6 +1990,23 @@ mod tests {
         let root = temp_graph("missing");
         assert!(super::resolve_asset_path(&root, "../assets/nope.png").is_err());
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn visual_graph_command_validates_depth_and_endpoints() {
+        assert!(super::validate_visual_depth(1).is_ok());
+        assert!(super::validate_visual_depth(3).is_ok());
+        assert!(super::validate_visual_depth(0).is_err());
+        assert!(super::validate_visual_depth(4).is_err());
+        assert!(super::validate_visual_endpoints("", "page:B").is_err());
+        assert!(super::validate_visual_endpoints("page:A", "").is_err());
+        assert!(super::validate_visual_endpoints("page:A", "page:B").is_ok());
+    }
+
+    #[test]
+    fn visual_graph_command_layout_limit() {
+        assert!(super::validate_visual_layout_len(50_000).is_ok());
+        assert!(super::validate_visual_layout_len(50_001).is_err());
     }
 
     #[test]

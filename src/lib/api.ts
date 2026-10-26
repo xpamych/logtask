@@ -9,6 +9,107 @@ export interface GraphSummary {
   root: string | null;
 }
 
+export interface GraphNodeDto {
+  id: string;
+  title: string;
+  kind: "page" | "journal" | "tag" | "virtual" | "asset" | "cluster";
+  path: string | null;
+  tags: string[];
+  degree: number;
+  assetPath: string | null;
+  exists: boolean;
+}
+
+export interface GraphEdgeDto {
+  id: string;
+  source: string;
+  target: string;
+  weight: number;
+}
+
+export interface GraphSnapshotDto {
+  nodes: GraphNodeDto[];
+  edges: GraphEdgeDto[];
+  revision: number;
+}
+
+export interface GraphLayoutEntry {
+  id: string;
+  x: number;
+  y: number;
+  pinned: boolean;
+}
+
+export interface GraphColorGroup {
+  id: string;
+  query: string;
+  color: string;
+  enabled: boolean;
+  clustered: boolean;
+}
+
+export interface GraphViewSettings {
+  search: string;
+  showJournals: boolean;
+  showTags: boolean;
+  showAssets: boolean;
+  onlyExisting: boolean;
+  hideOrphans: boolean;
+  exclusions: string[];
+  groups: GraphColorGroup[];
+  arrows: boolean;
+  nodeScale: number;
+  edgeScale: number;
+  labelThreshold: number;
+  centerForce: number;
+  repelForce: number;
+  linkForce: number;
+  linkDistance: number;
+  alphaDecay: number;
+  localDepth: number;
+  journalAggregation: string;
+  clusterThreshold: number;
+}
+
+export async function visualGraphSnapshot(): Promise<GraphSnapshotDto> {
+  return invoke<GraphSnapshotDto>("visual_graph_snapshot");
+}
+
+export async function visualGraphLocal(
+  root: string,
+  depth: number,
+  visibleIds: string[],
+): Promise<GraphSnapshotDto> {
+  return invoke<GraphSnapshotDto>("visual_graph_local", { root, depth, visibleIds });
+}
+
+export async function visualGraphPath(
+  visibleIds: string[],
+  from: string,
+  to: string,
+): Promise<string[] | null> {
+  return invoke<string[] | null>("visual_graph_path", { visibleIds, from, to });
+}
+
+export async function visualGraphLayoutGet(scope: string): Promise<GraphLayoutEntry[]> {
+  return invoke<GraphLayoutEntry[]>("visual_graph_layout_get", { scope });
+}
+
+export async function visualGraphLayoutSave(
+  scope: string,
+  entries: GraphLayoutEntry[],
+): Promise<void> {
+  await invoke<void>("visual_graph_layout_save", { scope, entries });
+}
+
+export async function assetOpen(path: string): Promise<void> {
+  await invoke<void>("asset_open", { path });
+}
+
+export async function assetReveal(path: string): Promise<void> {
+  await invoke<void>("asset_reveal", { path });
+}
+
 export interface BlockDto {
   uuid: string;
   status: string | null;
@@ -282,6 +383,7 @@ export interface Settings {
   homeView: string;
   statuses: StatusConfig[];
   integrations: IntegrationsConfig;
+  graphView: GraphViewSettings;
 }
 
 export async function settingsGet(): Promise<Settings> {
