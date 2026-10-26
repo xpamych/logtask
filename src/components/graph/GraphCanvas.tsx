@@ -20,6 +20,7 @@ export function GraphCanvas(props: {
   initialCamera?: CameraState | null;
   highlight?: Set<string>;
   onOpenPage: (name: string) => void;
+  onOpenLocal?: (name: string) => void;
   onSelectNode?: (id: string | null) => void;
   onToggleCluster?: (id: string) => void;
   onHideNode?: (id: string) => void;
@@ -65,10 +66,22 @@ export function GraphCanvas(props: {
   };
 
   createEffect(() => {
-    const scene = props.scene;
-    const settings = props.settings;
-    renderer?.setScene(scene, settings);
+    renderer?.setScene(props.scene, props.settings);
+  });
+
+  createEffect(() => {
+    void props.scene.nodes.map((node) => node.id).join("|");
+    void props.scene.edges.map((edge) => edge.id).join("|");
     if (initialized) update();
+  });
+
+  createEffect(() => {
+    void props.settings.centerForce;
+    void props.settings.repelForce;
+    void props.settings.linkForce;
+    void props.settings.linkDistance;
+    void props.settings.alphaDecay;
+    if (initialized) worker?.params(props.settings);
   });
 
   createEffect(() => {
@@ -97,6 +110,8 @@ export function GraphCanvas(props: {
       renderer.setScene(props.scene, props.settings);
       renderer.onCameraChange = (camera) => props.onCameraChange?.(camera);
       renderer.onFrameTime = reportFrame;
+      if (props.initialCamera) renderer.setCamera(props.initialCamera);
+      if (props.focusId) renderer.centerOn(props.focusId);
       worker = startLayoutWorker({
         onPositions: (entries) => {
           positions = entries;
@@ -153,14 +168,18 @@ export function GraphCanvas(props: {
       renderer.onFrameTime = reportFrame;
       resume();
     };
+    const onDocumentVisibility = () => {
+      if (document.hidden) pause();
+      else resume();
+    };
     canvas.addEventListener("webglcontextlost", onContextLost);
     canvas.addEventListener("webglcontextrestored", onContextRestored);
-    document.addEventListener("visibilitychange", resume);
+    document.addEventListener("visibilitychange", onDocumentVisibility);
     onCleanup(() => {
       container.removeEventListener("contentvisibilityautostatechange", onVisibility);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
-      document.removeEventListener("visibilitychange", resume);
+      document.removeEventListener("visibilitychange", onDocumentVisibility);
       observer?.disconnect();
       worker?.stop();
       renderer?.dispose();
@@ -176,19 +195,33 @@ export function GraphCanvas(props: {
       props.onSelectNode?.(id);
     }
   };
+  const pointers = new Map<number, { x: number; y: number }>();
+  let pinchDistance = 0;
+  const pointerDistance = () => {
+    const [first, second] = [...pointers.values()];
+    return Math.hypot(first.x - second.x, first.y - second.y);
+  };
   const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return;
-    const rect = canvas.getBoundingClientRect();
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2) {
+      pinchDistance = pointerDistance();
+      drag = null;
+      return;
+    }
     const hit = renderer?.hitTest(event.clientX, event.clientY);
     drag = { id: hit?.id ?? null, x: event.clientX, y: event.clientY, moved: false };
     canvas.setPointerCapture(event.pointerId);
-    if (hit) {
-      const point = renderer!.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
-      worker?.drag(hit.id, point.x, point.y, true);
-    }
   };
   const onPointerMove = (event: PointerEvent) => {
     if (!renderer) return;
+    if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2) {
+      const distance = pointerDistance();
+      if (pinchDistance > 0 && distance > 0) renderer.zoomBy(distance / pinchDistance);
+      pinchDistance = distance;
+      return;
+    }
     if (!drag) {
       setHovered(renderer.hitTest(event.clientX, event.clientY)?.id ?? null);
       return;
@@ -196,7 +229,7 @@ export function GraphCanvas(props: {
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
     if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
-    if (drag.id) {
+    if (drag.id && drag.moved) {
       const rect = canvas.getBoundingClientRect();
       const point = renderer.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
       worker?.drag(drag.id, point.x, point.y, true);
@@ -207,6 +240,8 @@ export function GraphCanvas(props: {
     drag.y = event.clientY;
   };
   const onPointerUp = (event: PointerEvent) => {
+    pointers.delete(event.pointerId);
+    pinchDistance = 0;
     if (drag && !drag.moved) select(drag.id);
     if (drag?.id) worker?.resume();
     drag = null;
@@ -283,6 +318,10 @@ export function GraphCanvas(props: {
         <button type="button" title="Приблизить" aria-label="Приблизить" onClick={() => renderer?.zoomBy(1.2)}>+</button>
         <button type="button" title="Отдалить" aria-label="Отдалить" onClick={() => renderer?.zoomBy(0.83)}>−</button>
         <button type="button" title="Вписать граф" onClick={() => renderer?.fit()}>Вписать</button>
+        <button type="button" title="Вернуться к выбранному" onClick={() => {
+          const id = props.highlight?.values().next().value ?? focusedNode()?.id;
+          if (id) renderer?.centerOn(id);
+        }}>К выбранному</button>
       </div>
       <Show when={menu()}>
         {(current) => (
@@ -290,6 +329,7 @@ export function GraphCanvas(props: {
             menu={current()}
             onClose={() => setMenu(null)}
             onOpenPage={props.onOpenPage}
+            onOpenLocal={(name) => props.onOpenLocal?.(name)}
             onOpenAsset={(path) => void assetOpen(path)}
             onRevealAsset={(path) => void assetReveal(path)}
             onCopyLink={(name) => void navigator.clipboard.writeText(`[[${name}]]`)}

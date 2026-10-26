@@ -2,11 +2,11 @@ import { Show, createEffect, createMemo, createSignal, onCleanup } from "solid-j
 import type { GraphSnapshotDto, GraphViewSettings } from "~/lib/api";
 import { visualGraphSnapshot } from "~/lib/api";
 import { LatestSnapshotLoader } from "~/lib/graph/live";
-import { createLayoutSaver } from "~/lib/graph/layoutSaver";
+import { createVisualLayoutSaver } from "~/lib/graph/visualLayoutSaver";
 import { loadCamera, loadExpanded, saveCamera, saveExpanded } from "~/lib/graph/persistence";
 import { qualityForSettings } from "~/lib/graph/performance";
 import { clusterGraph, filterGraph, projectPathToClusters } from "~/lib/graph/model";
-import { selectGraphNode, selectionHighlight } from "~/lib/graph/selection";
+import { refreshGraphSelection, selectGraphNode, selectionHighlight } from "~/lib/graph/selection";
 import type { GraphSelection } from "~/lib/graph/selection";
 import { GraphCanvas } from "./GraphCanvas";
 
@@ -16,6 +16,7 @@ export function GraphView(props: {
   settings: GraphViewSettings;
   onSettingsChange: (settings: GraphViewSettings) => void;
   onOpenPage: (name: string) => void;
+  onOpenLocal: (name: string) => void;
   initialSelectedId?: string;
   layoutResetKey?: number;
 }) {
@@ -25,7 +26,7 @@ export function GraphView(props: {
   const [selection, setSelection] = createSignal<GraphSelection | null>(null);
   const [quality, setQuality] = createSignal(0);
   const effectiveSettings = createMemo(() => qualityForSettings(props.settings, quality()));
-  const saver = createLayoutSaver("global");
+  let saver = createVisualLayoutSaver(props.graphRoot, "global");
   const loader = new LatestSnapshotLoader(visualGraphSnapshot, (result) => {
     setError(null);
     setSnapshot(result);
@@ -58,6 +59,22 @@ export function GraphView(props: {
     const current = filtered();
     if (current) setSelection((selected) => selectGraphNode(selected, id, current));
   };
+  let appliedFocus = "";
+  createEffect(() => {
+    const id = props.initialSelectedId;
+    if (!id || appliedFocus === id || !filtered()?.nodes.some((node) => node.id === id)) return;
+    appliedFocus = id;
+    setSelection({ first: id, second: null, path: null, message: null });
+  });
+
+  createEffect(() => {
+    const current = filtered();
+    const selected = selection();
+    if (!current || !selected) return;
+    const refreshed = refreshGraphSelection(selected, current);
+    if (JSON.stringify(refreshed) !== JSON.stringify(selected)) setSelection(refreshed);
+  });
+
   const toggleCluster = (id: string) => {
     setExpanded((current) => {
       const next = new Set(current);
@@ -75,6 +92,8 @@ export function GraphView(props: {
     if (root !== previousRoot) {
       previousRoot = root;
       loader.invalidate();
+      saver.dispose();
+      saver = createVisualLayoutSaver(root, "global");
       setSnapshot(null);
       setExpanded(loadExpanded(root, "global"));
     }
@@ -111,6 +130,7 @@ export function GraphView(props: {
               initialCamera={loadCamera(props.graphRoot, "global")}
               highlight={highlight()}
               onOpenPage={props.onOpenPage}
+              onOpenLocal={props.onOpenLocal}
               onPositions={saver.schedule}
               onCameraChange={(camera) => saveCamera(props.graphRoot, "global", camera)}
               onQuality={setQuality}

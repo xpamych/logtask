@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { GraphSnapshotDto } from "~/lib/api";
-import { nextGraphFocusIndex, selectGraphNode, selectionHighlight } from "./selection.ts";
+import { nextGraphFocusIndex, refreshGraphSelection, selectGraphNode, selectionHighlight } from "./selection.ts";
 
 const snapshot: GraphSnapshotDto = {
   nodes: [
@@ -39,4 +39,12 @@ test("клавиатурный фокус безопасен для пустог
   assert.equal(nextGraphFocusIndex(0, 1, 0), 0);
   assert.equal(nextGraphFocusIndex(0, -1, 3), 2);
   assert.equal(nextGraphFocusIndex(2, 1, 3), 0);
+});
+
+test("selection пересчитывается при смене snapshot и сбрасывает удалённые endpoints", () => {
+  const stale = { first: "A", second: "B", path: ["A", "C", "B"], message: "старый" };
+  const refreshed = refreshGraphSelection(stale, snapshot);
+  assert.deepEqual(refreshed?.path, ["A", "B"]);
+  assert.equal(refreshed?.message, "Путь: 1 переход");
+  assert.equal(refreshGraphSelection(stale, { ...snapshot, nodes: snapshot.nodes.filter((node) => node.id !== "B"), edges: [] }), null);
 });

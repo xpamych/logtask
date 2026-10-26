@@ -12,6 +12,7 @@ export function GraphMenu(props: {
   menu: GraphMenuState;
   onClose: () => void;
   onOpenPage: (name: string) => void;
+  onOpenLocal: (name: string) => void;
   onOpenAsset: (path: string) => void;
   onRevealAsset: (path: string) => void;
   onCopyLink: (name: string) => void;
@@ -38,6 +39,7 @@ export function GraphMenu(props: {
         </Show>
         <Show when={props.menu.node.kind !== "cluster" && props.menu.node.kind !== "asset"}>
           <button type="button" role="menuitem" onClick={act(() => props.onOpenPage(props.menu.node.title))}>Открыть страницу</button>
+          <button type="button" role="menuitem" onClick={act(() => props.onOpenLocal(props.menu.node.title))}>Показать локальный граф</button>
           <button type="button" role="menuitem" onClick={act(() => props.onCopyLink(props.menu.node.title))}>Скопировать [[ссылку]]</button>
         </Show>
         <Show when={props.menu.node.kind === "asset"}>

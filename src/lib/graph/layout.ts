@@ -24,12 +24,37 @@ export function mergeLayout(
   });
 }
 
+export interface PackedLayout {
+  xy: Float32Array;
+  pinned: Uint8Array;
+}
+
+export function packLayout(entries: GraphLayoutEntry[]): PackedLayout {
+  const xy = new Float32Array(entries.length * 2);
+  const pinned = new Uint8Array(entries.length);
+  entries.forEach((entry, index) => {
+    xy[index * 2] = entry.x;
+    xy[index * 2 + 1] = entry.y;
+    pinned[index] = entry.pinned ? 1 : 0;
+  });
+  return { xy, pinned };
+}
+
+export function unpackLayout(ids: string[], packed: PackedLayout): GraphLayoutEntry[] {
+  return ids.map((id, index) => ({
+    id,
+    x: packed.xy[index * 2],
+    y: packed.xy[index * 2 + 1],
+    pinned: packed.pinned[index] === 1,
+  }));
+}
+
 export interface LayoutRequest {
   type: "init" | "update" | "params" | "drag" | "pause" | "resume" | "stop";
   generation: number;
   ids?: string[];
   edges?: { source: string; target: string }[];
-  positions?: GraphLayoutEntry[];
+  positions?: PackedLayout;
   settings?: GraphViewSettings;
   id?: string;
   x?: number;
@@ -40,7 +65,8 @@ export interface LayoutRequest {
 export interface LayoutResponse {
   type: "positions" | "settled";
   generation: number;
-  positions?: GraphLayoutEntry[];
+  ids?: string[];
+  positions?: PackedLayout;
 }
 
 export interface LayoutCallbacks {
@@ -54,19 +80,20 @@ export function startLayoutWorker(callbacks: LayoutCallbacks) {
   worker.onmessage = (event: MessageEvent<LayoutResponse>) => {
     const message = event.data;
     if (message.generation !== generation) return;
-    if (message.type === "positions" && message.positions) {
-      callbacks.onPositions(message.positions, message.generation);
+    if (message.type === "positions" && message.positions && message.ids) {
+      callbacks.onPositions(unpackLayout(message.ids, message.positions), message.generation);
     } else if (message.type === "settled") {
       callbacks.onSettled(message.generation);
     }
   };
-  const send = (message: Omit<LayoutRequest, "generation">) => {
-    worker.postMessage({ ...message, generation } satisfies LayoutRequest);
+  const send = (message: Omit<LayoutRequest, "generation">, transfer: Transferable[] = []) => {
+    worker.postMessage({ ...message, generation } satisfies LayoutRequest, transfer);
   };
   return {
     update: (ids: string[], edges: { source: string; target: string }[], positions: GraphLayoutEntry[], settings: GraphViewSettings) => {
       generation += 1;
-      send({ type: "update", ids, edges, positions, settings });
+      const packed = packLayout(positions);
+      send({ type: "update", ids, edges, positions: packed, settings }, [packed.xy.buffer, packed.pinned.buffer]);
     },
     params: (settings: GraphViewSettings) => send({ type: "params", settings }),
     drag: (id: string, x: number, y: number, pinned: boolean) =>

@@ -202,19 +202,30 @@ impl Graph {
         visible_ids: &HashSet<String>,
     ) -> GraphSnapshotDto {
         let full = self.visual_snapshot();
+        let mut adjacency: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+        for edge in &full.edges {
+            adjacency
+                .entry(&edge.source)
+                .or_default()
+                .insert(&edge.target);
+            adjacency
+                .entry(&edge.target)
+                .or_default()
+                .insert(&edge.source);
+        }
         let mut allowed = HashSet::from([root.to_string()]);
-        let mut frontier = vec![root.to_string()];
+        let mut frontier = BTreeSet::from([root.to_string()]);
         for _ in 0..depth.min(3) {
             let mut next = BTreeSet::new();
-            for edge in &full.edges {
-                for (a, b) in [(&edge.source, &edge.target), (&edge.target, &edge.source)] {
-                    if frontier.contains(a) && visible_ids.contains(b) && !allowed.contains(b) {
-                        next.insert(b.clone());
+            for current in &frontier {
+                for neighbor in adjacency.get(current.as_str()).into_iter().flatten() {
+                    if visible_ids.contains(*neighbor) && !allowed.contains(*neighbor) {
+                        next.insert((*neighbor).to_string());
                     }
                 }
             }
             allowed.extend(next.iter().cloned());
-            frontier = next.into_iter().collect();
+            frontier = next;
         }
         let nodes = full
             .nodes

@@ -16,6 +16,8 @@ test("упрощения не перезаписывают ручные наст
   const settings = { ...DEFAULT_GRAPH_VIEW_SETTINGS, arrows: true, labelThreshold: 0.2, alphaDecay: 0.03 };
   assert.equal(qualityForSettings(settings, 1).arrows, true);
   assert(qualityForSettings(settings, 1).alphaDecay > settings.alphaDecay);
+  assert.equal(qualityForSettings(settings, 1).qualityTickMs, 50);
+  assert.equal(qualityForSettings(settings, 3).qualityTickMs, 100);
   assert(qualityForSettings(settings, 2).labelThreshold >= 1);
   assert.equal(qualityForSettings(settings, 3).arrows, false);
   assert.equal(qualityForSettings(settings, 4).clusterThreshold, 20);

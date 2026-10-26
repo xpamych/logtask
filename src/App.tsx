@@ -644,6 +644,10 @@ const App: Component = () => {
                           saveSettingsAuto({ ...settings(), graphView })
                         }
                         onOpenPage={openPage}
+                        onOpenLocal={(name) => {
+                          openPage(name);
+                          setRightTab("local");
+                        }}
                         initialSelectedId={graphFocusId()}
                         layoutResetKey={layoutResetKey()}
                       />
@@ -694,7 +698,7 @@ const App: Component = () => {
                     settings={settings().graphView}
                     onChange={(graphView) => saveSettingsAuto({ ...settings(), graphView })}
                     onRecalculate={() => {
-                      void visualGraphLayoutSave("global", []).then(() => setLayoutResetKey((key) => key + 1));
+                      void visualGraphLayoutSave(summary()?.root ?? "", "global", []).then(() => setLayoutResetKey((key) => key + 1));
                     }}
                     onReset={() => saveSettingsAuto({ ...settings(), graphView: DEFAULT_GRAPH_VIEW_SETTINGS })}
                   />
@@ -705,6 +709,7 @@ const App: Component = () => {
                 <Show when={!showGraph() && rightTab() === "local"}>
                   <LocalGraph
                     page={current() ?? todayJournalName()}
+                    graphRoot={summary()?.root ?? ""}
                     refreshKey={refreshKey()}
                     settings={settings().graphView}
                     onSettingsChange={(graphView) => saveSettingsAuto({ ...settings(), graphView })}

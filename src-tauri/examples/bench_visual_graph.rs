@@ -42,7 +42,12 @@ fn synthetic(nodes: usize, edges: usize) -> Graph {
 }
 
 fn main() {
-    for (nodes, edges) in [(1_000, 2_500), (3_000, 7_500), (5_000, 12_500), (10_000, 25_000)] {
+    for (nodes, edges) in [
+        (1_000, 2_500),
+        (3_000, 7_500),
+        (5_000, 12_500),
+        (10_000, 25_000),
+    ] {
         let graph = synthetic(nodes, edges);
         let started = Instant::now();
         let snapshot = graph.visual_snapshot();

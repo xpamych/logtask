@@ -3,7 +3,7 @@ import type { GraphSnapshotDto, GraphViewSettings } from "~/lib/api";
 import { visualGraphLocal, visualGraphSnapshot } from "~/lib/api";
 import { filterGraph } from "~/lib/graph/model";
 import { LatestSnapshotLoader } from "~/lib/graph/live";
-import { createLayoutSaver } from "~/lib/graph/layoutSaver";
+import { createVisualLayoutSaver } from "~/lib/graph/visualLayoutSaver";
 import { loadCamera, saveCamera } from "~/lib/graph/persistence";
 import { GraphCanvas } from "./GraphCanvas";
 
@@ -11,6 +11,7 @@ const JOURNAL = /^\d{4}_\d{2}_\d{2}$/;
 
 export function LocalGraph(props: {
   page: string;
+  graphRoot: string;
   refreshKey: number;
   settings: GraphViewSettings;
   onSettingsChange: (settings: GraphViewSettings) => void;
@@ -31,18 +32,25 @@ export function LocalGraph(props: {
     setError(null);
     setScene(result);
   });
-  let saver = createLayoutSaver(`local:${root()}`);
+  let saver = createVisualLayoutSaver(props.graphRoot, `local:${root()}`);
   let previousRoot = root();
   createEffect(() => {
     const currentRoot = root();
     void props.refreshKey;
     void props.settings.localDepth;
+    void props.settings.search;
+    void props.settings.showJournals;
+    void props.settings.showTags;
+    void props.settings.showAssets;
+    void props.settings.onlyExisting;
+    void props.settings.hideOrphans;
+    void props.settings.exclusions;
     if (currentRoot !== previousRoot) {
       previousRoot = currentRoot;
       loader.invalidate();
       setScene(null);
       saver?.dispose();
-      saver = createLayoutSaver(`local:${currentRoot}`);
+      saver = createVisualLayoutSaver(props.graphRoot, `local:${currentRoot}`);
     }
     loader.request();
   });

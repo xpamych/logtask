@@ -4,6 +4,9 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_TMP_ID: AtomicU64 = AtomicU64::new(0);
 
 /// Записывает файл атомарно: создаёт tmp-файл рядом, fsync, rename.
 /// Родительская директория также fsync'ится (для надёжности на ext4).
@@ -15,8 +18,12 @@ pub fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
         .unwrap_or_else(|| "graph".to_string());
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
 
-    // pid в имени — два процесса не столкнутся на одном tmp
-    let tmp_name = format!(".{file_name}.{}.logtask.tmp", std::process::id());
+    // pid + счётчик — параллельные процессы и потоки не столкнутся на одном tmp
+    let tmp_name = format!(
+        ".{file_name}.{}-{}.logtask.tmp",
+        std::process::id(),
+        NEXT_TMP_ID.fetch_add(1, Ordering::Relaxed)
+    );
     let tmp = dir.join(&tmp_name);
 
     let result = (|| -> std::io::Result<()> {

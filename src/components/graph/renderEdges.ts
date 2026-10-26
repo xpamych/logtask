@@ -1,4 +1,9 @@
 import type { GraphEdgeDto } from "~/lib/api";
+import type { SceneNode } from "~/lib/graph/model";
+
+export function indexSceneNodes(nodes: SceneNode[]): Map<string, SceneNode> {
+  return new Map(nodes.map((node) => [node.id, node]));
+}
 
 export interface RenderEdge {
   source: string;

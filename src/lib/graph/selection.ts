@@ -40,6 +40,22 @@ export function selectionHighlight(
   return result;
 }
 
+export function refreshGraphSelection(
+  selection: GraphSelection | null,
+  snapshot: GraphSnapshotDto,
+): GraphSelection | null {
+  if (!selection) return null;
+  const ids = new Set(snapshot.nodes.map((node) => node.id));
+  if (!ids.has(selection.first) || (selection.second && !ids.has(selection.second))) return null;
+  if (!selection.second) return { ...selection, path: null, message: null };
+  const path = shortestVisiblePath(snapshot, selection.first, selection.second);
+  return {
+    ...selection,
+    path,
+    message: path ? `Путь: ${path.length - 1} ${path.length === 2 ? "переход" : "перехода"}` : "Путь не найден",
+  };
+}
+
 export function nextGraphFocusIndex(index: number, delta: number, length: number): number {
   if (length <= 0) return 0;
   return (index + delta + length) % length;

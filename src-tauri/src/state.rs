@@ -13,6 +13,8 @@ pub struct AppState {
     pub watcher: RwLock<Option<notify::RecommendedWatcher>>,
     /// момент последней записи, сделанной самим приложением
     pub last_self_write: Mutex<Option<Instant>>,
+    /// сериализация read-modify-write layout визуального графа
+    pub layout_lock: Mutex<()>,
     /// фоновая задача синхронизации интеграций (abort при смене/закрытии графа)
     pub sync_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     /// кэш favicon (host → data-URL; пустая строка — «иконки нет»)
@@ -28,6 +30,7 @@ impl Default for AppState {
             root: RwLock::new(None),
             watcher: RwLock::new(None),
             last_self_write: Mutex::new(None),
+            layout_lock: Mutex::new(()),
             sync_task: Mutex::new(None),
             favicons: RwLock::new(std::collections::HashMap::new()),
             webtitles: RwLock::new(std::collections::HashMap::new()),

@@ -51,5 +51,6 @@ export function qualityForSettings(settings: GraphViewSettings, level: number): 
     labelThreshold: level >= 2 ? Math.max(1, settings.labelThreshold) : settings.labelThreshold,
     alphaDecay: level >= 1 ? Math.min(0.5, settings.alphaDecay * 1.5) : settings.alphaDecay,
     clusterThreshold: level >= 4 ? 20 : settings.clusterThreshold,
+    qualityTickMs: level >= 3 ? 100 : level >= 1 ? 50 : undefined,
   };
 }

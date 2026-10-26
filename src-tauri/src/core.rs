@@ -309,6 +309,26 @@ mod tests {
     }
 
     #[test]
+    fn trailing_lines_contribute_links_but_code_fences_are_ignored() {
+        let text = "- первая строка\n  продолжение [[B]] #tag ![[../assets/a.png]]\n  ```\n  [[C]]\n  ```\n";
+        let doc = parse_document(text);
+        let links = &doc.blocks[0].links;
+        assert!(links
+            .iter()
+            .any(|link| matches!(link, model::LinkTarget::Page(name) if name == "B")));
+        assert!(links
+            .iter()
+            .any(|link| matches!(link, model::LinkTarget::Tag(name) if name == "tag")));
+        assert!(links
+            .iter()
+            .any(|link| matches!(link, model::LinkTarget::Asset(path) if path == "assets/a.png")));
+        assert!(!links
+            .iter()
+            .any(|link| matches!(link, model::LinkTarget::Page(name) if name == "C")));
+        assert_eq!(roundtrip(text), text);
+    }
+
+    #[test]
     fn roundtrip_logbook_and_props() {
         let text = "- DOING [#B] Вебхук\n  source-id:: demo-225\n  :LOGBOOK:\n  CLOCK: [2026-09-11 Fri 16:17:05]--[2026-09-16 Wed 14:47:53] =>  118:30:48\n  :END:\n";
         assert_eq!(roundtrip(text), text);

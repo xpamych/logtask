@@ -1602,6 +1602,14 @@ fn validate_visual_endpoints(from: &str, to: &str) -> Result<(), String> {
     }
 }
 
+fn ensure_expected_graph_root(current: &std::path::Path, expected: &str) -> Result<(), String> {
+    if current == std::path::Path::new(expected) {
+        Ok(())
+    } else {
+        Err("граф сменился, запись layout отменена".into())
+    }
+}
+
 fn validate_visual_layout_len(len: usize) -> Result<(), String> {
     if len <= 50_000 {
         Ok(())
@@ -1663,6 +1671,7 @@ pub fn visual_graph_layout_get(
 
 #[tauri::command]
 pub fn visual_graph_layout_save(
+    expected_root: String,
     scope: String,
     entries: Vec<crate::graph_layout::GraphLayoutEntry>,
     state: tauri::State<'_, AppState>,
@@ -1670,6 +1679,8 @@ pub fn visual_graph_layout_save(
     validate_visual_layout_len(entries.len())?;
     let root = state.root.read().clone();
     let root = root.ok_or("граф не загружен")?;
+    ensure_expected_graph_root(&root, &expected_root)?;
+    let _guard = state.layout_lock.lock();
     crate::graph_layout::save_scope(&root, &scope, entries).map_err(|e| e.to_string())
 }
 
@@ -2007,6 +2018,13 @@ mod tests {
     fn visual_graph_command_layout_limit() {
         assert!(super::validate_visual_layout_len(50_000).is_ok());
         assert!(super::validate_visual_layout_len(50_001).is_err());
+    }
+
+    #[test]
+    fn visual_graph_layout_rejects_stale_root() {
+        let current = std::path::PathBuf::from("/new");
+        assert!(super::ensure_expected_graph_root(&current, "/new").is_ok());
+        assert!(super::ensure_expected_graph_root(&current, "/old").is_err());
     }
 
     #[test]

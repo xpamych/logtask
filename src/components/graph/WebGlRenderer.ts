@@ -2,7 +2,7 @@ import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { stablePosition } from "~/lib/graph/layout";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
-import { mergeRenderEdges } from "./renderEdges";
+import { indexSceneNodes, mergeRenderEdges } from "./renderEdges";
 
 interface Camera {
   x: number;
@@ -57,6 +57,7 @@ export class WebGlRenderer {
   private program: WebGLProgram;
   private buffer: WebGLBuffer;
   private scene: SceneGraph = { nodes: [], edges: [], revision: 0 };
+  private nodeById = new Map<string, SceneNode>();
   private settings: GraphViewSettings | null = null;
   private positions = new Map<string, { x: number; y: number }>();
   private camera: Camera = { x: 0, y: 0, zoom: 1 };
@@ -93,6 +94,7 @@ export class WebGlRenderer {
 
   setScene(scene: SceneGraph, settings: GraphViewSettings) {
     this.scene = scene;
+    this.nodeById = indexSceneNodes(scene.nodes);
     this.settings = settings;
     const ids = new Set(scene.nodes.map((node) => node.id));
     this.positions.forEach((_, id) => {
@@ -117,6 +119,18 @@ export class WebGlRenderer {
     this.highlighted = new Set(ids);
     this.hovered = hovered;
     this.request();
+  }
+
+  private activeHighlight() {
+    const result = new Set(this.highlighted);
+    if (this.hovered) {
+      result.add(this.hovered);
+      for (const edge of this.scene.edges) {
+        if (edge.source === this.hovered) result.add(edge.target);
+        if (edge.target === this.hovered) result.add(edge.source);
+      }
+    }
+    return result;
   }
 
   setCamera(camera: Camera) {
@@ -230,8 +244,15 @@ export class WebGlRenderer {
   }
 
   private line(vertices: number[], ax: number, ay: number, bx: number, by: number, rgba: RGBA) {
-    this.vertex(vertices, ax, ay, rgba);
-    this.vertex(vertices, bx, by, rgba);
+    const dx = bx - ax;
+    const dy = by - ay;
+    const length = Math.hypot(dx, dy);
+    if (length < 0.0001) return;
+    const width = 0.55 * (this.settings?.edgeScale ?? 1);
+    const ox = (-dy / length) * width;
+    const oy = (dx / length) * width;
+    this.triangle(vertices, [ax + ox, ay + oy], [ax - ox, ay - oy], [bx + ox, by + oy], rgba);
+    this.triangle(vertices, [ax - ox, ay - oy], [bx - ox, by - oy], [bx + ox, by + oy], rgba);
   }
 
   private triangle(
@@ -277,6 +298,7 @@ export class WebGlRenderer {
     );
 
     const styles = getComputedStyle(document.body);
+    const activeHighlight = this.activeHighlight();
     const edgeColor = color(styles.getPropertyValue("--fg-muted") || "#777777", 0.42);
     const lines: number[] = [];
     const arrows: number[] = [];
@@ -284,8 +306,8 @@ export class WebGlRenderer {
       const source = this.positions.get(edge.source);
       const target = this.positions.get(edge.target);
       if (!source || !target) continue;
-      const muted = this.highlighted.size > 0 &&
-        !(this.highlighted.has(edge.source) && this.highlighted.has(edge.target));
+      const muted = activeHighlight.size > 0 &&
+        !(activeHighlight.has(edge.source) && activeHighlight.has(edge.target));
       const rgba = muted ? color("#777777", 0.08) : edgeColor;
       if (edge.source === edge.target) {
         for (let step = 0; step < 12; step += 1) {
@@ -305,7 +327,7 @@ export class WebGlRenderer {
           if ((direction === 1 && !edge.forward) || (direction === -1 && !edge.backward)) continue;
           const endpoint = direction === 1 ? target : source;
           const endpointId = direction === 1 ? edge.target : edge.source;
-          const targetNode = this.scene.nodes.find((node) => node.id === endpointId);
+          const targetNode = this.nodeById.get(endpointId);
           const radius = targetNode ? this.nodeRadius(targetNode) : 5;
           const ux = (dx / length) * direction;
           const uy = (dy / length) * direction;
@@ -317,7 +339,7 @@ export class WebGlRenderer {
         }
       }
     }
-    this.drawGeometry(gl.LINES, lines);
+    this.drawGeometry(gl.TRIANGLES, lines);
     this.drawGeometry(gl.TRIANGLES, arrows);
 
     const triangles: number[] = [];
@@ -325,8 +347,8 @@ export class WebGlRenderer {
       const point = this.positions.get(node.id)!;
       const custom = this.settings ? colorForNode(node, this.settings.groups) : null;
       const base = custom ?? (node.kind === "journal" ? "#ff9800" : node.kind === "asset" ? "#4caf50" : node.kind === "virtual" ? "#777777" : "#9b59b6");
-      const active = this.highlighted.has(node.id) || this.hovered === node.id;
-      const rgba = color(active ? "#09bec8" : base, this.highlighted.size > 0 && !active ? 0.25 : 1);
+      const active = activeHighlight.has(node.id);
+      const rgba = color(active ? "#09bec8" : base, activeHighlight.size > 0 && !active ? 0.25 : 1);
       const radius = this.nodeRadius(node) * (active ? 1.25 : 1);
       for (let segment = 0; segment < 14; segment += 1) {
         const a = (segment / 14) * Math.PI * 2;
@@ -352,9 +374,10 @@ export class WebGlRenderer {
     ctx.textBaseline = "top";
     const styles = getComputedStyle(document.body);
     ctx.fillStyle = styles.getPropertyValue("--fg") || "#dddddd";
+    const activeHighlight = this.activeHighlight();
     let count = 0;
     for (const node of this.scene.nodes) {
-      const priority = this.highlighted.has(node.id) || this.hovered === node.id;
+      const priority = activeHighlight.has(node.id);
       if (this.camera.zoom < this.settings.labelThreshold && !priority) continue;
       if (count >= 200 && !priority) continue;
       const point = this.positions.get(node.id)!;

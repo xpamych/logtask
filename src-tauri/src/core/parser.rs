@@ -560,6 +560,21 @@ pub fn parse_document(text: &str) -> ParsedFile {
         }
     }
 
+    for block in &mut blocks {
+        let mut in_code = false;
+        for trailing in &block.raw.trailing {
+            if let Trailing::Raw { text, .. } = trailing {
+                if text.trim_start().starts_with("```") {
+                    in_code = !in_code;
+                    continue;
+                }
+                if !in_code {
+                    block.links.extend(extract_links(text));
+                }
+            }
+        }
+    }
+
     ParsedFile {
         preamble,
         blocks,

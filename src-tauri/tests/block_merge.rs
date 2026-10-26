@@ -83,7 +83,10 @@ fn merge_keeps_trailing_props() {
     g.merge_block_up(&id, &dir).unwrap();
 
     let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
-    assert_eq!(text, "- первая\nвторая\n  source-id:: 42\n", "файл:\n{text}");
+    assert_eq!(
+        text, "- первая\nвторая\n  source-id:: 42\n",
+        "файл:\n{text}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -150,8 +153,7 @@ fn merge_into_code_fence_trailing() {
 
     let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
     assert_eq!(
-        text,
-        "- Блок с кодом\n  ```\n  dnf install kea\n  ```\nСледующий блок\n",
+        text, "- Блок с кодом\n  ```\n  dnf install kea\n  ```\nСледующий блок\n",
         "файл:\n{text}"
     );
     assert_single_block_after_reindex(&dir, "Тест", "Блок с кодом");

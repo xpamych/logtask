@@ -45,10 +45,7 @@ fn create_page_rejects_backslash() {
     let err = Graph::create_page_file("Foo\\Bar", &dir).expect_err("ошибка на \\");
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert!(err.to_string().contains("недопустимое"), "{err}");
-    assert!(
-        !dir.join("pages").join("Foo").exists(),
-        "ничего не создано"
-    );
+    assert!(!dir.join("pages").join("Foo").exists(), "ничего не создано");
 }
 
 #[test]

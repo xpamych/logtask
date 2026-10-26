@@ -69,6 +69,7 @@ export interface GraphViewSettings {
   localDepth: number;
   journalAggregation: string;
   clusterThreshold: number;
+  qualityTickMs?: number;
 }
 
 export async function visualGraphSnapshot(): Promise<GraphSnapshotDto> {
@@ -96,10 +97,11 @@ export async function visualGraphLayoutGet(scope: string): Promise<GraphLayoutEn
 }
 
 export async function visualGraphLayoutSave(
+  root: string,
   scope: string,
   entries: GraphLayoutEntry[],
 ): Promise<void> {
-  await invoke<void>("visual_graph_layout_save", { scope, entries });
+  await invoke<void>("visual_graph_layout_save", { expectedRoot: root, scope, entries });
 }
 
 export async function assetOpen(path: string): Promise<void> {
