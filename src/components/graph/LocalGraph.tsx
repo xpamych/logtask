@@ -2,6 +2,9 @@ import { Show, createEffect, createSignal, onCleanup } from "solid-js";
 import type { GraphSnapshotDto, GraphViewSettings } from "~/lib/api";
 import { visualGraphLocal, visualGraphSnapshot } from "~/lib/api";
 import { filterGraph } from "~/lib/graph/model";
+import { LatestSnapshotLoader } from "~/lib/graph/live";
+import { createLayoutSaver } from "~/lib/graph/layoutSaver";
+import { loadCamera, saveCamera } from "~/lib/graph/persistence";
 import { GraphCanvas } from "./GraphCanvas";
 
 const JOURNAL = /^\d{4}_\d{2}_\d{2}$/;
@@ -18,26 +21,34 @@ export function LocalGraph(props: {
   const [error, setError] = createSignal<string | null>(null);
   const root = () => `${JOURNAL.test(props.page) ? "journal" : "page"}:${props.page}`;
 
+  const loader = new LatestSnapshotLoader(async () => {
+    const full = await visualGraphSnapshot();
+    const filtered = filterGraph(full, props.settings);
+    const visible = new Set(filtered.nodes.map((node) => node.id));
+    visible.add(root());
+    return visualGraphLocal(root(), props.settings.localDepth, [...visible]);
+  }, (result) => {
+    setError(null);
+    setScene(result);
+  });
+  let saver = createLayoutSaver(`local:${root()}`);
+  let previousRoot = root();
   createEffect(() => {
+    const currentRoot = root();
     void props.refreshKey;
     void props.settings.localDepth;
-    let active = true;
-    onCleanup(() => {
-      active = false;
-    });
-    void (async () => {
-      try {
-        setError(null);
-        const full = await visualGraphSnapshot();
-        const filtered = filterGraph(full, props.settings);
-        const visible = new Set(filtered.nodes.map((node) => node.id));
-        visible.add(root());
-        const local = await visualGraphLocal(root(), props.settings.localDepth, [...visible]);
-        if (active) setScene(local);
-      } catch (reason) {
-        if (active) setError(String(reason));
-      }
-    })();
+    if (currentRoot !== previousRoot) {
+      previousRoot = currentRoot;
+      loader.invalidate();
+      setScene(null);
+      saver?.dispose();
+      saver = createLayoutSaver(`local:${currentRoot}`);
+    }
+    loader.request();
+  });
+  onCleanup(() => {
+    loader.invalidate();
+    saver?.dispose();
   });
 
   return (
@@ -59,7 +70,10 @@ export function LocalGraph(props: {
               scene={current()}
               settings={props.settings}
               scope={`local:${root()}`}
+              initialCamera={loadCamera(root(), "local")}
               onOpenPage={props.onOpenPage}
+              onPositions={(entries) => saver.schedule(entries)}
+              onCameraChange={(camera) => saveCamera(root(), "local", camera)}
               onSelectNode={(id) => {
                 if (!id) return;
                 const node = current().nodes.find((candidate) => candidate.id === id);

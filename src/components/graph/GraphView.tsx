@@ -1,6 +1,9 @@
-import { Show, createEffect, createMemo, createSignal } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import type { GraphSnapshotDto, GraphViewSettings } from "~/lib/api";
 import { visualGraphSnapshot } from "~/lib/api";
+import { LatestSnapshotLoader } from "~/lib/graph/live";
+import { createLayoutSaver } from "~/lib/graph/layoutSaver";
+import { loadCamera, loadExpanded, saveCamera, saveExpanded } from "~/lib/graph/persistence";
 import { clusterGraph, filterGraph, projectPathToClusters } from "~/lib/graph/model";
 import { selectGraphNode, selectionHighlight } from "~/lib/graph/selection";
 import type { GraphSelection } from "~/lib/graph/selection";
@@ -8,6 +11,7 @@ import { GraphCanvas } from "./GraphCanvas";
 
 export function GraphView(props: {
   refreshKey: number;
+  graphRoot: string;
   settings: GraphViewSettings;
   onSettingsChange: (settings: GraphViewSettings) => void;
   onOpenPage: (name: string) => void;
@@ -16,8 +20,13 @@ export function GraphView(props: {
 }) {
   const [snapshot, setSnapshot] = createSignal<GraphSnapshotDto | null>(null);
   const [error, setError] = createSignal<string | null>(null);
-  const [expanded, setExpanded] = createSignal<Set<string>>(new Set());
+  const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded(props.graphRoot, "global"));
   const [selection, setSelection] = createSignal<GraphSelection | null>(null);
+  const saver = createLayoutSaver("global");
+  const loader = new LatestSnapshotLoader(visualGraphSnapshot, (result) => {
+    setError(null);
+    setSnapshot(result);
+  });
   const filtered = createMemo(() => {
     const current = snapshot();
     return current ? filterGraph(current, props.settings) : null;
@@ -51,23 +60,26 @@ export function GraphView(props: {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      saveExpanded(props.graphRoot, "global", next);
       return next;
     });
   };
 
+  let previousRoot = props.graphRoot;
   createEffect(() => {
+    const root = props.graphRoot;
     void props.refreshKey;
-    let active = true;
-    void visualGraphSnapshot()
-      .then((result) => {
-        if (active) setSnapshot(result);
-      })
-      .catch((reason) => {
-        if (active) setError(String(reason));
-      });
-    return () => {
-      active = false;
-    };
+    if (root !== previousRoot) {
+      previousRoot = root;
+      loader.invalidate();
+      setSnapshot(null);
+      setExpanded(loadExpanded(root, "global"));
+    }
+    loader.request();
+  });
+  onCleanup(() => {
+    loader.invalidate();
+    saver.dispose();
   });
 
   return (
@@ -93,8 +105,11 @@ export function GraphView(props: {
               scope="global"
               focusId={props.initialSelectedId}
               resetLayoutKey={props.layoutResetKey}
+              initialCamera={loadCamera(props.graphRoot, "global")}
               highlight={highlight()}
               onOpenPage={props.onOpenPage}
+              onPositions={saver.schedule}
+              onCameraChange={(camera) => saveCamera(props.graphRoot, "global", camera)}
               onSelectNode={select}
               onToggleCluster={toggleCluster}
               onHideNode={(id) => props.onSettingsChange({

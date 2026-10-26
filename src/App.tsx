@@ -66,6 +66,15 @@ function loadRecentPages(): string[] {
   }
 }
 
+function loadRightTab(): "toc" | "local" | "graphSettings" {
+  try {
+    const value = localStorage.getItem("logtask:rightTab");
+    return value === "local" || value === "graphSettings" ? value : "toc";
+  } catch {
+    return "toc";
+  }
+}
+
 /** свёрнутость боковых панелей между запусками (localStorage) */
 function loadCollapsed(key: string): boolean {
   try {
@@ -93,7 +102,7 @@ const App: Component = () => {
   const [showAllPages, setShowAllPages] = createSignal(false);
   const [showTasks, setShowTasks] = createSignal(false);
   const [showGraph, setShowGraph] = createSignal(false);
-  const [rightTab, setRightTab] = createSignal<"toc" | "local" | "graphSettings">("toc");
+  const [rightTab, setRightTab] = createSignal<"toc" | "local" | "graphSettings">(loadRightTab());
   const [graphFocusId, setGraphFocusId] = createSignal<string | undefined>();
   const [layoutResetKey, setLayoutResetKey] = createSignal(0);
   const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
@@ -381,6 +390,14 @@ const App: Component = () => {
     }
   });
 
+  createEffect(() => {
+    try {
+      localStorage.setItem("logtask:rightTab", rightTab());
+    } catch {
+      // Активная вкладка не влияет на данные графа.
+    }
+  });
+
   // тема: system — следуем ОС и переключаемся на лету
   const systemDark =
     typeof window.matchMedia === "function"
@@ -621,6 +638,7 @@ const App: Component = () => {
                     >
                       <GraphView
                         refreshKey={refreshKey()}
+                        graphRoot={summary()?.root ?? ""}
                         settings={settings().graphView}
                         onSettingsChange={(graphView) =>
                           saveSettingsAuto({ ...settings(), graphView })

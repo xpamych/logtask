@@ -4,6 +4,7 @@ import { assetOpen, assetReveal, visualGraphLayoutGet } from "~/lib/api";
 import { mergeLayout } from "~/lib/graph/layout";
 import { startLayoutWorker } from "~/lib/graph/layout";
 import type { SceneGraph } from "~/lib/graph/model";
+import type { CameraState } from "~/lib/graph/persistence";
 import { nextGraphFocusIndex } from "~/lib/graph/selection";
 import { GraphMenu } from "./GraphMenu";
 import type { GraphMenuState } from "./GraphMenu";
@@ -15,6 +16,7 @@ export function GraphCanvas(props: {
   scope: string;
   focusId?: string;
   resetLayoutKey?: number;
+  initialCamera?: CameraState | null;
   highlight?: Set<string>;
   onOpenPage: (name: string) => void;
   onSelectNode?: (id: string | null) => void;
@@ -60,6 +62,11 @@ export function GraphCanvas(props: {
 
   createEffect(() => {
     if (props.focusId) renderer?.centerOn(props.focusId);
+  });
+
+  createEffect(() => {
+    const camera = props.initialCamera;
+    if (camera) renderer?.setCamera(camera);
   });
 
   createEffect(() => {
