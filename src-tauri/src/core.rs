@@ -7,6 +7,7 @@ pub mod parser;
 pub mod query;
 pub mod rename;
 pub mod serializer;
+pub mod visual_graph;
 
 pub fn core_smoke() -> &'static str {
     "logtask-core"
@@ -274,6 +275,37 @@ mod tests {
             .collect();
         assert!(tmps.is_empty(), "tmp-мусор: {tmps:?}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn asset_link_forms_are_normalized() {
+        let links = parser::extract_links(
+            "![[../assets/a.mp4]] ![alt](assets/a.png) [файл](../assets/a.pdf)",
+        );
+        assert_eq!(
+            links,
+            vec![
+                model::LinkTarget::Asset("assets/a.mp4".into()),
+                model::LinkTarget::Asset("assets/a.png".into()),
+                model::LinkTarget::Asset("assets/a.pdf".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn asset_link_rejects_external_and_escaping_paths() {
+        let links = parser::extract_links(
+            "[внешний](https://example.com/a.pdf) [abs](/tmp/a.pdf) [out](../../outside/a.pdf)",
+        );
+        assert!(!links
+            .iter()
+            .any(|l| matches!(l, model::LinkTarget::Asset(_))));
+    }
+
+    #[test]
+    fn asset_link_roundtrip_preserves_source() {
+        let text = "- ![[../assets/a.mp4]]\n- ![alt](assets/a.png) [файл](../assets/a.pdf)\n";
+        assert_eq!(roundtrip(text), text);
     }
 
     #[test]

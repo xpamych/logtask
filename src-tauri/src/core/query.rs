@@ -219,10 +219,8 @@ mod tests {
 
     #[test]
     fn sort_rule_legacy_format_deserializes_as_asc() {
-        let q: SavedQuery = serde_json::from_str(
-            r#"{"title":"t","sort":["priority","status"]}"#,
-        )
-        .unwrap();
+        let q: SavedQuery =
+            serde_json::from_str(r#"{"title":"t","sort":["priority","status"]}"#).unwrap();
         assert_eq!(
             q.sort,
             vec![

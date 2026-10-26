@@ -74,6 +74,7 @@ impl From<&Block> for BlockDto {
                     crate::core::model::LinkTarget::Page(n)
                     | crate::core::model::LinkTarget::Tag(n) => n.clone(),
                     crate::core::model::LinkTarget::Block(n) => format!("(({n}))"),
+                    crate::core::model::LinkTarget::Asset(n) => n.clone(),
                 })
                 .collect(),
             clock_running: b.clock_running(),

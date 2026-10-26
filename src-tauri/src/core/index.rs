@@ -173,7 +173,7 @@ impl Graph {
             for link in &block.links {
                 let target = match link {
                     LinkTarget::Page(p) | LinkTarget::Tag(p) => p.clone(),
-                    LinkTarget::Block(_) => continue,
+                    LinkTarget::Block(_) | LinkTarget::Asset(_) => continue,
                 };
                 self.backlinks.entry(target).or_default().push(*id);
             }
@@ -524,7 +524,12 @@ impl Graph {
         {
             let prev = self.blocks.get_mut(&prev_id).expect("prev блок");
             // Blank-разделители после последней строки блока съедаются
-            while prev.raw.trailing.last().is_some_and(|t| matches!(t, Trailing::Blank)) {
+            while prev
+                .raw
+                .trailing
+                .last()
+                .is_some_and(|t| matches!(t, Trailing::Blank))
+            {
                 prev.raw.trailing.pop();
             }
             prev.raw.trailing.push(Trailing::Raw {

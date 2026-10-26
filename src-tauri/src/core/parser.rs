@@ -162,7 +162,28 @@ pub(crate) fn parse_clock(line: &str) -> Option<Clock> {
     })
 }
 
-/// Извлекает [[вики-ссылки]], #теги и ((block-ref)) из текста блока;
+fn normalize_asset_path(raw: &str) -> Option<String> {
+    let path = raw.trim();
+    let relative = path.strip_prefix("../").unwrap_or(path);
+    if !relative.starts_with("assets/") || relative.contains('\\') {
+        return None;
+    }
+    let parsed = std::path::Path::new(relative);
+    if parsed.components().any(|c| {
+        matches!(
+            c,
+            std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_)
+        )
+    }) || parsed.file_name().is_none()
+    {
+        return None;
+    }
+    Some(relative.to_string())
+}
+
+/// Извлекает [[вики-ссылки]], #теги, ((block-ref)) и локальные вложения;
 /// inline-код в обратных кавычках пропускается.
 pub fn extract_links(content: &str) -> Vec<LinkTarget> {
     let mut links = Vec::new();
@@ -174,6 +195,38 @@ pub fn extract_links(content: &str) -> Vec<LinkTarget> {
             if let Some(end) = content[i + 1..].find('`') {
                 i += 1 + end + 1;
                 continue;
+            }
+        }
+        // Logseq-вложение ![[../assets/...]]
+        if bytes[i] == b'!' && bytes.get(i + 1) == Some(&b'[') && bytes.get(i + 2) == Some(&b'[') {
+            if let Some(end) = content[i + 3..].find("]]") {
+                let raw = &content[i + 3..i + 3 + end];
+                if let Some(path) = normalize_asset_path(raw) {
+                    links.push(LinkTarget::Asset(path));
+                }
+                i += 3 + end + 2;
+                continue;
+            }
+        }
+        // Markdown-вложение [текст](assets/...) или ![alt](../assets/...)
+        let bracket = if bytes[i] == b'[' {
+            Some(i)
+        } else if bytes[i] == b'!' && bytes.get(i + 1) == Some(&b'[') {
+            Some(i + 1)
+        } else {
+            None
+        };
+        if let Some(open) = bracket {
+            if let Some(label_end) = content[open + 1..].find("](") {
+                let target_start = open + 1 + label_end + 2;
+                if let Some(target_end) = content[target_start..].find(')') {
+                    let raw = &content[target_start..target_start + target_end];
+                    if let Some(path) = normalize_asset_path(raw) {
+                        links.push(LinkTarget::Asset(path));
+                        i = target_start + target_end + 1;
+                        continue;
+                    }
+                }
             }
         }
         // block-ref ((uuid))

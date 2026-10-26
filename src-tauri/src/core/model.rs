@@ -300,6 +300,8 @@ pub enum LinkTarget {
     Tag(String),
     /// ((uuid)) — block reference (только чтение)
     Block(String),
+    /// Локальное вложение внутри assets/
+    Asset(String),
 }
 
 /// Запись в блоке после его основной строки: свойство, логбук или сырая строка.
