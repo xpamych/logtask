@@ -4,6 +4,7 @@
   --bg-panel: #1a1a1a;
   --fg: #ffffff;
   --fg-muted: #b0b0b0;
+  --graph-edge: #9aa6b2;
   --accent: #09bec8;
   --accent-2: #9b59b6;
   --border: #3a3a3a;
@@ -20,6 +21,7 @@ body.theme-light {
   --bg-panel: #ffffff;
   --fg: #1c2733;
   --fg-muted: #5c7080;
+  --graph-edge: #33475a;
   --accent: #0891a0;
   --accent-2: #7d3c98;
   --border: #d5dde1;

@@ -294,6 +294,7 @@ const App: Component = () => {
 
   const showGraphView = (id?: string) => {
     setGraphFocusId(id);
+    setPanelCollapsed(false);
     setRightTab("graphSettings");
     navigate({ kind: "graph" });
   };
@@ -644,6 +645,10 @@ const App: Component = () => {
                           saveSettingsAuto({ ...settings(), graphView })
                         }
                         onOpenPage={openPage}
+                        onOpenSettings={() => {
+                          setPanelCollapsed(false);
+                          setRightTab("graphSettings");
+                        }}
                         onOpenLocal={(name) => {
                           openPage(name);
                           setRightTab("local");

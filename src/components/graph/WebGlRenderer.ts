@@ -299,7 +299,7 @@ export class WebGlRenderer {
 
     const styles = getComputedStyle(document.body);
     const activeHighlight = this.activeHighlight();
-    const edgeColor = color(styles.getPropertyValue("--fg-muted") || "#777777", 0.42);
+    const edgeColor = color(styles.getPropertyValue("--graph-edge") || "#536575", 0.78);
     const lines: number[] = [];
     const arrows: number[] = [];
     for (const edge of mergeRenderEdges(this.scene.edges)) {
