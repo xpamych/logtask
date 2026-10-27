@@ -65,8 +65,8 @@ test("сироты образуют кольцо вокруг связанных
     const point = targets.get(id)!;
     return Math.hypot(point.x, point.y);
   };
-  assert.equal(radius("F"), radius("G"));
-  assert.equal(radius("G"), radius("H"));
+  assert(Math.abs(radius("F") - radius("G")) < 1e-9);
+  assert(Math.abs(radius("G") - radius("H")) < 1e-9);
   assert(radius("F") > radius("A"));
 });
 

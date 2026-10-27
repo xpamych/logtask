@@ -2,7 +2,7 @@ import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { stablePosition } from "~/lib/graph/layout";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
-import { indexSceneNodes, mergeRenderEdges } from "./renderEdges";
+import { indexSceneNodes, mergeRenderEdges, shouldShowNodeLabel } from "./renderEdges";
 
 interface Camera {
   x: number;
@@ -378,7 +378,7 @@ export class WebGlRenderer {
     let count = 0;
     for (const node of this.scene.nodes) {
       const priority = activeHighlight.has(node.id);
-      if (this.camera.zoom < this.settings.labelThreshold && !priority) continue;
+      if (!shouldShowNodeLabel(this.scene.nodes.length, this.camera.zoom, this.settings.labelThreshold, priority)) continue;
       if (count >= 200 && !priority) continue;
       const point = this.positions.get(node.id)!;
       const screen = this.worldToScreen(point.x, point.y);

@@ -34,9 +34,10 @@ function applyComponentTargets() {
       .map((id) => byId.get(id))
       .filter((node): node is WorkerNode => Boolean(node));
     if (members.length === 0) continue;
-    const centerX = members.reduce((sum, node) => sum + (node.x ?? 0), 0) / members.length;
-    const centerY = members.reduce((sum, node) => sum + (node.y ?? 0), 0) / members.length;
-    for (const node of members) {
+    const normalized = normalizeMainComponent(members, Math.max(12, Math.sqrt(members.length) * 5));
+    const centerX = normalized.reduce((sum, node) => sum + (node.x ?? 0), 0) / normalized.length;
+    const centerY = normalized.reduce((sum, node) => sum + (node.y ?? 0), 0) / normalized.length;
+    for (const node of normalized) {
       node.x = (node.x ?? 0) + target.x - centerX;
       node.y = (node.y ?? 0) + target.y - centerY;
     }
@@ -59,15 +60,9 @@ function postPositions() {
   );
 }
 
-function normalizeMain() {
-  const count = components[0]?.length ?? 1;
-  nodes = normalizeMainComponent(nodes, Math.max(180, Math.sqrt(count) * 14));
-}
-
 function tick() {
   if (!simulation || paused) return;
   for (let index = 0; index < 8; index += 1) simulation.tick();
-  normalizeMain();
   applyComponentTargets();
   postPositions();
   if (simulation.alpha() < simulation.alphaMin()) {
@@ -157,7 +152,6 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     applyForces();
     components = connectedComponents(message.ids, message.edges ?? []);
     targets = componentTargets(message.ids, message.edges ?? []);
-    normalizeMain();
     applyComponentTargets();
     postPositions();
     restart(message.type === "update" ? 0.2 : 0.7);

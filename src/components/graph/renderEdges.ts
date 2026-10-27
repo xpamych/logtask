@@ -5,6 +5,17 @@ export function indexSceneNodes(nodes: SceneNode[]): Map<string, SceneNode> {
   return new Map(nodes.map((node) => [node.id, node]));
 }
 
+export function shouldShowNodeLabel(
+  nodeCount: number,
+  zoom: number,
+  threshold: number,
+  priority: boolean,
+): boolean {
+  if (priority) return true;
+  if (nodeCount > 100 && zoom < 1.5) return false;
+  return zoom >= threshold;
+}
+
 export interface RenderEdge {
   source: string;
   target: string;

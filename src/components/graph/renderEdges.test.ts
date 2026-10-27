@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { indexSceneNodes, mergeRenderEdges } from "./renderEdges.ts";
+import { indexSceneNodes, mergeRenderEdges, shouldShowNodeLabel } from "./renderEdges.ts";
 
 test("встречные ссылки дают одну линию со стрелками на обоих концах", () => {
   const result = mergeRenderEdges([
@@ -30,4 +30,11 @@ test("узлы индексируются по id без линейного по
   const index = indexSceneNodes(nodes);
   assert.equal(index.get("B"), nodes[1]);
   assert.equal(index.size, 2);
+});
+
+test("подписи скрываются при обзоре большого графа и возвращаются при приближении", () => {
+  assert.equal(shouldShowNodeLabel(454, 0.5, 0.35, false), false);
+  assert.equal(shouldShowNodeLabel(454, 2, 0.35, false), true);
+  assert.equal(shouldShowNodeLabel(454, 0.5, 0.35, true), true);
+  assert.equal(shouldShowNodeLabel(20, 0.5, 0.35, false), true);
 });
