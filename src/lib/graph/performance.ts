@@ -44,6 +44,13 @@ export class QualityController {
   }
 }
 
+export function sceneSettingsForQuality(settings: GraphViewSettings, level: number): GraphViewSettings {
+  return {
+    ...settings,
+    clusterThreshold: level >= 4 ? 20 : settings.clusterThreshold,
+  };
+}
+
 export function qualityForSettings(settings: GraphViewSettings, level: number): GraphViewSettings {
   return {
     ...settings,

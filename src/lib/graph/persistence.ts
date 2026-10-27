@@ -11,6 +11,25 @@ interface StorageLike {
 
 export const cameraKey = (root: string, scope: string) => `logtask:graph-camera:${root}:${scope}`;
 const expandedKey = (root: string, scope: string) => `logtask:graph-expanded:${root}:${scope}`;
+const layoutVersionKey = (root: string, scope: string) => `logtask:graph-layout-version:${root}:${scope}`;
+
+export const GRAPH_LAYOUT_VERSION = 1;
+
+export function needsLayoutMigration(root: string, scope: string, storage: StorageLike = localStorage): boolean {
+  try {
+    return Number(storage.getItem(layoutVersionKey(root, scope))) !== GRAPH_LAYOUT_VERSION;
+  } catch {
+    return true;
+  }
+}
+
+export function markLayoutVersion(root: string, scope: string, storage: StorageLike = localStorage) {
+  try {
+    storage.setItem(layoutVersionKey(root, scope), String(GRAPH_LAYOUT_VERSION));
+  } catch {
+    // При недоступном localStorage миграция безопасно повторится.
+  }
+}
 
 export function loadCamera(root: string, scope: string, storage: StorageLike = localStorage): CameraState | null {
   try {

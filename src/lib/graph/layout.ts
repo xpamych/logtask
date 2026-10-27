@@ -46,17 +46,37 @@ export function componentTargets(
   ids: string[],
   edges: { source: string; target: string }[],
 ): Map<string, { x: number; y: number }> {
-  const components = connectedComponents(ids, edges);
+  return componentTargetsForComponents(connectedComponents(ids, edges));
+}
+
+export function linkedSceneRadius(
+  components: { id: string; x?: number; y?: number }[][],
+): number {
+  let radius = 0;
+  for (const component of components) {
+    if (component.length <= 1) continue;
+    for (const node of component) {
+      radius = Math.max(radius, Math.hypot(node.x ?? 0, node.y ?? 0));
+    }
+  }
+  return radius;
+}
+
+export function componentTargetsForComponents(
+  components: string[][],
+  orphanRadius?: number,
+): Map<string, { x: number; y: number }> {
   const targets = new Map<string, { x: number; y: number }>();
   const linkedCount = components
     .filter((component) => component.length > 1)
     .reduce((sum, component) => sum + component.length, 0);
   const innerRadius = Math.max(80, Math.sqrt(linkedCount) * 7);
-  const outerRadius = innerRadius + 120;
-  const singleTotal = components.slice(1).filter((component) => component.length === 1).length;
+  const outerRadius = orphanRadius ?? innerRadius + 120;
+  const singleTotal = components.filter((component) => component.length === 1).length;
   let smallIndex = 0;
   let singleIndex = 0;
-  for (let index = 1; index < components.length; index += 1) {
+  const startIndex = components[0]?.length === 1 ? 0 : 1;
+  for (let index = startIndex; index < components.length; index += 1) {
     const singleton = components[index].length === 1;
     const angle = singleton
       ? (singleIndex++ * Math.PI * 2) / singleTotal
@@ -89,6 +109,52 @@ export function normalizeMainComponent<T extends { x?: number; y?: number }>(
     x: ((entry.x ?? 0) - centerX) * scale,
     y: ((entry.y ?? 0) - centerY) * scale,
   }));
+}
+
+export function normalizeMainComponentInPlace<T extends { x?: number; y?: number }>(
+  entries: T[],
+  targetRadius: number,
+): void {
+  if (entries.length === 0) return;
+  const centerX = entries.reduce((sum, entry) => sum + (entry.x ?? 0), 0) / entries.length;
+  const centerY = entries.reduce((sum, entry) => sum + (entry.y ?? 0), 0) / entries.length;
+  let currentRadius = 0;
+  for (const entry of entries) {
+    currentRadius = Math.max(
+      currentRadius,
+      Math.hypot((entry.x ?? 0) - centerX, (entry.y ?? 0) - centerY),
+    );
+  }
+  if (currentRadius < 0.0001) {
+    for (const entry of entries) {
+      entry.x = 0;
+      entry.y = 0;
+    }
+    return;
+  }
+  const scale = targetRadius / currentRadius;
+  for (const entry of entries) {
+    entry.x = ((entry.x ?? 0) - centerX) * scale;
+    entry.y = ((entry.y ?? 0) - centerY) * scale;
+  }
+}
+
+export function createLayoutMigration() {
+  let fitPending = false;
+  return {
+    begin() {
+      fitPending = true;
+    },
+    consumeFit() {
+      if (!fitPending) return false;
+      fitPending = false;
+      return true;
+    },
+    async complete(flush: () => Promise<void>, mark: () => void) {
+      await flush();
+      mark();
+    },
+  };
 }
 
 export function mergeLayout(

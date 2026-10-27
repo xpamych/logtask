@@ -1,19 +1,21 @@
 import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { assetOpen, assetReveal, visualGraphLayoutGet } from "~/lib/api";
-import { mergeLayout } from "~/lib/graph/layout";
-import { startLayoutWorker } from "~/lib/graph/layout";
+import { createLayoutMigration, mergeLayout, startLayoutWorker } from "~/lib/graph/layout";
 import type { SceneGraph } from "~/lib/graph/model";
 import type { CameraState } from "~/lib/graph/persistence";
+import { markLayoutVersion, needsLayoutMigration } from "~/lib/graph/persistence";
 import { QualityController } from "~/lib/graph/performance";
 import { nextGraphFocusIndex } from "~/lib/graph/selection";
 import { GraphMenu } from "./GraphMenu";
 import type { GraphMenuState } from "./GraphMenu";
 import { WebGlRenderer } from "./WebGlRenderer";
+import { hasPointerDragged, shouldClickPointer } from "./pointerInteraction";
 
 export function GraphCanvas(props: {
   scene: SceneGraph;
   settings: GraphViewSettings;
+  graphRoot: string;
   scope: string;
   focusId?: string;
   resetLayoutKey?: number;
@@ -25,6 +27,7 @@ export function GraphCanvas(props: {
   onToggleCluster?: (id: string) => void;
   onHideNode?: (id: string) => void;
   onPositions?: (entries: GraphLayoutEntry[]) => void;
+  onLayoutFlush: () => Promise<void>;
   onCameraChange?: (camera: { x: number; y: number; zoom: number }) => void;
   onQuality?: (level: number) => void;
 }) {
@@ -41,6 +44,7 @@ export function GraphCanvas(props: {
   const [hovered, setHovered] = createSignal<string | null>(null);
   const [focusIndex, setFocusIndex] = createSignal(0);
   const quality = new QualityController();
+  const migration = createLayoutMigration();
   let lastQuality = 0;
   const reportFrame = (milliseconds: number) => {
     const level = quality.sample(milliseconds);
@@ -66,7 +70,9 @@ export function GraphCanvas(props: {
   };
 
   createEffect(() => {
-    renderer?.setScene(props.scene, props.settings);
+    const scene = props.scene;
+    const settings = props.settings;
+    renderer?.setScene(scene, settings);
   });
 
   createEffect(() => {
@@ -101,7 +107,9 @@ export function GraphCanvas(props: {
   });
 
   createEffect(() => {
-    renderer?.setHighlight(props.highlight ?? new Set(), hovered());
+    const highlight = props.highlight ?? new Set();
+    const currentHovered = hovered();
+    renderer?.setHighlight(highlight, currentHovered);
   });
 
   onMount(() => {
@@ -116,7 +124,15 @@ export function GraphCanvas(props: {
         onPositions: (entries) => {
           positions = entries;
           renderer?.setPositions(entries);
+          const fitMigration = migration.consumeFit();
           props.onPositions?.(entries);
+          if (fitMigration) renderer?.fit();
+          if (fitMigration && props.onPositions) {
+            void migration.complete(
+              props.onLayoutFlush,
+              () => markLayoutVersion(props.graphRoot, props.scope),
+            ).catch((error) => console.error("завершение миграции layout:", error));
+          }
         },
         onSettled: () => props.onPositions?.(positions),
       });
@@ -125,9 +141,11 @@ export function GraphCanvas(props: {
       void visualGraphLayoutGet(props.scope)
         .catch(() => [])
         .then((entries) => {
-          saved = entries;
+          const migrate = needsLayoutMigration(props.graphRoot, props.scope);
+          saved = migrate ? entries.filter((entry) => entry.pinned) : entries;
+          if (migrate) migration.begin();
           update();
-          if (entries.length === 0) renderer?.fit();
+          if (!migrate && entries.length === 0) renderer?.fit();
         });
     } catch (error) {
       console.error(error);
@@ -187,13 +205,30 @@ export function GraphCanvas(props: {
     });
   });
 
-  let drag: { id: string | null; x: number; y: number; moved: boolean } | null = null;
+  let drag: {
+    id: string | null;
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+    worldX: number;
+    worldY: number;
+    pinned: boolean;
+    moved: boolean;
+  } | null = null;
   const select = (id: string | null) => {
     if (id && props.scene.nodes.find((node) => node.id === id)?.kind === "cluster") {
       props.onToggleCluster?.(id);
     } else {
       props.onSelectNode?.(id);
     }
+  };
+  const click = (id: string | null, modified: boolean) => {
+    const node = id ? props.scene.nodes.find((candidate) => candidate.id === id) : null;
+    if (node && modified) props.onSelectNode?.(node.id);
+    else if (node?.kind === "cluster") props.onToggleCluster?.(node.id);
+    else if (node && node.kind !== "asset") props.onOpenPage(node.title);
+    else props.onSelectNode?.(id);
   };
   const pointers = new Map<number, { x: number; y: number }>();
   let pinchDistance = 0;
@@ -206,11 +241,24 @@ export function GraphCanvas(props: {
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 2) {
       pinchDistance = pointerDistance();
+      if (drag?.id && drag.moved) worker?.drag(drag.id, drag.worldX, drag.worldY, drag.pinned);
+      if (drag?.id && drag.moved) worker?.resume();
       drag = null;
       return;
     }
     const hit = renderer?.hitTest(event.clientX, event.clientY);
-    drag = { id: hit?.id ?? null, x: event.clientX, y: event.clientY, moved: false };
+    const position = hit ? positions.find((entry) => entry.id === hit.id) : null;
+    drag = {
+      id: hit?.id ?? null,
+      startX: event.clientX,
+      startY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+      worldX: position?.x ?? 0,
+      worldY: position?.y ?? 0,
+      pinned: position?.pinned ?? false,
+      moved: false,
+    };
     canvas.setPointerCapture(event.pointerId);
   };
   const onPointerMove = (event: PointerEvent) => {
@@ -228,10 +276,12 @@ export function GraphCanvas(props: {
     }
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
+    if (hasPointerDragged(drag.startX, drag.startY, event.clientX, event.clientY)) drag.moved = true;
     if (drag.id && drag.moved) {
       const rect = canvas.getBoundingClientRect();
       const point = renderer.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
+      drag.worldX = point.x;
+      drag.worldY = point.y;
       worker?.drag(drag.id, point.x, point.y, true);
     } else {
       renderer.panBy(dx, dy);
@@ -239,11 +289,14 @@ export function GraphCanvas(props: {
     drag.x = event.clientX;
     drag.y = event.clientY;
   };
-  const onPointerUp = (event: PointerEvent) => {
+  const onPointerUp = (event: PointerEvent, cancelled = false) => {
     pointers.delete(event.pointerId);
     pinchDistance = 0;
-    if (drag && !drag.moved) select(drag.id);
-    if (drag?.id) worker?.resume();
+    if (drag && shouldClickPointer(drag.moved, cancelled)) click(drag.id, event.ctrlKey || event.metaKey);
+    if (drag?.id && drag.moved) {
+      worker?.drag(drag.id, drag.worldX, drag.worldY, drag.pinned);
+      worker?.resume();
+    }
     drag = null;
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
   };
@@ -265,7 +318,7 @@ export function GraphCanvas(props: {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={(event) => onPointerUp(event, true)}
         onPointerLeave={() => setHovered(null)}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -278,10 +331,6 @@ export function GraphCanvas(props: {
               pinned: positions.find((entry) => entry.id === node.id)?.pinned ?? false,
             });
           }
-        }}
-        onDblClick={(event) => {
-          const node = renderer?.hitTest(event.clientX, event.clientY);
-          if (node && node.kind !== "cluster" && node.kind !== "asset") props.onOpenPage(node.title);
         }}
         onWheel={(event) => {
           event.preventDefault();
@@ -303,8 +352,8 @@ export function GraphCanvas(props: {
           } else if (event.key === "+" || event.key === "=") renderer?.zoomBy(1.15);
           else if (event.key === "-") renderer?.zoomBy(0.87);
           else if (event.key.startsWith("Arrow")) renderer?.panBy(
-            event.key === "ArrowLeft" ? 40 : event.key === "ArrowRight" ? -40 : 0,
-            event.key === "ArrowUp" ? 40 : event.key === "ArrowDown" ? -40 : 0,
+            (event.key === "ArrowLeft" ? 40 : event.key === "ArrowRight" ? -40 : 0) * (event.shiftKey ? 3 : 1),
+            (event.key === "ArrowUp" ? 40 : event.key === "ArrowDown" ? -40 : 0) * (event.shiftKey ? 3 : 1),
           );
           else return;
           event.preventDefault();

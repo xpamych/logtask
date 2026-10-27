@@ -31,6 +31,7 @@ import { GraphView } from "~/components/graph/GraphView";
 import { GraphSettings } from "~/components/graph/GraphSettings";
 import { LocalGraph } from "~/components/graph/LocalGraph";
 import { todayJournalName } from "~/lib/text";
+import { homeViewFromSetting } from "~/lib/homeView";
 
 const RECENT_PAGES_KEY = "logtask:recentPages";
 
@@ -294,7 +295,6 @@ const App: Component = () => {
 
   const showGraphView = (id?: string) => {
     setGraphFocusId(id);
-    setPanelCollapsed(false);
     setRightTab("graphSettings");
     navigate({ kind: "graph" });
   };
@@ -303,12 +303,7 @@ const App: Component = () => {
     navigate({ kind: "settings", section });
 
   // домашний вид из настроек: кнопка «⌂» и стартовый экран графа
-  const homeViewOf = (s: Settings): View =>
-    s.homeView === "tasks"
-      ? { kind: "tasks" }
-      : s.homeView === "pages"
-        ? { kind: "pages" }
-        : { kind: "journal" };
+  const homeViewOf = (s: Settings): View => homeViewFromSetting(s.homeView);
 
   const showHome = () => navigate(homeViewOf(settings()));
 

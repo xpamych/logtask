@@ -9,15 +9,22 @@ export function createLayoutSaver(root: string, scope: string, save: SaveLayout)
 
   const drain = () => {
     if (active) return active;
-    active = (async () => {
+    const draining = (async () => {
       while (latest.length > 0) {
         const entries = latest;
         latest = [];
-        await save(root, scope, entries).catch((error) => console.error("сохранение layout:", error));
+        await save(root, scope, entries).catch((error) => {
+          console.error("сохранение layout:", error);
+          throw error;
+        });
       }
-      active = null;
     })();
-    return active;
+    active = draining;
+    const reset = () => {
+      if (active === draining) active = null;
+    };
+    void draining.then(reset, reset);
+    return draining;
   };
   const flush = () => {
     clearTimeout(timer);
@@ -29,11 +36,11 @@ export function createLayoutSaver(root: string, scope: string, save: SaveLayout)
     schedule(entries: GraphLayoutEntry[]) {
       latest = entries;
       clearTimeout(timer);
-      timer = setTimeout(flush, 500);
+      timer = setTimeout(() => { void flush().catch(() => {}); }, 500);
     },
     flush,
     dispose() {
-      void flush();
+      void flush().catch(() => {});
     },
   };
 }

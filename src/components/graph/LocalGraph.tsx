@@ -77,10 +77,12 @@ export function LocalGraph(props: {
             <GraphCanvas
               scene={current()}
               settings={props.settings}
+              graphRoot={props.graphRoot}
               scope={`local:${root()}`}
               initialCamera={loadCamera(root(), "local")}
               onOpenPage={props.onOpenPage}
               onPositions={(entries) => saver.schedule(entries)}
+              onLayoutFlush={() => saver.flush()}
               onCameraChange={(camera) => saveCamera(root(), "local", camera)}
               onSelectNode={(id) => {
                 if (!id) return;

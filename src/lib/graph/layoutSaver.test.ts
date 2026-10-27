@@ -25,3 +25,18 @@ test("записи layout сериализуются, промежуточные
   assert.deepEqual(calls, [1, 3]);
   saver.dispose();
 });
+
+test("flush отклоняется после ошибки записи и позволяет повторить сохранение", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const calls: number[] = [];
+  const saver = createLayoutSaver("root", "global", async (_root, _scope, entries) => {
+    calls.push(entries[0].x);
+    if (calls.length === 1) throw new Error("disk full");
+  });
+  saver.schedule([{ id: "A", x: 1, y: 0, pinned: false }]);
+  await assert.rejects(saver.flush(), /disk full/);
+  saver.schedule([{ id: "A", x: 2, y: 0, pinned: false }]);
+  await saver.flush();
+  assert.deepEqual(calls, [1, 2]);
+  saver.dispose();
+});

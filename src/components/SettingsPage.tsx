@@ -23,6 +23,7 @@ const HOME_VIEWS = [
   { value: "journal", label: "Журналы" },
   { value: "tasks", label: "Задачи" },
   { value: "pages", label: "Все страницы" },
+  { value: "graph", label: "Граф" },
 ];
 
 // кегль в пунктах: база 14px при fontScale 1.0, 1pt = 4/3 px → pt = scale * 10.5

@@ -4,7 +4,7 @@ import { visualGraphSnapshot } from "~/lib/api";
 import { LatestSnapshotLoader } from "~/lib/graph/live";
 import { createVisualLayoutSaver } from "~/lib/graph/visualLayoutSaver";
 import { loadCamera, loadExpanded, saveCamera, saveExpanded } from "~/lib/graph/persistence";
-import { qualityForSettings } from "~/lib/graph/performance";
+import { qualityForSettings, sceneSettingsForQuality } from "~/lib/graph/performance";
 import { clusterGraph, filterGraph, projectPathToClusters } from "~/lib/graph/model";
 import { refreshGraphSelection, selectGraphNode, selectionHighlight } from "~/lib/graph/selection";
 import type { GraphSelection } from "~/lib/graph/selection";
@@ -26,6 +26,7 @@ export function GraphView(props: {
   const [selection, setSelection] = createSignal<GraphSelection | null>(null);
   const [quality, setQuality] = createSignal(0);
   const effectiveSettings = createMemo(() => qualityForSettings(props.settings, quality()));
+  const sceneQuality = createMemo(() => quality() >= 4 ? 4 : 0);
   let saver = createVisualLayoutSaver(props.graphRoot, "global");
   const loader = new LatestSnapshotLoader(visualGraphSnapshot, (result) => {
     setError(null);
@@ -37,7 +38,8 @@ export function GraphView(props: {
   });
   const scene = createMemo(() => {
     const current = filtered();
-    return current ? clusterGraph(current, effectiveSettings(), expanded()) : null;
+    const settings = sceneSettingsForQuality(props.settings, sceneQuality());
+    return current ? clusterGraph(current, settings, expanded()) : null;
   });
   const highlight = createMemo(() => {
     const current = filtered();
@@ -124,6 +126,7 @@ export function GraphView(props: {
             <GraphCanvas
               scene={current()}
               settings={effectiveSettings()}
+              graphRoot={props.graphRoot}
               scope="global"
               focusId={props.initialSelectedId}
               resetLayoutKey={props.layoutResetKey}
@@ -132,6 +135,7 @@ export function GraphView(props: {
               onOpenPage={props.onOpenPage}
               onOpenLocal={props.onOpenLocal}
               onPositions={saver.schedule}
+              onLayoutFlush={saver.flush}
               onCameraChange={(camera) => saveCamera(props.graphRoot, "global", camera)}
               onQuality={setQuality}
               onSelectNode={select}

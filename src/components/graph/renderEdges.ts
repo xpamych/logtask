@@ -5,15 +5,15 @@ export function indexSceneNodes(nodes: SceneNode[]): Map<string, SceneNode> {
   return new Map(nodes.map((node) => [node.id, node]));
 }
 
-export function shouldShowNodeLabel(
+export function nodeLabelOpacity(
   nodeCount: number,
   zoom: number,
   threshold: number,
   priority: boolean,
-): boolean {
-  if (priority) return true;
-  if (nodeCount > 100 && zoom < 1.5) return false;
-  return zoom >= threshold;
+): number {
+  if (priority) return 1;
+  if (nodeCount > 100 && zoom < 1.5) return 0;
+  return Math.max(0, Math.min(1, (zoom - threshold) / 0.5));
 }
 
 export interface RenderEdge {
@@ -44,4 +44,16 @@ export function mergeRenderEdges(edges: GraphEdgeDto[]): RenderEdge[] {
     merged.set(key, current);
   }
   return [...merged.values()];
+}
+
+export function createRenderEdgeCache() {
+  let source: GraphEdgeDto[] | null = null;
+  let cached: RenderEdge[] = [];
+  return (edges: GraphEdgeDto[]): RenderEdge[] => {
+    if (edges !== source) {
+      source = edges;
+      cached = mergeRenderEdges(edges);
+    }
+    return cached;
+  };
 }

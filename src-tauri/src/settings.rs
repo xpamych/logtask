@@ -73,15 +73,15 @@ impl Default for GraphViewSettings {
             hide_orphans: false,
             exclusions: Vec::new(),
             groups: Vec::new(),
-            arrows: true,
+            arrows: false,
             node_scale: 1.0,
             edge_scale: 1.0,
             label_threshold: 0.35,
-            center_force: 0.08,
-            repel_force: 120.0,
-            link_force: 0.6,
-            link_distance: 90.0,
-            alpha_decay: 0.03,
+            center_force: 0.12,
+            repel_force: 45.0,
+            link_force: 0.75,
+            link_distance: 35.0,
+            alpha_decay: 0.025,
             local_depth: 1,
             journal_aggregation: "month".into(),
             cluster_threshold: 20,
@@ -116,7 +116,7 @@ pub struct Settings {
     /// true — системная рамка окна вместо встроенных кнопок управления
     #[serde(default)]
     pub system_titlebar: bool,
-    /// домашний вид: "journal" | "tasks" | "pages" (кнопка ⌂ и старт приложения)
+    /// домашний вид: "journal" | "tasks" | "pages" | "graph" (кнопка ⌂ и старт приложения)
     #[serde(default = "default_home_view")]
     pub home_view: String,
     /// статусы канбана: набор/цвета/порядок
@@ -307,9 +307,15 @@ mod tests {
         assert!(!loaded.graph_view.show_assets);
         assert!(loaded.graph_view.only_existing);
         assert!(!loaded.graph_view.hide_orphans);
+        assert!(!loaded.graph_view.arrows);
         assert_eq!(loaded.graph_view.local_depth, 1);
         assert_eq!(loaded.graph_view.journal_aggregation, "month");
         assert_eq!(loaded.graph_view.cluster_threshold, 20);
+        assert_eq!(loaded.graph_view.center_force, 0.12);
+        assert_eq!(loaded.graph_view.repel_force, 45.0);
+        assert_eq!(loaded.graph_view.link_force, 0.75);
+        assert_eq!(loaded.graph_view.link_distance, 35.0);
+        assert_eq!(loaded.graph_view.alpha_decay, 0.025);
     }
 
     #[test]
@@ -317,6 +323,7 @@ mod tests {
         let dir = std::env::temp_dir().join("logtask_settings_graph_roundtrip");
         let _ = std::fs::remove_dir_all(&dir);
         let mut settings = Settings::default();
+        settings.home_view = "graph".into();
         settings.graph_view.search = "проект".into();
         settings.graph_view.local_depth = 3;
         settings.graph_view.repel_force = 180.0;
@@ -329,6 +336,7 @@ mod tests {
         });
         save(&dir, &settings).unwrap();
         let loaded = load(&dir);
+        assert_eq!(loaded.home_view, "graph");
         assert_eq!(loaded.graph_view.search, "проект");
         assert_eq!(loaded.graph_view.local_depth, 3);
         assert_eq!(loaded.graph_view.repel_force, 180.0);

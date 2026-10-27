@@ -1,8 +1,8 @@
-import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force";
-import type { SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
+import { forceCollide, forceLink, forceManyBody, forceSimulation } from "d3-force";
+import type { Force, SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
 import type { GraphViewSettings } from "~/lib/api";
-import type { LayoutRequest } from "./layout";
-import { componentTargets, connectedComponents, mergeLayout, normalizeMainComponent, packLayout, stablePosition, unpackLayout } from "./layout";
+import type { LayoutRequest } from "./layout.ts";
+import { componentTargetsForComponents, connectedComponents, linkedSceneRadius, mergeLayout, normalizeMainComponentInPlace, packLayout, stablePosition, unpackLayout } from "./layout.ts";
 
 interface WorkerNode extends SimulationNodeDatum {
   id: string;
@@ -22,24 +22,74 @@ function random() {
   return randomState / 4294967296;
 }
 
-let components: string[][] = [];
+let components: WorkerNode[][] = [];
 let targets = new Map<string, { x: number; y: number }>();
+let linkedNodeIds = new Set<string>();
+let centeredNodeIds = new Set<string>();
+let orphanRadius = 120;
+
+function forceMainCenter(strength: number): Force<WorkerNode, undefined> {
+  let initializedNodes: WorkerNode[] = [];
+  const force = (_alpha: number) => {
+    let count = 0;
+    let sumX = 0;
+    let sumY = 0;
+    for (const node of initializedNodes) {
+      if (!centeredNodeIds.has(node.id)) continue;
+      count += 1;
+      sumX += node.x ?? 0;
+      sumY += node.y ?? 0;
+    }
+    if (count === 0) return;
+    const shiftX = (sumX / count) * strength;
+    const shiftY = (sumY / count) * strength;
+    for (const node of initializedNodes) {
+      if (!centeredNodeIds.has(node.id)) continue;
+      node.x = (node.x ?? 0) - shiftX;
+      node.y = (node.y ?? 0) - shiftY;
+    }
+  };
+  force.initialize = (nodes: WorkerNode[]) => {
+    initializedNodes = nodes;
+  };
+  return force;
+}
+
+function updateComponentTargets(smooth: boolean) {
+  const desiredRadius = linkedSceneRadius(components) + 120;
+  orphanRadius = smooth ? orphanRadius + (desiredRadius - orphanRadius) * 0.15 : desiredRadius;
+  targets = componentTargetsForComponents(
+    components.map((component) => component.map((node) => node.id)),
+    orphanRadius,
+  );
+}
 
 function applyComponentTargets() {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  for (const component of components) {
-    const target = targets.get(component[0]);
+  const startIndex = components[0]?.length === 1 ? 0 : 1;
+  for (let index = startIndex; index < components.length; index += 1) {
+    const component = components[index];
+    if (component.length === 0) continue;
+    const target = targets.get(component[0].id);
     if (!target) continue;
-    const members = component
-      .map((id) => byId.get(id))
-      .filter((node): node is WorkerNode => Boolean(node));
-    if (members.length === 0) continue;
-    const normalized = normalizeMainComponent(members, Math.max(12, Math.sqrt(members.length) * 5));
-    const centerX = normalized.reduce((sum, node) => sum + (node.x ?? 0), 0) / normalized.length;
-    const centerY = normalized.reduce((sum, node) => sum + (node.y ?? 0), 0) / normalized.length;
-    for (const node of normalized) {
+    const pinnedPositions = component
+      .filter((node) => node.fx !== undefined && node.fx !== null)
+      .map((node) => ({ node, x: node.x, y: node.y }));
+    if (component.length > 1) {
+      normalizeMainComponentInPlace(component, Math.max(12, Math.sqrt(component.length) * 5));
+    }
+    const centerX = component.reduce((sum, node) => sum + (node.x ?? 0), 0) / component.length;
+    const centerY = component.reduce((sum, node) => sum + (node.y ?? 0), 0) / component.length;
+    for (const node of component) {
       node.x = (node.x ?? 0) + target.x - centerX;
       node.y = (node.y ?? 0) + target.y - centerY;
+      if (component.length === 1) {
+        node.vx = 0;
+        node.vy = 0;
+      }
+    }
+    for (const { node, x, y } of pinnedPositions) {
+      node.x = x;
+      node.y = y;
     }
   }
 }
@@ -63,6 +113,7 @@ function postPositions() {
 function tick() {
   if (!simulation || paused) return;
   for (let index = 0; index < 8; index += 1) simulation.tick();
+  updateComponentTargets(true);
   applyComponentTargets();
   postPositions();
   if (simulation.alpha() < simulation.alphaMin()) {
@@ -83,17 +134,27 @@ function restart(alpha = 0.7) {
 
 function applyForces() {
   if (!simulation || !settings) return;
+  const currentSettings = settings;
   simulation
-    .force("charge", forceManyBody<WorkerNode>().strength(-settings.repelForce))
+    .force(
+      "charge",
+      forceManyBody<WorkerNode>().strength((node) =>
+        linkedNodeIds.has(node.id) ? -currentSettings.repelForce : 0
+      ),
+    )
+    .force(
+      "collide",
+      forceCollide<WorkerNode>().radius((node) => linkedNodeIds.has(node.id) ? 5 : 0),
+    )
     .force(
       "link",
       forceLink<WorkerNode, SimulationLinkDatum<WorkerNode>>(links)
         .id((node) => node.id)
-        .distance(settings.linkDistance)
-        .strength(settings.linkForce),
+        .distance(currentSettings.linkDistance)
+        .strength(currentSettings.linkForce),
     )
-    .force("center", forceCenter<WorkerNode>(0, 0).strength(settings.centerForce));
-  simulation.alphaDecay(settings.alphaDecay).randomSource(random);
+    .force("center", forceMainCenter(currentSettings.centerForce));
+  simulation.alphaDecay(currentSettings.alphaDecay).randomSource(random);
 }
 
 self.onmessage = (event: MessageEvent<LayoutRequest>) => {
@@ -149,9 +210,23 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     links = (message.edges ?? []).map((edge) => ({ ...edge }));
     simulation?.stop();
     simulation = forceSimulation(nodes).stop();
+    const componentIds = connectedComponents(message.ids, message.edges ?? []);
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    components = componentIds.map((component) =>
+      component
+        .map((id) => byId.get(id))
+        .filter((node): node is WorkerNode => Boolean(node)),
+    );
+    linkedNodeIds = new Set(
+      components
+        .filter((component) => component.length > 1)
+        .flatMap((component) => component.map((node) => node.id)),
+    );
+    centeredNodeIds = new Set(
+      components[0]?.length > 1 ? components[0].map((node) => node.id) : [],
+    );
     applyForces();
-    components = connectedComponents(message.ids, message.edges ?? []);
-    targets = componentTargets(message.ids, message.edges ?? []);
+    updateComponentTargets(false);
     applyComponentTargets();
     postPositions();
     restart(message.type === "update" ? 0.2 : 0.7);

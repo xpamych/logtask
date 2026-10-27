@@ -2,7 +2,8 @@ import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { stablePosition } from "~/lib/graph/layout";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
-import { indexSceneNodes, mergeRenderEdges, shouldShowNodeLabel } from "./renderEdges";
+import { createRenderEdgeCache, indexSceneNodes, nodeLabelOpacity } from "./renderEdges";
+import type { RenderEdge } from "./renderEdges";
 
 interface Camera {
   x: number;
@@ -56,8 +57,14 @@ export class WebGlRenderer {
   private gl: WebGL2RenderingContext;
   private program: WebGLProgram;
   private buffer: WebGLBuffer;
+  private positionLocation: number;
+  private vertexColorLocation: number;
+  private resolutionLocation: WebGLUniformLocation | null;
+  private cameraLocation: WebGLUniformLocation | null;
   private scene: SceneGraph = { nodes: [], edges: [], revision: 0 };
   private nodeById = new Map<string, SceneNode>();
+  private cachedRenderEdges = createRenderEdgeCache();
+  private renderEdges: RenderEdge[] = [];
   private settings: GraphViewSettings | null = null;
   private positions = new Map<string, { x: number; y: number }>();
   private camera: Camera = { x: 0, y: 0, zoom: 1 };
@@ -84,6 +91,10 @@ export class WebGlRenderer {
     if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
       throw new Error(gl.getProgramInfoLog(this.program) ?? "ошибка программы WebGL");
     }
+    this.positionLocation = gl.getAttribLocation(this.program, "a_position");
+    this.vertexColorLocation = gl.getAttribLocation(this.program, "a_color");
+    this.resolutionLocation = gl.getUniformLocation(this.program, "u_resolution");
+    this.cameraLocation = gl.getUniformLocation(this.program, "u_camera");
     this.buffer = gl.createBuffer()!;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -95,6 +106,7 @@ export class WebGlRenderer {
   setScene(scene: SceneGraph, settings: GraphViewSettings) {
     this.scene = scene;
     this.nodeById = indexSceneNodes(scene.nodes);
+    this.renderEdges = this.cachedRenderEdges(scene.edges);
     this.settings = settings;
     const ids = new Set(scene.nodes.map((node) => node.id));
     this.positions.forEach((_, id) => {
@@ -144,7 +156,7 @@ export class WebGlRenderer {
   }
 
   private nodeRadius(node: SceneNode) {
-    return (5 + Math.sqrt(node.degree) * 1.8 + (node.clusterMembers ? 4 : 0)) *
+    return (3 + Math.sqrt(node.degree) * 1.2 + (node.clusterMembers ? 4 : 0)) *
       (this.settings?.nodeScale ?? 1);
   }
 
@@ -248,7 +260,7 @@ export class WebGlRenderer {
     const dy = by - ay;
     const length = Math.hypot(dx, dy);
     if (length < 0.0001) return;
-    const width = 0.55 * (this.settings?.edgeScale ?? 1);
+    const width = 0.35 * (this.settings?.edgeScale ?? 1);
     const ox = (-dy / length) * width;
     const oy = (dx / length) * width;
     this.triangle(vertices, [ax + ox, ay + oy], [ax - ox, ay - oy], [bx + ox, by + oy], rgba);
@@ -283,15 +295,13 @@ export class WebGlRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.program);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-    const position = gl.getAttribLocation(this.program, "a_position");
-    const vertexColor = gl.getAttribLocation(this.program, "a_color");
-    gl.enableVertexAttribArray(position);
-    gl.enableVertexAttribArray(vertexColor);
-    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 24, 0);
-    gl.vertexAttribPointer(vertexColor, 4, gl.FLOAT, false, 24, 8);
-    gl.uniform2f(gl.getUniformLocation(this.program, "u_resolution"), this.canvas.width, this.canvas.height);
+    gl.enableVertexAttribArray(this.positionLocation);
+    gl.enableVertexAttribArray(this.vertexColorLocation);
+    gl.vertexAttribPointer(this.positionLocation, 2, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(this.vertexColorLocation, 4, gl.FLOAT, false, 24, 8);
+    gl.uniform2f(this.resolutionLocation, this.canvas.width, this.canvas.height);
     gl.uniform3f(
-      gl.getUniformLocation(this.program, "u_camera"),
+      this.cameraLocation,
       this.camera.x,
       this.camera.y,
       this.camera.zoom * (window.devicePixelRatio || 1),
@@ -302,7 +312,7 @@ export class WebGlRenderer {
     const edgeColor = color(styles.getPropertyValue("--graph-edge") || "#536575", 0.78);
     const lines: number[] = [];
     const arrows: number[] = [];
-    for (const edge of mergeRenderEdges(this.scene.edges)) {
+    for (const edge of this.renderEdges) {
       const source = this.positions.get(edge.source);
       const target = this.positions.get(edge.target);
       if (!source || !target) continue;
@@ -378,15 +388,17 @@ export class WebGlRenderer {
     let count = 0;
     for (const node of this.scene.nodes) {
       const priority = activeHighlight.has(node.id);
-      if (!shouldShowNodeLabel(this.scene.nodes.length, this.camera.zoom, this.settings.labelThreshold, priority)) continue;
-      if (count >= 200 && !priority) continue;
+      const opacity = nodeLabelOpacity(this.scene.nodes.length, this.camera.zoom, this.settings.labelThreshold, priority);
+      if (opacity === 0 || (count >= 200 && !priority)) continue;
       const point = this.positions.get(node.id)!;
       const screen = this.worldToScreen(point.x, point.y);
       if (screen.x < -100 || screen.y < -30 || screen.x > this.canvas.clientWidth + 100 || screen.y > this.canvas.clientHeight + 30) continue;
       const title = node.clusterMembers ? `${node.title} (${node.clusterMembers.length})` : node.title;
+      ctx.globalAlpha = opacity;
       ctx.fillText(title.length > 42 ? `${title.slice(0, 41)}…` : title, screen.x, screen.y + this.nodeRadius(node) + 4);
-      count += 1;
+      if (!priority) count += 1;
     }
+    ctx.globalAlpha = 1;
   }
 
   dispose() {

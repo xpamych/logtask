@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_GRAPH_VIEW_SETTINGS } from "./defaults.ts";
-import { QualityController, qualityForSettings } from "./performance.ts";
+import * as graphPerformance from "./performance.ts";
+
+const { QualityController, qualityForSettings } = graphPerformance;
 
 test("контроллер качества снижает уровень с гистерезисом и восстанавливает", () => {
   const controller = new QualityController();
@@ -22,4 +24,17 @@ test("упрощения не перезаписывают ручные наст
   assert.equal(qualityForSettings(settings, 3).arrows, false);
   assert.equal(qualityForSettings(settings, 4).clusterThreshold, 20);
   assert.equal(settings.labelThreshold, 0.2);
+});
+
+test("настройки сцены адаптируют только порог кластеризации", () => {
+  const settings = { ...DEFAULT_GRAPH_VIEW_SETTINGS, clusterThreshold: 7 };
+  const original = { ...settings };
+  for (let level = 0; level <= 3; level += 1) {
+    assert.deepEqual(graphPerformance.sceneSettingsForQuality(settings, level), settings);
+  }
+  assert.deepEqual(graphPerformance.sceneSettingsForQuality(settings, 4), {
+    ...settings,
+    clusterThreshold: 20,
+  });
+  assert.deepEqual(settings, original);
 });
