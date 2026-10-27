@@ -68,6 +68,27 @@ export function componentTargets(
   return targets;
 }
 
+export function normalizeMainComponent<T extends { x?: number; y?: number }>(
+  entries: T[],
+  targetRadius: number,
+): T[] {
+  if (entries.length === 0) return entries;
+  const centerX = entries.reduce((sum, entry) => sum + (entry.x ?? 0), 0) / entries.length;
+  const centerY = entries.reduce((sum, entry) => sum + (entry.y ?? 0), 0) / entries.length;
+  const currentRadius = Math.max(...entries.map((entry) =>
+    Math.hypot((entry.x ?? 0) - centerX, (entry.y ?? 0) - centerY),
+  ));
+  if (currentRadius < 0.0001) {
+    return entries.map((entry) => ({ ...entry, x: 0, y: 0 }));
+  }
+  const scale = targetRadius / currentRadius;
+  return entries.map((entry) => ({
+    ...entry,
+    x: ((entry.x ?? 0) - centerX) * scale,
+    y: ((entry.y ?? 0) - centerY) * scale,
+  }));
+}
+
 export function mergeLayout(
   ids: string[],
   saved: GraphLayoutEntry[],

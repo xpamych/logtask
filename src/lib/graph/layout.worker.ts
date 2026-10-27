@@ -2,7 +2,7 @@ import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force
 import type { SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
 import type { GraphViewSettings } from "~/lib/api";
 import type { LayoutRequest } from "./layout";
-import { componentTargets, connectedComponents, mergeLayout, packLayout, stablePosition, unpackLayout } from "./layout";
+import { componentTargets, connectedComponents, mergeLayout, normalizeMainComponent, packLayout, stablePosition, unpackLayout } from "./layout";
 
 interface WorkerNode extends SimulationNodeDatum {
   id: string;
@@ -59,9 +59,15 @@ function postPositions() {
   );
 }
 
+function normalizeMain() {
+  const count = components[0]?.length ?? 1;
+  nodes = normalizeMainComponent(nodes, Math.max(180, Math.sqrt(count) * 14));
+}
+
 function tick() {
   if (!simulation || paused) return;
   for (let index = 0; index < 8; index += 1) simulation.tick();
+  normalizeMain();
   applyComponentTargets();
   postPositions();
   if (simulation.alpha() < simulation.alphaMin()) {
@@ -151,6 +157,7 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     applyForces();
     components = connectedComponents(message.ids, message.edges ?? []);
     targets = componentTargets(message.ids, message.edges ?? []);
+    normalizeMain();
     applyComponentTargets();
     postPositions();
     restart(message.type === "update" ? 0.2 : 0.7);

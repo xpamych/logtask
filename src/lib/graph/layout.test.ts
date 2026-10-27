@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { componentTargets, mergeLayout, packLayout, stablePosition, unpackLayout } from "./layout.ts";
+import { componentTargets, mergeLayout, normalizeMainComponent, packLayout, stablePosition, unpackLayout } from "./layout.ts";
 
 test("стартовые координаты детерминированы и конечны", () => {
   const a = stablePosition("page:А");
@@ -68,4 +68,18 @@ test("сироты образуют кольцо вокруг связанных
   assert.equal(radius("F"), radius("G"));
   assert.equal(radius("G"), radius("H"));
   assert(radius("F") > radius("A"));
+});
+
+test("основная компонента центрируется и получает ограниченный радиус", () => {
+  const result = normalizeMainComponent(
+    [
+      { id: "A", x: 10, y: 0, pinned: false },
+      { id: "B", x: 30, y: 0, pinned: false },
+    ],
+    25,
+  );
+  assert.deepEqual(result, [
+    { id: "A", x: -25, y: 0, pinned: false },
+    { id: "B", x: 25, y: 0, pinned: false },
+  ]);
 });
