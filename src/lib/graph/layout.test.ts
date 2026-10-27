@@ -51,3 +51,21 @@ test("малые компоненты упаковываются рядом с �
     assert(Math.abs(center.x) <= 600 && Math.abs(center.y) <= 600);
   }
 });
+
+test("сироты образуют кольцо вокруг связанных компонент", () => {
+  const targets = componentTargets(
+    ["A", "B", "C", "D", "E", "F", "G", "H"],
+    [
+      { source: "A", target: "B" },
+      { source: "C", target: "D" },
+      { source: "D", target: "E" },
+    ],
+  );
+  const radius = (id: string) => {
+    const point = targets.get(id)!;
+    return Math.hypot(point.x, point.y);
+  };
+  assert.equal(radius("F"), radius("G"));
+  assert.equal(radius("G"), radius("H"));
+  assert(radius("F") > radius("A"));
+});

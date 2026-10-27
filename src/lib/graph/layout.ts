@@ -48,13 +48,21 @@ export function componentTargets(
 ): Map<string, { x: number; y: number }> {
   const components = connectedComponents(ids, edges);
   const targets = new Map<string, { x: number; y: number }>();
-  const otherCount = Math.max(0, components.length - 1);
-  const columns = Math.max(1, Math.ceil(Math.sqrt(otherCount)));
+  const mainCount = components[0]?.length ?? 1;
+  const innerRadius = Math.max(180, Math.sqrt(mainCount) * 14);
+  const outerRadius = innerRadius + 120;
+  const singleTotal = components.slice(1).filter((component) => component.length === 1).length;
+  let smallIndex = 0;
+  let singleIndex = 0;
   for (let index = 1; index < components.length; index += 1) {
-    const other = index - 1;
+    const singleton = components[index].length === 1;
+    const angle = singleton
+      ? (singleIndex++ * Math.PI * 2) / singleTotal
+      : smallIndex++ * 2.399963229728653;
+    const radius = singleton ? outerRadius : innerRadius * 0.8;
     targets.set(components[index][0], {
-      x: ((other % columns) - (columns - 1) / 2) * 260,
-      y: Math.floor(other / columns) * 220,
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
     });
   }
   return targets;
