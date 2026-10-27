@@ -2462,12 +2462,9 @@ textarea.push-body {
   height: 100%;
 }
 
-.graph-canvas {
-  cursor: grab;
-}
-
+.graph-canvas,
 .graph-canvas:active {
-  cursor: grabbing;
+  cursor: default;
 }
 
 .graph-canvas:focus-visible {
