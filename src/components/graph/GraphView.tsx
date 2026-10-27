@@ -17,7 +17,6 @@ export function GraphView(props: {
   onSettingsChange: (settings: GraphViewSettings) => void;
   onOpenPage: (name: string) => void;
   onOpenLocal: (name: string) => void;
-  onOpenSettings: () => void;
   initialSelectedId?: string;
   layoutResetKey?: number;
 }) {
@@ -115,7 +114,6 @@ export function GraphView(props: {
           </span>
         </div>
         <span class="graph-path-message" role="status">{selection()?.message}</span>
-        <button type="button" onClick={props.onOpenSettings}>Фильтры и настройки</button>
         <button type="button" onClick={() => setExpanded(new Set())} hidden={expanded().size === 0}>
           Свернуть группы
         </button>

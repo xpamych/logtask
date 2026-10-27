@@ -12,6 +12,54 @@ export function stablePosition(id: string): { x: number; y: number } {
   return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
 }
 
+export function connectedComponents(
+  ids: string[],
+  edges: { source: string; target: string }[],
+): string[][] {
+  const adjacency = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set());
+    if (!adjacency.has(edge.target)) adjacency.set(edge.target, new Set());
+    adjacency.get(edge.source)!.add(edge.target);
+    adjacency.get(edge.target)!.add(edge.source);
+  }
+  const remaining = new Set(ids);
+  const components: string[][] = [];
+  while (remaining.size > 0) {
+    const start = [...remaining].sort()[0];
+    const queue = [start];
+    const component: string[] = [];
+    remaining.delete(start);
+    for (let index = 0; index < queue.length; index += 1) {
+      const current = queue[index];
+      component.push(current);
+      for (const next of adjacency.get(current) ?? []) {
+        if (remaining.delete(next)) queue.push(next);
+      }
+    }
+    components.push(component.sort());
+  }
+  return components.sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]));
+}
+
+export function componentTargets(
+  ids: string[],
+  edges: { source: string; target: string }[],
+): Map<string, { x: number; y: number }> {
+  const components = connectedComponents(ids, edges);
+  const targets = new Map<string, { x: number; y: number }>();
+  const otherCount = Math.max(0, components.length - 1);
+  const columns = Math.max(1, Math.ceil(Math.sqrt(otherCount)));
+  for (let index = 1; index < components.length; index += 1) {
+    const other = index - 1;
+    targets.set(components[index][0], {
+      x: ((other % columns) - (columns - 1) / 2) * 260,
+      y: Math.floor(other / columns) * 220,
+    });
+  }
+  return targets;
+}
+
 export function mergeLayout(
   ids: string[],
   saved: GraphLayoutEntry[],

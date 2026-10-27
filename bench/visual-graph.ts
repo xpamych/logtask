@@ -10,7 +10,6 @@ render(
     onSettingsChange: () => undefined,
     onOpenPage: () => undefined,
     onOpenLocal: () => undefined,
-    onOpenSettings: () => undefined,
   }),
   document.getElementById("app")!,
 );

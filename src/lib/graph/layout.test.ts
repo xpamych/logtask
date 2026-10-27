@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeLayout, packLayout, stablePosition, unpackLayout } from "./layout.ts";
+import { componentTargets, mergeLayout, packLayout, stablePosition, unpackLayout } from "./layout.ts";
 
 test("стартовые координаты детерминированы и конечны", () => {
   const a = stablePosition("page:А");
@@ -28,4 +28,26 @@ test("координаты упаковываются в typed arrays без п�
   assert(packed.xy instanceof Float32Array);
   assert(packed.pinned instanceof Uint8Array);
   assert.deepEqual(unpackLayout(["A", "B"], packed), entries);
+});
+
+test("малые компоненты упаковываются рядом с основной", () => {
+  const targets = componentTargets(
+    ["A", "B", "C", "D", "E", "F"],
+    [
+      { source: "A", target: "B" },
+      { source: "C", target: "D" },
+      { source: "D", target: "E" },
+    ],
+  );
+  assert.equal(targets.has("C"), false);
+  assert.equal(targets.has("D"), false);
+  assert.equal(targets.has("E"), false);
+  assert.equal(targets.has("A"), true);
+  assert.equal(targets.has("F"), true);
+  assert.equal(targets.size, 2);
+  const centers = [...targets.values()];
+  assert.notDeepEqual(centers[0], centers[1]);
+  for (const center of centers) {
+    assert(Math.abs(center.x) <= 600 && Math.abs(center.y) <= 600);
+  }
 });

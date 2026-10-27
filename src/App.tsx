@@ -645,10 +645,6 @@ const App: Component = () => {
                           saveSettingsAuto({ ...settings(), graphView })
                         }
                         onOpenPage={openPage}
-                        onOpenSettings={() => {
-                          setPanelCollapsed(false);
-                          setRightTab("graphSettings");
-                        }}
                         onOpenLocal={(name) => {
                           openPage(name);
                           setRightTab("local");

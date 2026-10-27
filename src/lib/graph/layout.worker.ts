@@ -2,7 +2,7 @@ import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force
 import type { SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
 import type { GraphViewSettings } from "~/lib/api";
 import type { LayoutRequest } from "./layout";
-import { mergeLayout, packLayout, stablePosition, unpackLayout } from "./layout";
+import { componentTargets, connectedComponents, mergeLayout, packLayout, stablePosition, unpackLayout } from "./layout";
 
 interface WorkerNode extends SimulationNodeDatum {
   id: string;
@@ -20,6 +20,27 @@ let randomState = 1;
 function random() {
   randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
   return randomState / 4294967296;
+}
+
+let components: string[][] = [];
+let targets = new Map<string, { x: number; y: number }>();
+
+function applyComponentTargets() {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  for (const component of components) {
+    const target = targets.get(component[0]);
+    if (!target) continue;
+    const members = component
+      .map((id) => byId.get(id))
+      .filter((node): node is WorkerNode => Boolean(node));
+    if (members.length === 0) continue;
+    const centerX = members.reduce((sum, node) => sum + (node.x ?? 0), 0) / members.length;
+    const centerY = members.reduce((sum, node) => sum + (node.y ?? 0), 0) / members.length;
+    for (const node of members) {
+      node.x = (node.x ?? 0) + target.x - centerX;
+      node.y = (node.y ?? 0) + target.y - centerY;
+    }
+  }
 }
 
 function postPositions() {
@@ -41,6 +62,7 @@ function postPositions() {
 function tick() {
   if (!simulation || paused) return;
   for (let index = 0; index < 8; index += 1) simulation.tick();
+  applyComponentTargets();
   postPositions();
   if (simulation.alpha() < simulation.alphaMin()) {
     self.postMessage({ type: "settled", generation });
@@ -127,6 +149,9 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     simulation?.stop();
     simulation = forceSimulation(nodes).stop();
     applyForces();
+    components = connectedComponents(message.ids, message.edges ?? []);
+    targets = componentTargets(message.ids, message.edges ?? []);
+    applyComponentTargets();
     postPositions();
     restart(message.type === "update" ? 0.2 : 0.7);
   }
