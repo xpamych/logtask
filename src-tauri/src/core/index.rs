@@ -836,9 +836,9 @@ impl Graph {
     }
 
     /// Enter в редакторе: разбивает блок на два по позиции курсора.
-    /// `before` остаётся в текущем блоке, `after` уходит в новый блок-
-    /// сосед сразу под поддеревом текущего (как в Logseq); маркер статуса
-    /// наследуется, свойства и LOGBOOK остаются в верхнем блоке.
+    /// `before` остаётся в текущем блоке, `after` уходит в новый обычный
+    /// блок-сосед сразу под поддеревом текущего; статус, свойства и LOGBOOK
+    /// остаются только в верхнем блоке.
     /// Возвращает (страница, позиция нового блока в порядке документа).
     pub fn split_block(
         &mut self,
@@ -851,9 +851,9 @@ impl Graph {
             return Ok(None);
         };
 
-        let (parent, indent, indent_str, status) = {
+        let (parent, indent, indent_str) = {
             let b = &self.blocks[id];
-            (b.parent, b.indent, b.raw.indent_str.clone(), b.status)
+            (b.parent, b.indent, b.raw.indent_str.clone())
         };
 
         // верхний блок — текст до курсора (set_source парсит продолжения)
@@ -862,13 +862,8 @@ impl Graph {
         // новый блок-сосед с текстом после курсора
         let mut nb = super::serializer::new_block(String::new(), indent);
         nb.raw.indent_str = indent_str;
-        match status {
-            Some(s) => nb.set_status(s),
-            None => {
-                nb.status = None;
-                nb.raw.marker_str = String::new();
-            }
-        }
+        nb.status = None;
+        nb.raw.marker_str = String::new();
         nb.set_source(after);
         nb.parent = parent;
         let new_id = nb.id.expect("свежий uuid");

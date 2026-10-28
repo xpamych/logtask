@@ -1,0 +1,16 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]: "Интерактивно: 437 мс; p95: 83.3 мс; 10000 узлов · 25000 связей"
+  - region "Граф связей" [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "Граф связей" [level=1] [ref=e7]
+        - text: 10000 узлов · 25000 связей
+      - status
+    - generic [ref=e8]:
+      - application "Визуальный граф страниц. Стрелки перемещают камеру, Tab выбирает узлы, Enter подсвечивает" [ref=e9]
+      - generic [ref=e10]: "P0, page, связей: 5"
+      - generic "Управление масштабом" [ref=e11]:
+        - button "Приблизить" [ref=e12]: +
+        - button "Отдалить" [ref=e13]: −
+        - button "Вписать" [ref=e14]
+        - button "К выбранному" [ref=e15]

@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
-import { renderSourceMap } from "~/lib/text";
+import { clickCaretPosition, renderSourceMap } from "~/lib/text";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot } from "./StatusPrioDot";
@@ -180,7 +180,13 @@ export function BlockView(props: {
       const container = e.currentTarget as HTMLElement;
       const sel = window.getSelection();
       if (sel?.anchorNode && container.contains(sel.anchorNode)) {
-        clickPos = caretToSource(container, sel.anchorNode, sel.anchorOffset);
+        const visibleOffset = domOffset(container, sel.anchorNode, sel.anchorOffset);
+        clickPos = clickCaretPosition(
+          caretToSource(container, sel.anchorNode, sel.anchorOffset),
+          visibleOffset,
+          container.textContent?.length ?? 0,
+          b.source.length,
+        );
       }
     }
     // редактор правит блок целиком (как в Logseq): контент + продолжения
@@ -535,6 +541,7 @@ export function BlockView(props: {
         settings={props.settings}
         onStatus={(m) => props.onStatusChange?.(b.uuid, m)}
         onPriority={(p) => void onPriority(p)}
+        onMenu={(pos) => setMenu(pos)}
       />
       <div class="block-content">
         <Show

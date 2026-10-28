@@ -342,6 +342,15 @@ export function flatInline(input: string): FlatSegment[] {
  * видимый текст короче/длиннее исходного ([[page|label]], [txt](url)),
  * позиция внутри сегмента мапится пропорционально.
  */
+export function clickCaretPosition(
+  mapped: number,
+  visibleOffset: number,
+  visibleLength: number,
+  sourceLength: number,
+): number {
+  return visibleOffset >= visibleLength ? sourceLength : mapped;
+}
+
 export function renderSourceMap(input: string): number[] {
   const map: number[] = [];
   let rendered = 0;
