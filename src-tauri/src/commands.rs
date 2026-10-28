@@ -382,26 +382,41 @@ fn sorted_journals(graph: &Graph) -> Vec<String> {
     journals
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BacklinkDto {
+    pub uuid: uuid::Uuid,
+    pub page: String,
+    pub text: String,
+    pub task: bool,
+    pub status: Option<String>,
+}
+
+fn backlink_dtos(graph: &Graph, name: &str) -> Vec<BacklinkDto> {
+    graph
+        .backlinks_of(name)
+        .into_iter()
+        .filter_map(|(id, page)| {
+            graph.blocks.get(&id).map(|b| BacklinkDto {
+                uuid: id,
+                page,
+                text: b.content.trim_end().chars().take(120).collect(),
+                task: b.is_task(),
+                status: b.status.map(|s| s.to_marker().to_string()),
+            })
+        })
+        .collect()
+}
+
 /// Обратные ссылки на страницу
 #[tauri::command]
 pub fn backlinks_get(
     name: String,
     state: tauri::State<'_, AppState>,
-) -> Result<Vec<(String, String)>, String> {
+) -> Result<Vec<BacklinkDto>, String> {
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
-    let links = graph.backlinks_of(&name);
-    Ok(links
-        .into_iter()
-        .filter_map(|(id, page)| {
-            graph.blocks.get(&id).map(|b| {
-                (
-                    page,
-                    b.content.trim_end().chars().take(120).collect::<String>(),
-                )
-            })
-        })
-        .collect())
+    Ok(backlink_dtos(graph, &name))
 }
 
 /// Путь к графу по умолчанию: переменная окружения LOGTASK_GRAPH,
@@ -1915,7 +1930,37 @@ fn base64_encode(data: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{base64_encode, prev_journals_slice};
+    use super::{backlink_dtos, base64_encode, prev_journals_slice};
+
+    #[test]
+    fn backlink_dtos_include_task_metadata() {
+        let dir = std::env::temp_dir().join("logtask_backlink_dto_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::write(
+            dir.join("pages/Источник.md"),
+            "- обычная [[Заметка]]\n- DONE задача о [[Заметка]]\n",
+        )
+        .unwrap();
+        let mut graph = crate::core::model::Graph::default();
+        graph.index_dir(&dir).unwrap();
+
+        let links = backlink_dtos(&graph, "Заметка");
+        assert_eq!(links.len(), 2);
+        let plain = links.iter().find(|l| l.text == "обычная [[Заметка]]").unwrap();
+        assert_eq!(plain.page, "Источник");
+        assert!(!plain.task);
+        assert_eq!(plain.status, None);
+        assert!(graph.blocks.contains_key(&plain.uuid));
+        let task = links
+            .iter()
+            .find(|l| l.text == "задача о [[Заметка]]")
+            .unwrap();
+        assert_eq!(task.page, "Источник");
+        assert!(task.task);
+        assert_eq!(task.status.as_deref(), Some("DONE"));
+        assert!(graph.blocks.contains_key(&task.uuid));
+    }
 
     #[test]
     fn base64_rfc4648_vectors() {

@@ -178,8 +178,16 @@ export async function followLink(target: string): Promise<PageDto | null> {
   return invoke<PageDto | null>("follow_link", { target });
 }
 
-export async function backlinksGet(name: string): Promise<[string, string][]> {
-  return invoke<[string, string][]>("backlinks_get", { name });
+export interface BacklinkDto {
+  uuid: string;
+  page: string;
+  text: string;
+  task: boolean;
+  status: string | null;
+}
+
+export async function backlinksGet(name: string): Promise<BacklinkDto[]> {
+  return invoke<BacklinkDto[]>("backlinks_get", { name });
 }
 
 export async function pageList(): Promise<string[]> {
