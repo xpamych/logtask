@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
-import { clickCaretPosition, renderSourceMap } from "~/lib/text";
+import { clickCaretPosition, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
@@ -113,7 +113,7 @@ export function BlockView(props: {
     return r.toString().length;
   };
 
-  /** позиция каретки в extra-строках → смещение в b.source: в исходнике
+  /** позиция каретки в extra-строках → смещение в editorSource(b.source): в исходнике
    *  у extra-строк есть отступы, а между ними — строки свойств/логбука;
    *  каждую extra-строку матчим по тексту к её строке исходника */
   const extraToSource = (off: number): number => {
@@ -136,7 +136,7 @@ export function BlockView(props: {
     }
     // ищем строку исходника, соответствующую extra[lineIdx]: пропускаем
     // свойства/логбук/пустые, у Raw-строк в исходнике есть префикс-отступ
-    const srcLines = b.source.split("\n");
+    const srcLines = editorSource(b.source).split("\n");
     let extraIdx = 0;
     let lineStart = srcLines[0].length + 1;
     for (let j = 1; j < srcLines.length; j++) {
@@ -157,13 +157,13 @@ export function BlockView(props: {
       }
       lineStart += l.length + 1;
     }
-    return b.source.length;
+    return editorSource(b.source).length;
   };
 
   /** DOM-каретка после клика → смещение в редактируемом исходнике блока */
   const caretToSource = (container: HTMLElement, node: Node, offset: number): number => {
     // edit_source = [приоритет "[#X] "] + content + продолжения
-    const prioLen = /^\[#.\]\s*/.exec(b.source)?.[0].length ?? 0;
+    const prioLen = /^\[#.\]\s*/.exec(editorSource(b.source))?.[0].length ?? 0;
     const anchorEl =
       node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
     const extraEl = container.querySelector(".block-extra");
@@ -188,12 +188,12 @@ export function BlockView(props: {
           caretToSource(container, sel.anchorNode, sel.anchorOffset),
           visibleOffset,
           container.textContent?.length ?? 0,
-          b.source.length,
+          editorSource(b.source).length,
         );
       }
     }
     // редактор правит блок целиком (как в Logseq): контент + продолжения
-    setDraft(b.source);
+    setDraft(editorSource(b.source));
     setEditing(true);
     setEditingBlock(b.uuid);
     queueMicrotask(() => {
@@ -243,13 +243,13 @@ export function BlockView(props: {
     // Enter прячет textarea → WebKit шлёт blur → повторный save: пропускаем
     if (saving()) return;
     const text = draft().trim();
-    if (!text || text === b.source.trim()) {
+    if (!text || text === editorSource(b.source).trim()) {
       stopEdit();
       return;
     }
     setSaving(true);
     try {
-      await blockUpdateText(b.uuid, text);
+      await blockUpdateText(b.uuid, persistedSource(text));
       stopEdit();
       props.onChanged?.();
     } catch (e) {
@@ -261,7 +261,7 @@ export function BlockView(props: {
 
   const cancel = () => {
     stopEdit();
-    setDraft(b.source);
+    setDraft(editorSource(b.source));
   };
 
   // вход в редактирование по сигналу через pendingEdit: продолжение после
@@ -347,8 +347,8 @@ export function BlockView(props: {
   /// редактирование продолжается уже в новом блоке (курсор в начале)
   const splitBlock = async (start: number, end: number) => {
     const text = draft();
-    const before = text.slice(0, start);
-    const after = text.slice(end);
+    const before = persistedSource(text.slice(0, start));
+    const after = persistedSource(text.slice(end));
     try {
       const res = await blockSplit(b.uuid, before, after);
       if (res) {

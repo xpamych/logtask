@@ -1,7 +1,7 @@
 import { For, Show, createSignal, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { InlineSegment } from "~/lib/text";
-import { parseInline, splitMdBlocks } from "~/lib/text";
+import { parseInline, splitMdBlocks, unescapeLeadingDash } from "~/lib/text";
 import { faviconDataUrl, openExternal, webTitle } from "~/lib/api";
 import { AssetImage } from "./AssetImage";
 import { CodeBlock } from "./CodeBlock";
@@ -108,7 +108,7 @@ export function RichText(props: {
           case "highlight":
             return <mark class="md-highlight">{renderSegments(seg.children ?? [])}</mark>;
           default:
-            return seg.text;
+            return unescapeLeadingDash(seg.text);
         }
       }}
     </For>

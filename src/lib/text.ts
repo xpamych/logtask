@@ -6,6 +6,19 @@ export interface TextSegment {
   target?: string;
 }
 
+export function unescapeLeadingDash(text: string): string {
+  return text.replace(/^\\-(?=\s)/, "-");
+}
+
+export function editorSource(source: string): string {
+  return source.replace(/^\\-(?=\s)/gm, "-");
+}
+
+export function persistedSource(source: string): string {
+  const [first, ...rest] = source.split("\n");
+  return [first, ...rest.map((line) => line.replace(/^-(?=\s)/, "\\-"))].join("\n");
+}
+
 const LINK_RE = /\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g;
 // простые теги обрываются по той же пунктуации, что и в ядре
 // (src-tauri/src/core/parser.rs, extract_links)

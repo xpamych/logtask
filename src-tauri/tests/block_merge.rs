@@ -176,6 +176,19 @@ fn merge_becomes_trailing_line() {
 }
 
 #[test]
+fn merge_bullet_text_becomes_escaped_trailing_line() {
+    let (dir, mut g) = graph_with("bullet_text", "- Первый\n- - пункт\n");
+    let id = block_id(&g, "Тест", "- пункт");
+
+    g.merge_block_up(&id, &dir).unwrap();
+
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(text, "- Первый\n\\- пункт\n", "файл:\n{text}");
+    assert_single_block_after_reindex(&dir, "Тест", "Первый");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn merge_block_marker_becomes_text() {
     // Маркер склеиваемого блока не теряется: он становится обычным
     // текстом строки (ровно один пробел после маркера — из marker_str),

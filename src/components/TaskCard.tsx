@@ -10,6 +10,7 @@ import {
   taskSetQuadrant,
   taskSetStatus,
 } from "~/lib/api";
+import { editorSource, persistedSource } from "~/lib/text";
 import { fitTextarea } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
@@ -105,7 +106,7 @@ export function TaskCard(props: {
   };
 
   const startEdit = () => {
-    setDraft(t.source);
+    setDraft(editorSource(t.source));
     setEditing(true);
     queueMicrotask(() => {
       const el = textareaEl;
@@ -120,13 +121,13 @@ export function TaskCard(props: {
   const saveEdit = async () => {
     if (saving()) return;
     const text = draft().trim();
-    if (!text || text === t.source.trim()) {
+    if (!text || text === editorSource(t.source).trim()) {
       setEditing(false);
       return;
     }
     setSaving(true);
     try {
-      await blockUpdateText(t.uuid, text);
+      await blockUpdateText(t.uuid, persistedSource(text));
       setEditing(false);
       props.onChanged?.();
     } catch (e) {

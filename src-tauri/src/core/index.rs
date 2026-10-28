@@ -532,9 +532,14 @@ impl Graph {
             {
                 prev.raw.trailing.pop();
             }
+            let text = if line.starts_with("- ") {
+                format!("\\{line}")
+            } else {
+                line
+            };
             prev.raw.trailing.push(Trailing::Raw {
                 indent: cur_indent_str.clone(),
-                text: line,
+                text,
             });
             // остальные trailing-строки склеиваемого дописываются следом
             prev.raw.trailing.extend(cur_trailing);
