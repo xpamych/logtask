@@ -205,6 +205,7 @@ export interface LayoutRequest {
   x?: number;
   y?: number;
   pinned?: boolean;
+  alpha?: number;
 }
 
 export interface LayoutResponse {
@@ -235,10 +236,10 @@ export function startLayoutWorker(callbacks: LayoutCallbacks) {
     worker.postMessage({ ...message, generation } satisfies LayoutRequest, transfer);
   };
   return {
-    update: (ids: string[], edges: { source: string; target: string }[], positions: GraphLayoutEntry[], settings: GraphViewSettings) => {
+    update: (ids: string[], edges: { source: string; target: string }[], positions: GraphLayoutEntry[], settings: GraphViewSettings, alpha?: number) => {
       generation += 1;
       const packed = packLayout(positions);
-      send({ type: "update", ids, edges, positions: packed, settings }, [packed.xy.buffer, packed.pinned.buffer]);
+      send({ type: "update", ids, edges, positions: packed, settings, alpha }, [packed.xy.buffer, packed.pinned.buffer]);
     },
     params: (settings: GraphViewSettings) => send({ type: "params", settings }),
     drag: (id: string, x: number, y: number, pinned: boolean) =>

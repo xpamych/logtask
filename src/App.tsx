@@ -10,7 +10,6 @@ import {
   integrationsSync,
   pageList,
   pickGraphDir,
-  ping,
   settingsGet,
   settingsSave,
   visualGraphLayoutSave,
@@ -32,6 +31,7 @@ import { GraphSettings } from "~/components/graph/GraphSettings";
 import { LocalGraph } from "~/components/graph/LocalGraph";
 import { todayJournalName } from "~/lib/text";
 import { homeViewFromSetting } from "~/lib/homeView";
+import { loadGraphBootstrap } from "~/lib/startup";
 
 const RECENT_PAGES_KEY = "logtask:recentPages";
 
@@ -95,6 +95,7 @@ function saveCollapsed(key: string, v: boolean) {
 
 const App: Component = () => {
   const [summary, setSummary] = createSignal<GraphSummary | null>(null);
+  const [starting, setStarting] = createSignal(true);
   const [pages, setPages] = createSignal<string[]>([]);
   const [error, setError] = createSignal<string | null>(null);
   const [refreshKey, setRefreshKey] = createSignal(0);
@@ -371,18 +372,18 @@ const App: Component = () => {
 
   onMount(async () => {
     try {
-      await ping();
-      const s = await graphLoad();
-      setSummary(s);
-      setPages(await pageList());
-      const st = await settingsGet();
-      applySettings(st);
+      const { summary, pages, settings } = await loadGraphBootstrap(graphLoad, pageList, settingsGet);
+      setSummary(summary);
+      setPages(pages);
+      applySettings(settings);
       // стартовый вид — домашняя страница из настроек
-      applyView(homeViewOf(st));
+      applyView(homeViewOf(settings));
       void listenGraphChanged();
       void listenSyncEvents();
     } catch (e) {
       setError(String(e));
+    } finally {
+      setStarting(false);
     }
   });
 
@@ -479,6 +480,7 @@ const App: Component = () => {
 
   const openGraph = async (path: string) => {
     setError(null);
+    setStarting(true);
     try {
       // папка без journals/ и pages/ — предлагаем создать граф с нуля
       if (await graphNeedsScaffold(path)) {
@@ -488,19 +490,20 @@ const App: Component = () => {
         if (!ok) return;
         await graphCreate(path);
       }
-      const s = await graphLoad(path);
-      setSummary(s);
+      const { summary, pages, settings } = await loadGraphBootstrap(() => graphLoad(path), pageList, settingsGet);
+      setSummary(summary);
       setGraphClosed(false);
       setBackStack([]);
       setFwdStack([]);
-      const st = await settingsGet();
-      applySettings(st);
+      applySettings(settings);
       // стартовый вид графа — домашняя страница из настроек
-      applyView(homeViewOf(st));
-      setPages(await pageList());
+      applyView(homeViewOf(settings));
+      setPages(pages);
       setRefreshKey((k) => k + 1);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -550,8 +553,9 @@ const App: Component = () => {
     `${panelCollapsed() ? 0 : 5}px ${panelCollapsed() ? 0 : panelW()}px`;
 
   return (
-    <Show when={!graphNotChosen()} fallback={<Welcome onPick={pickGraph} onCreate={createGraph} />}>
-      <div class="shell">
+    <Show when={!starting()} fallback={<div class="placeholder">Загрузка графа…</div>}>
+      <Show when={!graphNotChosen()} fallback={<Welcome onPick={pickGraph} onCreate={createGraph} />}>
+        <div class="shell">
         <Topbar
           onOpenPage={openPage}
           sidebarCollapsed={sidebarCollapsed()}
@@ -722,6 +726,7 @@ const App: Component = () => {
           <div class="toast">{toast()}</div>
         </Show>
       </div>
+      </Show>
     </Show>
   );
 };

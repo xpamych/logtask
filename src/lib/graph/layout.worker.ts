@@ -125,11 +125,15 @@ function tick() {
 
 function restart(alpha = 0.7) {
   clearTimeout(timer);
-  if (!paused) {
-    simulation?.alpha(alpha).restart();
-    simulation?.stop();
-    timer = setTimeout(tick, 0);
+  simulation?.alpha(alpha);
+  if (alpha === 0) {
+    if (!paused) self.postMessage({ type: "settled", generation });
+    return;
   }
+  if (paused) return;
+  simulation?.restart();
+  simulation?.stop();
+  timer = setTimeout(tick, 0);
 }
 
 function applyForces() {
@@ -174,7 +178,9 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
   }
   if (message.type === "resume") {
     paused = false;
-    restart();
+    if (!simulation) return;
+    if (simulation.alpha() >= simulation.alphaMin()) restart();
+    else self.postMessage({ type: "settled", generation });
     return;
   }
   if (message.type === "params" && message.settings) {
@@ -229,7 +235,7 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     updateComponentTargets(false);
     applyComponentTargets();
     postPositions();
-    restart(message.type === "update" ? 0.2 : 0.7);
+    restart(message.alpha ?? (message.type === "update" ? 0.2 : 0.7));
   }
 };
 

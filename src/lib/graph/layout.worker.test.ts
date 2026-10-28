@@ -78,9 +78,17 @@ test("self-link не добавляет одиночную компоненту 
       },
       settings: DEFAULT_GRAPH_VIEW_SETTINGS,
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const a = position(worker.latest(), "A");
-    const b = position(worker.latest(), "B");
+    const deadline = Date.now() + 3000;
+    while (worker.latest()?.type !== "settled") {
+      if (Date.now() > deadline) {
+        worker.close();
+        assert.fail("симуляция не завершилась за 3 секунды");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const settled = worker.history().filter((response) => response.type === "positions").at(-1);
+    const a = position(settled, "A");
+    const b = position(settled, "B");
     worker.close();
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
@@ -115,4 +123,85 @@ test("сироты и вторичные компоненты не уводят 
   const maximum = Math.max(...distances);
   t.diagnostic(`maximum linked-center distance: ${maximum}; frames: ${responses.length}`);
   assert(maximum < 30, `центр связанной сцены сместился на ${maximum}`);
+});
+
+test("alpha = 0 показывает сохранённую раскладку одним кадром и завершается", async (t) => {
+  const worker = await createWorker("static-layout");
+  t.after(() => worker.close());
+  worker.send({
+    type: "update",
+    ids: ["A", "B"],
+    edges: [{ source: "A", target: "B" }],
+    positions: {
+      xy: new Float32Array([-20, 0, 20, 0]),
+      pinned: new Uint8Array(2),
+    },
+    settings: DEFAULT_GRAPH_VIEW_SETTINGS,
+    alpha: 0,
+  });
+
+  const initial = worker.history().find((response) => response.type === "positions");
+  assert.equal(worker.history().filter((response) => response.type === "positions").length, 1);
+  assert.deepEqual(position(initial, "A"), { x: -20, y: 0 });
+  assert.deepEqual(position(initial, "B"), { x: 20, y: 0 });
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(worker.history().filter((response) => response.type === "positions").length, 1);
+  assert.equal(worker.latest()?.type, "settled");
+  const settled = initial;
+  assert.deepEqual(position(settled, "A"), { x: -20, y: 0 });
+  assert.deepEqual(position(settled, "B"), { x: 20, y: 0 });
+
+  worker.send({ type: "resume" });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(worker.history().filter((response) => response.type === "positions").length, 1);
+  assert.equal(worker.latest()?.type, "settled");
+});
+
+test("статичный update во время pause не нагревается при resume", async (t) => {
+  const worker = await createWorker("paused-static-layout");
+  t.after(() => worker.close());
+  worker.send({ type: "pause" });
+  worker.send({
+    type: "update",
+    ids: ["A", "B"],
+    edges: [{ source: "A", target: "B" }],
+    positions: {
+      xy: new Float32Array([-20, 0, 20, 0]),
+      pinned: new Uint8Array(2),
+    },
+    settings: DEFAULT_GRAPH_VIEW_SETTINGS,
+    alpha: 0,
+  });
+  assert.equal(worker.history().filter((response) => response.type === "positions").length, 1);
+
+  worker.send({ type: "resume" });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(worker.history().filter((response) => response.type === "positions").length, 1);
+  assert.equal(worker.latest()?.type, "settled");
+});
+
+test("изменение параметров во время pause запускается после resume", async (t) => {
+  const worker = await createWorker("paused-params");
+  t.after(() => worker.close());
+  worker.send({
+    type: "update",
+    ids: ["A", "B"],
+    edges: [{ source: "A", target: "B" }],
+    positions: {
+      xy: new Float32Array([-20, 0, 20, 0]),
+      pinned: new Uint8Array(2),
+    },
+    settings: DEFAULT_GRAPH_VIEW_SETTINGS,
+    alpha: 0,
+  });
+  worker.send({ type: "pause" });
+  worker.send({
+    type: "params",
+    settings: { ...DEFAULT_GRAPH_VIEW_SETTINGS, linkDistance: 55 },
+  });
+  worker.send({ type: "resume" });
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert(worker.history().filter((response) => response.type === "positions").length > 1);
 });

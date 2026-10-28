@@ -54,7 +54,7 @@ export function GraphCanvas(props: {
     }
   };
 
-  const update = () => {
+  const update = (alpha?: number) => {
     if (!initialized || !worker) return;
     const ids = props.scene.nodes.map((node) => node.id);
     const base = positions.length > 0 ? positions : saved;
@@ -66,6 +66,7 @@ export function GraphCanvas(props: {
       props.scene.edges.map((edge) => ({ source: edge.source, target: edge.target })),
       entries,
       props.settings,
+      alpha,
     );
   };
 
@@ -120,10 +121,15 @@ export function GraphCanvas(props: {
       renderer.onFrameTime = reportFrame;
       if (props.initialCamera) renderer.setCamera(props.initialCamera);
       if (props.focusId) renderer.centerOn(props.focusId);
+      let firstPositions = true;
       worker = startLayoutWorker({
         onPositions: (entries) => {
           positions = entries;
           renderer?.setPositions(entries);
+          if (firstPositions) {
+            firstPositions = false;
+            performance.mark("logtask:graph-interactive");
+          }
           const fitMigration = migration.consumeFit();
           props.onPositions?.(entries);
           if (fitMigration) renderer?.fit();
@@ -137,14 +143,13 @@ export function GraphCanvas(props: {
         onSettled: () => props.onPositions?.(positions),
       });
       initialized = true;
-      performance.mark("logtask:graph-interactive");
       void visualGraphLayoutGet(props.scope)
         .catch(() => [])
         .then((entries) => {
           const migrate = needsLayoutMigration(props.graphRoot, props.scope);
           saved = migrate ? entries.filter((entry) => entry.pinned) : entries;
           if (migrate) migration.begin();
-          update();
+          update(!migrate && entries.length > 0 ? 0 : undefined);
           if (!migrate && entries.length === 0) renderer?.fit();
         });
     } catch (error) {
