@@ -2,7 +2,7 @@ import { forceCollide, forceLink, forceManyBody, forceSimulation } from "d3-forc
 import type { Force, SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
 import type { GraphViewSettings } from "~/lib/api";
 import type { LayoutRequest } from "./layout.ts";
-import { componentTargetsForComponents, connectedComponents, linkedSceneRadius, mergeLayout, normalizeMainComponentInPlace, packLayout, stablePosition, unpackLayout } from "./layout.ts";
+import { componentTargetsForComponents, connectedComponents, linkedSceneRadius, mergeLayout, normalizeMainComponentInPlace, packLayout, separateGraphNodes, stablePosition, unpackLayout } from "./layout.ts";
 
 interface WorkerNode extends SimulationNodeDatum {
   id: string;
@@ -27,6 +27,7 @@ let targets = new Map<string, { x: number; y: number }>();
 let linkedNodeIds = new Set<string>();
 let centeredNodeIds = new Set<string>();
 let orphanRadius = 120;
+let nodeRadii = new Map<string, number>();
 
 function forceMainCenter(strength: number): Force<WorkerNode, undefined> {
   let initializedNodes: WorkerNode[] = [];
@@ -95,6 +96,7 @@ function applyComponentTargets() {
 }
 
 function postPositions() {
+  separateGraphNodes(nodes, nodeRadii);
   const entries = nodes.map((node) => ({
     id: node.id,
     x: Number.isFinite(node.x) ? node.x! : stablePosition(node.id).x,
@@ -148,7 +150,9 @@ function applyForces() {
     )
     .force(
       "collide",
-      forceCollide<WorkerNode>().radius((node) => linkedNodeIds.has(node.id) ? 5 : 0),
+      forceCollide<WorkerNode>()
+        .radius((node) => linkedNodeIds.has(node.id) ? (nodeRadii.get(node.id) ?? 5) + 1 : 0)
+        .iterations(2),
     )
     .force(
       "link",
@@ -231,6 +235,7 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     centeredNodeIds = new Set(
       components[0]?.length > 1 ? components[0].map((node) => node.id) : [],
     );
+    nodeRadii = new Map(message.ids.map((id, index) => [id, message.radii?.[index] ?? 5]));
     applyForces();
     updateComponentTargets(false);
     applyComponentTargets();

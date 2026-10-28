@@ -205,3 +205,43 @@ test("изменение параметров во время pause запуск
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert(worker.history().filter((response) => response.type === "positions").length > 1);
 });
+
+test("узлы с разными радиусами не перекрываются ни на одном кадре", async (t) => {
+  const worker = await createWorker("different-radii");
+  t.after(() => worker.close());
+  worker.send({
+    type: "update",
+    ids: ["A", "B", "C", "D"],
+    edges: [
+      { source: "A", target: "B" },
+      { source: "A", target: "C" },
+      { source: "A", target: "D" },
+    ],
+    positions: {
+      xy: new Float32Array(8),
+      pinned: new Uint8Array(4),
+    },
+    settings: DEFAULT_GRAPH_VIEW_SETTINGS,
+    radii: [20, 30, 25, 15],
+  });
+
+  const deadline = Date.now() + 3000;
+  while (worker.latest()?.type !== "settled" && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  const frames = worker.history().filter((response) => response.type === "positions");
+  assert(frames.length > 1);
+  for (const response of frames) {
+    for (let first = 0; first < response.ids!.length; first += 1) {
+      for (let second = first + 1; second < response.ids!.length; second += 1) {
+        const firstX = response.positions!.xy[first * 2];
+        const firstY = response.positions!.xy[first * 2 + 1];
+        const secondX = response.positions!.xy[second * 2];
+        const secondY = response.positions!.xy[second * 2 + 1];
+        const distance = Math.hypot(firstX - secondX, firstY - secondY);
+        const required = [20, 30, 25, 15][first] + [20, 30, 25, 15][second];
+        assert(distance + 1e-6 >= required, `пересечение ${first}/${second}: ${distance} < ${required}`);
+      }
+    }
+  }
+});

@@ -11,6 +11,7 @@ import { GraphMenu } from "./GraphMenu";
 import type { GraphMenuState } from "./GraphMenu";
 import { WebGlRenderer } from "./WebGlRenderer";
 import { hasPointerDragged, shouldClickPointer } from "./pointerInteraction";
+import { graphNodeRadius } from "./renderEdges";
 
 export function GraphCanvas(props: {
   scene: SceneGraph;
@@ -67,6 +68,7 @@ export function GraphCanvas(props: {
       entries,
       props.settings,
       alpha,
+      props.scene.nodes.map((node) => graphNodeRadius(node, props.settings.nodeScale)),
     );
   };
 
@@ -89,6 +91,11 @@ export function GraphCanvas(props: {
     void props.settings.linkDistance;
     void props.settings.alphaDecay;
     if (initialized) worker?.params(props.settings);
+  });
+
+  createEffect(() => {
+    void props.settings.nodeScale;
+    if (initialized) update();
   });
 
   createEffect(() => {

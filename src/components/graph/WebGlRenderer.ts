@@ -2,7 +2,7 @@ import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { stablePosition } from "~/lib/graph/layout";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
-import { createRenderEdgeCache, indexSceneNodes, nodeLabelOpacity } from "./renderEdges";
+import { createRenderEdgeCache, graphNodeLabelOpacity, graphNodeRadius, graphNodeRole, indexSceneNodes } from "./renderEdges";
 import type { RenderEdge } from "./renderEdges";
 
 interface Camera {
@@ -156,8 +156,7 @@ export class WebGlRenderer {
   }
 
   private nodeRadius(node: SceneNode) {
-    return (3 + Math.sqrt(node.degree) * 1.2 + (node.clusterMembers ? 4 : 0)) *
-      (this.settings?.nodeScale ?? 1);
+    return graphNodeRadius(node, this.settings?.nodeScale ?? 1);
   }
 
   hitTest(clientX: number, clientY: number): SceneNode | null {
@@ -357,9 +356,9 @@ export class WebGlRenderer {
       const point = this.positions.get(node.id)!;
       const custom = this.settings ? colorForNode(node, this.settings.groups) : null;
       const base = custom ?? (node.kind === "journal" ? "#ff9800" : node.kind === "asset" ? "#4caf50" : node.kind === "virtual" ? "#777777" : "#9b59b6");
-      const active = activeHighlight.has(node.id);
-      const rgba = color(active ? "#09bec8" : base, activeHighlight.size > 0 && !active ? 0.25 : 1);
-      const radius = this.nodeRadius(node) * (active ? 1.25 : 1);
+      const role = graphNodeRole(node.id, this.hovered, activeHighlight);
+      const rgba = color(role === "hovered" ? "#09bec8" : base, role === "muted" ? 0.25 : 1);
+      const radius = this.nodeRadius(node);
       for (let segment = 0; segment < 14; segment += 1) {
         const a = (segment / 14) * Math.PI * 2;
         const b = ((segment + 1) / 14) * Math.PI * 2;
@@ -379,25 +378,32 @@ export class WebGlRenderer {
     const ratio = window.devicePixelRatio || 1;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
-    ctx.font = "11px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     const styles = getComputedStyle(document.body);
-    ctx.fillStyle = styles.getPropertyValue("--fg") || "#dddddd";
+    const foreground = styles.getPropertyValue("--fg") || "#dddddd";
     const activeHighlight = this.activeHighlight();
     let count = 0;
-    for (const node of this.scene.nodes) {
-      const priority = activeHighlight.has(node.id);
-      const opacity = nodeLabelOpacity(this.scene.nodes.length, this.camera.zoom, this.settings.labelThreshold, priority);
-      if (opacity === 0 || (count >= 200 && !priority)) continue;
+    const drawLabel = (node: SceneNode) => {
+      const role = graphNodeRole(node.id, this.hovered, activeHighlight);
+      const priority = role !== "normal";
+      const opacity = graphNodeLabelOpacity(role, this.scene.nodes.length, this.camera.zoom, this.settings!.labelThreshold);
+      if (opacity === 0 || (count >= 200 && !priority)) return;
       const point = this.positions.get(node.id)!;
       const screen = this.worldToScreen(point.x, point.y);
-      if (screen.x < -100 || screen.y < -30 || screen.x > this.canvas.clientWidth + 100 || screen.y > this.canvas.clientHeight + 30) continue;
+      if (screen.x < -100 || screen.y < -30 || screen.x > this.canvas.clientWidth + 100 || screen.y > this.canvas.clientHeight + 30) return;
       const title = node.clusterMembers ? `${node.title} (${node.clusterMembers.length})` : node.title;
       ctx.globalAlpha = opacity;
+      ctx.font = role === "hovered" ? "bold 12px sans-serif" : "11px sans-serif";
+      ctx.fillStyle = role === "hovered" ? "#000000" : role === "highlighted" ? "#777777" : foreground;
       ctx.fillText(title.length > 42 ? `${title.slice(0, 41)}…` : title, screen.x, screen.y + this.nodeRadius(node) + 4);
       if (!priority) count += 1;
+    };
+    for (const node of this.scene.nodes) {
+      if (node.id !== this.hovered) drawLabel(node);
     }
+    const hoveredNode = this.hovered ? this.nodeById.get(this.hovered) : undefined;
+    if (hoveredNode) drawLabel(hoveredNode);
     ctx.globalAlpha = 1;
   }
 

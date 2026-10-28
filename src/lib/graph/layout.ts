@@ -194,6 +194,88 @@ export function unpackLayout(ids: string[], packed: PackedLayout): GraphLayoutEn
   }));
 }
 
+export interface CollisionNode {
+  id: string;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number | null;
+  fy?: number | null;
+}
+
+export function separateGraphNodes(
+  nodes: CollisionNode[],
+  radii: ReadonlyMap<string, number>,
+  padding = 1,
+): void {
+  const colliding = nodes.filter((node) => (radii.get(node.id) ?? 0) > 0);
+  if (colliding.length < 2) return;
+  const maxRadius = Math.max(...colliding.map((node) => radii.get(node.id)!));
+  const cellSize = maxRadius * 2 + padding;
+  const indices = new Map(colliding.map((node, index) => [node, index]));
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    const grid = new Map<string, CollisionNode[]>();
+    for (const node of colliding) {
+      const key = `${Math.floor((node.x ?? 0) / cellSize)},${Math.floor((node.y ?? 0) / cellSize)}`;
+      const cell = grid.get(key) ?? [];
+      cell.push(node);
+      grid.set(key, cell);
+    }
+    let changed = false;
+    for (let firstIndex = 0; firstIndex < colliding.length; firstIndex += 1) {
+      const first = colliding[firstIndex];
+      const cellX = Math.floor((first.x ?? 0) / cellSize);
+      const cellY = Math.floor((first.y ?? 0) / cellSize);
+      for (let dx = -1; dx <= 1; dx += 1) {
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (const second of grid.get(`${cellX + dx},${cellY + dy}`) ?? []) {
+            if (firstIndex >= indices.get(second)!) continue;
+            const firstRadius = radii.get(first.id)!;
+            const secondRadius = radii.get(second.id)!;
+            const minimum = firstRadius + secondRadius + padding;
+            let deltaX = (second.x ?? 0) - (first.x ?? 0);
+            let deltaY = (second.y ?? 0) - (first.y ?? 0);
+            let distance = Math.hypot(deltaX, deltaY);
+            if (distance >= minimum) continue;
+            if (distance < 1e-9) {
+              const stable = stablePosition(`${first.id}\0${second.id}`);
+              distance = Math.hypot(stable.x, stable.y);
+              deltaX = stable.x;
+              deltaY = stable.y;
+            }
+            const ux = deltaX / distance;
+            const uy = deltaY / distance;
+            const shift = minimum - distance + 0.0001;
+            const firstFixed = first.fx !== undefined && first.fx !== null;
+            const secondFixed = second.fx !== undefined && second.fx !== null;
+            const firstShift = firstFixed ? (secondFixed ? shift / 2 : 0) : shift / (secondFixed ? 1 : 2);
+            const secondShift = secondFixed ? (firstFixed ? shift / 2 : 0) : shift / (firstFixed ? 1 : 2);
+            first.x = (first.x ?? 0) - ux * firstShift;
+            first.y = (first.y ?? 0) - uy * firstShift;
+            second.x = (second.x ?? 0) + ux * secondShift;
+            second.y = (second.y ?? 0) + uy * secondShift;
+            if (firstFixed) {
+              first.fx = first.x;
+              first.fy = first.y;
+            }
+            if (secondFixed) {
+              second.fx = second.x;
+              second.fy = second.y;
+            }
+            first.vx = 0;
+            first.vy = 0;
+            second.vx = 0;
+            second.vy = 0;
+            changed = true;
+          }
+        }
+      }
+    }
+    if (!changed) return;
+  }
+}
+
 export interface LayoutRequest {
   type: "init" | "update" | "params" | "drag" | "pause" | "resume" | "stop";
   generation: number;
@@ -206,6 +288,7 @@ export interface LayoutRequest {
   y?: number;
   pinned?: boolean;
   alpha?: number;
+  radii?: number[];
 }
 
 export interface LayoutResponse {
@@ -236,10 +319,10 @@ export function startLayoutWorker(callbacks: LayoutCallbacks) {
     worker.postMessage({ ...message, generation } satisfies LayoutRequest, transfer);
   };
   return {
-    update: (ids: string[], edges: { source: string; target: string }[], positions: GraphLayoutEntry[], settings: GraphViewSettings, alpha?: number) => {
+    update: (ids: string[], edges: { source: string; target: string }[], positions: GraphLayoutEntry[], settings: GraphViewSettings, alpha?: number, radii?: number[]) => {
       generation += 1;
       const packed = packLayout(positions);
-      send({ type: "update", ids, edges, positions: packed, settings, alpha }, [packed.xy.buffer, packed.pinned.buffer]);
+      send({ type: "update", ids, edges, positions: packed, settings, alpha, radii }, [packed.xy.buffer, packed.pinned.buffer]);
     },
     params: (settings: GraphViewSettings) => send({ type: "params", settings }),
     drag: (id: string, x: number, y: number, pinned: boolean) =>

@@ -16,6 +16,36 @@ export function nodeLabelOpacity(
   return Math.max(0, Math.min(1, (zoom - threshold) / 0.5));
 }
 
+export type GraphNodeRole = "hovered" | "highlighted" | "muted" | "normal";
+
+export function graphNodeRole(
+  id: string,
+  hovered: string | null,
+  highlighted: Set<string>,
+): GraphNodeRole {
+  if (id === hovered) return "hovered";
+  if (highlighted.has(id)) return "highlighted";
+  if (highlighted.size > 0) return "muted";
+  return "normal";
+}
+
+export function graphNodeRadius(
+  node: Pick<SceneNode, "degree" | "clusterMembers">,
+  nodeScale = 1,
+): number {
+  return (3 + Math.sqrt(node.degree) * 1.2 + (node.clusterMembers ? 4 : 0)) * nodeScale;
+}
+
+export function graphNodeLabelOpacity(
+  role: GraphNodeRole,
+  nodeCount: number,
+  zoom: number,
+  threshold: number,
+): number {
+  if (role === "muted") return 0;
+  return nodeLabelOpacity(nodeCount, zoom, threshold, role !== "normal");
+}
+
 export interface RenderEdge {
   source: string;
   target: string;

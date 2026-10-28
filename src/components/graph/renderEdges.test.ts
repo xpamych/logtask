@@ -79,3 +79,18 @@ test("прозрачность подписей ограничена диапа�
   assert.equal(nodeLabelOpacity(20, 10, 0.35, false), 1);
   assert.equal(nodeLabelOpacity(20, 0.6, -1, false), 1);
 });
+
+test("hovered отделён от подсвеченных соседей и приглушённых узлов", () => {
+  const highlighted = new Set(["hovered", "neighbor"]);
+  assert.equal(renderEdges.graphNodeRole("hovered", "hovered", highlighted), "hovered");
+  assert.equal(renderEdges.graphNodeRole("neighbor", "hovered", highlighted), "highlighted");
+  assert.equal(renderEdges.graphNodeRole("other", "hovered", highlighted), "muted");
+  assert.equal(renderEdges.graphNodeRole("ordinary", null, new Set()), "normal");
+});
+
+test("несвязанные подписи скрыты, hovered и соседи остаются приоритетными", () => {
+  assert.equal(renderEdges.graphNodeLabelOpacity("muted", 454, 2, 0.35), 0);
+  assert.equal(renderEdges.graphNodeLabelOpacity("hovered", 454, 0.05, 0.35), 1);
+  assert.equal(renderEdges.graphNodeLabelOpacity("highlighted", 454, 0.05, 0.35), 1);
+  assert.equal(renderEdges.graphNodeLabelOpacity("normal", 20, 0.6, 0.35), 0.5);
+});
