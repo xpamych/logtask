@@ -534,11 +534,32 @@ body.panel-resizing {
 }
 
 .backlink {
+  display: block;
+  width: 100%;
   padding: 6px 10px;
   margin-bottom: 4px;
   background: var(--bg-panel);
+  border: none;
   border-radius: 6px;
+  color: var(--fg);
+  font: inherit;
   font-size: 13px;
+  text-align: left;
+}
+
+button.backlink {
+  cursor: pointer;
+}
+
+button.backlink:hover {
+  background: var(--bg-alt);
+}
+
+.backlink-status {
+  margin-right: 8px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .backlink-from {

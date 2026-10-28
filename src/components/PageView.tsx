@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
-import type { PageDto, Settings } from "~/lib/api";
+import type { BacklinkDto, PageDto, Settings } from "~/lib/api";
 import {
   backlinksGet,
   blockCreate,
@@ -13,6 +13,7 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
+import { splitBacklinks } from "~/lib/backlinks";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { IconStar } from "~/components/icons";
 import { BlockView } from "./BlockView";
@@ -20,7 +21,7 @@ import { RichText } from "./RichText";
 
 export function PageView(props: {
   name: string;
-  onOpenPage: (name: string) => void;
+  onOpenPage: (name: string, uuid?: string) => void;
   refreshKey: number;
   focusUuid?: string | null;
   settings?: Settings | null;
@@ -32,8 +33,7 @@ export function PageView(props: {
   onDeleted?: () => void;
 }): JSX.Element {
   const [page, setPage] = createSignal<PageDto | null>(null);
-  const [backlinks, setBacklinks] = createSignal<[string, string][]>([]);
-  const [open, setOpen] = createSignal(true);
+  const [backlinks, setBacklinks] = createSignal<BacklinkDto[]>([]);
   const [error, setError] = createSignal<string | null>(null);
   // виртуальная страница: файла нет, но есть ссылки на неё (как в Logseq)
   const [virtual, setVirtual] = createSignal(false);
@@ -235,6 +235,8 @@ export function PageView(props: {
     }
   });
 
+  const linked = () => splitBacklinks(backlinks());
+
   return (
     <main class="journal" ref={mainEl}>
       <Show when={error()}>
@@ -410,27 +412,54 @@ export function PageView(props: {
           </section>
         )}
       </Show>
-      <Show when={backlinks().length > 0}>
-        <div class="backlinks">
-          <button class="backlinks-toggle" onClick={() => setOpen((v) => !v)}>
-            <span class="caret">{open() ? "▾" : "▸"}</span>
-            <span class="backlinks-title">Ссылки на эту страницу ({backlinks().length})</span>
-          </button>
-          <Show when={open()}>
-            <div class="backlinks-list">
-              <For each={backlinks()}>
-                {([from, text]) => (
-                  <div class="backlink">
-                    <span class="backlink-from">{from}</span>
-                    <span class="backlink-text">
-                      <RichText text={text} />
-                    </span>
-                  </div>
-                )}
-              </For>
-            </div>
-          </Show>
-        </div>
+      <Show when={linked().tasks.length > 0}>
+        <details class="backlinks" open>
+          <summary class="backlinks-toggle">
+            <span class="backlinks-title">Связанные задачи ({linked().tasks.length})</span>
+          </summary>
+          <div class="backlinks-list">
+            <For each={linked().tasks}>
+              {(item) => (
+                <button
+                  type="button"
+                  class="backlink"
+                  onClick={() => props.onOpenPage(item.page, item.uuid)}
+                >
+                  <Show when={item.status}>
+                    {(status) => <span class="backlink-status">{status()}</span>}
+                  </Show>
+                  <span class="backlink-from">{item.page}</span>
+                  <span class="backlink-text">
+                    <RichText text={item.text} />
+                  </span>
+                </button>
+              )}
+            </For>
+          </div>
+        </details>
+      </Show>
+      <Show when={linked().links.length > 0}>
+        <details class="backlinks" open>
+          <summary class="backlinks-toggle">
+            <span class="backlinks-title">Обратные ссылки ({linked().links.length})</span>
+          </summary>
+          <div class="backlinks-list">
+            <For each={linked().links}>
+              {(item) => (
+                <button
+                  type="button"
+                  class="backlink"
+                  onClick={() => props.onOpenPage(item.page, item.uuid)}
+                >
+                  <span class="backlink-from">{item.page}</span>
+                  <span class="backlink-text">
+                    <RichText text={item.text} />
+                  </span>
+                </button>
+              )}
+            </For>
+          </div>
+        </details>
       </Show>
     </main>
   );

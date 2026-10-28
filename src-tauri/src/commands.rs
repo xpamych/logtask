@@ -1947,7 +1947,10 @@ mod tests {
 
         let links = backlink_dtos(&graph, "Заметка");
         assert_eq!(links.len(), 2);
-        let plain = links.iter().find(|l| l.text == "обычная [[Заметка]]").unwrap();
+        let plain = links
+            .iter()
+            .find(|l| l.text == "обычная [[Заметка]]")
+            .unwrap();
         assert_eq!(plain.page, "Источник");
         assert!(!plain.task);
         assert_eq!(plain.status, None);

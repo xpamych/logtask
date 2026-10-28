@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import type { JSX } from "solid-js";
-import type { PageDto, Settings } from "~/lib/api";
+import type { BacklinkDto, PageDto, Settings } from "~/lib/api";
 import {
   backlinksGet,
   blockCreate,
@@ -287,7 +287,7 @@ export function JournalTape(props: {
 }
 
 function BacklinksPanel(props: { name: string }): JSX.Element {
-  const [links, setLinks] = createSignal<[string, string][]>([]);
+  const [links, setLinks] = createSignal<BacklinkDto[]>([]);
   const [open, setOpen] = createSignal(false);
 
   createEffect(() => {
@@ -305,11 +305,11 @@ function BacklinksPanel(props: { name: string }): JSX.Element {
         <Show when={open()}>
           <div class="backlinks-list">
             <For each={links()}>
-              {([from, text]) => (
+              {(item) => (
                 <div class="backlink">
-                  <span class="backlink-from">{from}</span>
+                  <span class="backlink-from">{item.page}</span>
                   <span class="backlink-text">
-                    <RichText text={text} />
+                    <RichText text={item.text} />
                   </span>
                 </div>
               )}
