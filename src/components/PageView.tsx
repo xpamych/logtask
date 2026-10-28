@@ -14,6 +14,7 @@ import {
 } from "~/lib/api";
 import { formatJournalName } from "~/lib/text";
 import { splitBacklinks } from "~/lib/backlinks";
+import { focusMatchesPage } from "~/lib/focus";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { IconStar } from "~/components/icons";
 import { BlockView } from "./BlockView";
@@ -218,8 +219,8 @@ export function PageView(props: {
   createEffect(() => {
     const id = props.focusUuid;
     if (!id || id === lastFocused) return;
-    // страница ещё грузится — эффект перезапустится на setPage
-    if (!page()) return;
+    // страница ещё грузится или видна предыдущая — ждём нужный источник
+    if (!focusMatchesPage(page()?.name ?? null, props.name)) return;
     lastFocused = id;
     queueMicrotask(() => focusBlock(id));
   });

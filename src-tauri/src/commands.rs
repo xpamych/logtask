@@ -393,9 +393,11 @@ pub struct BacklinkDto {
 }
 
 fn backlink_dtos(graph: &Graph, name: &str) -> Vec<BacklinkDto> {
+    let mut seen = std::collections::HashSet::new();
     graph
         .backlinks_of(name)
         .into_iter()
+        .filter(|(id, _)| seen.insert(*id))
         .filter_map(|(id, page)| {
             graph.blocks.get(&id).map(|b| BacklinkDto {
                 uuid: id,
@@ -1939,7 +1941,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("pages")).unwrap();
         std::fs::write(
             dir.join("pages/Источник.md"),
-            "- обычная [[Заметка]]\n- DONE задача о [[Заметка]]\n",
+            "- обычная [[Заметка]]\n- DONE задача о [[Заметка]] и повторно [[Заметка]]\n",
         )
         .unwrap();
         let mut graph = crate::core::model::Graph::default();
@@ -1957,7 +1959,7 @@ mod tests {
         assert!(graph.blocks.contains_key(&plain.uuid));
         let task = links
             .iter()
-            .find(|l| l.text == "задача о [[Заметка]]")
+            .find(|l| l.text.starts_with("задача о [[Заметка]]"))
             .unwrap();
         assert_eq!(task.page, "Источник");
         assert!(task.task);
