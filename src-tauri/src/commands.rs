@@ -53,6 +53,17 @@ pub struct PageDto {
     pub preamble: Vec<String>,
 }
 
+fn block_extra(b: &Block) -> Vec<String> {
+    b.raw
+        .trailing
+        .iter()
+        .filter_map(|t| match t {
+            crate::core::model::Trailing::Raw { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 impl From<&Block> for BlockDto {
     fn from(b: &Block) -> Self {
         // суммарная длительность по всем CLOCK
@@ -81,15 +92,7 @@ impl From<&Block> for BlockDto {
             clock_total,
             deadline: b.props.get("deadline").cloned(),
             scheduled: b.props.get("scheduled").cloned(),
-            extra: b
-                .raw
-                .trailing
-                .iter()
-                .filter_map(|t| match t {
-                    crate::core::model::Trailing::Raw { text, .. } => Some(text.clone()),
-                    _ => None,
-                })
-                .collect(),
+            extra: block_extra(b),
             source: b.edit_source(),
         }
     }
@@ -586,6 +589,8 @@ pub struct TaskDto {
     pub done: bool,
     /// свойства блока (source-id, author, url…), отсортированные по ключу
     pub props: Vec<(String, String)>,
+    /// видимые строки-продолжения без свойств и LOGBOOK
+    pub extra: Vec<String>,
     /// исходник блока для инлайн-редактора в карточке задачи
     pub source: String,
     /// вложенные задачи (дочерние блоки-задачи, рекурсивно)
@@ -630,6 +635,7 @@ fn task_dto(graph: &Graph, id: uuid::Uuid, block: &Block) -> TaskDto {
         tags,
         done: block.status.map(|s| s.is_done()).unwrap_or(false),
         props,
+        extra: block_extra(block),
         source: block.edit_source(),
         children: block
             .children
@@ -1932,7 +1938,25 @@ fn base64_encode(data: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{backlink_dtos, base64_encode, prev_journals_slice};
+    use super::{backlink_dtos, base64_encode, prev_journals_slice, task_dto};
+
+    #[test]
+    fn task_dto_includes_visible_extra() {
+        let dir = std::env::temp_dir().join("logtask_task_dto_extra_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::write(
+            dir.join("pages/Источник.md"),
+            "- TODO задача\n  продолжение\n  ![[../assets/image.png]]\n  importance:: medium\n  :LOGBOOK:\n  CLOCK: [2026-10-28 Wed 21:30:21]\n  :END:\n",
+        )
+        .unwrap();
+        let mut graph = crate::core::model::Graph::default();
+        graph.index_dir(&dir).unwrap();
+        let (id, block) = graph.all_tasks().into_iter().next().unwrap();
+
+        let dto = task_dto(&graph, id, block);
+        assert_eq!(dto.extra, ["продолжение", "![[../assets/image.png]]"]);
+    }
 
     #[test]
     fn backlink_dtos_include_task_metadata() {

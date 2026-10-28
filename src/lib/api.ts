@@ -228,6 +228,8 @@ export interface TaskDto {
   tags: string[];
   done: boolean;
   props: [string, string][];
+  /** видимые строки-продолжения без свойств и LOGBOOK */
+  extra: string[];
   /** исходник блока для инлайн-редактора в карточке */
   source: string;
   /** вложенные задачи (дочерние блоки-задачи, рекурсивно) */
