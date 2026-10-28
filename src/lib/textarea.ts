@@ -8,3 +8,8 @@ export function fitTextarea(el: HTMLTextAreaElement): void {
   el.style.height = "auto";
   el.style.height = `${el.scrollHeight}px`;
 }
+
+export function setTextareaValue(el: HTMLTextAreaElement, value: string): void {
+  el.value = value;
+  fitTextarea(el);
+}

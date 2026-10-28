@@ -2,7 +2,7 @@ import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid
 import type { JSX } from "solid-js";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { clickCaretPosition, renderSourceMap } from "~/lib/text";
-import { fitTextarea } from "~/lib/textarea";
+import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot } from "./StatusPrioDot";
@@ -99,6 +99,7 @@ export function BlockView(props: {
       const el = textareaEl;
       if (el) {
         el.focus();
+        setTextareaValue(el, replaced);
         el.setSelectionRange(el.value.length, el.value.length);
       }
     });

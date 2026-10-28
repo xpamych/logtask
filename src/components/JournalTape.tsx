@@ -11,7 +11,7 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName, journalLogseqTitle } from "~/lib/text";
-import { fitTextarea } from "~/lib/textarea";
+import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
@@ -167,7 +167,7 @@ export function JournalTape(props: {
       await blockCreate(day, text, null);
       await reload();
       if (keepOpen && composerEl) {
-        composerEl.value = "";
+        setTextareaValue(composerEl, "");
         composerEl.focus();
       } else {
         setComposerDay(null);

@@ -15,7 +15,7 @@ import {
 import { formatJournalName } from "~/lib/text";
 import { splitBacklinks } from "~/lib/backlinks";
 import { focusMatchesPage } from "~/lib/focus";
-import { fitTextarea } from "~/lib/textarea";
+import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { IconStar } from "~/components/icons";
 import { BlockView } from "./BlockView";
@@ -92,7 +92,7 @@ export function PageView(props: {
       await blockCreate(props.name, text, null);
       await load();
       if (keepOpen && composerEl) {
-        composerEl.value = "";
+        setTextareaValue(composerEl, "");
         composerEl.focus();
       } else {
         setComposing(false);

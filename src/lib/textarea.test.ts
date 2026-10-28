@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fitTextarea } from "./textarea.ts";
+import { fitTextarea, setTextareaValue } from "./textarea.ts";
 
 function mockTextarea() {
   const style: Record<string, unknown> = {};
@@ -46,5 +46,15 @@ test("textarea без field-sizing растёт по scrollHeight и перес�
     fitTextarea(el);
     assert.equal(el.style.height, "240px");
     assert.equal(el.style.overflow, "hidden");
+  });
+});
+
+test("программное значение сразу пересчитывает высоту без события input", () => {
+  withFieldSizing(false, () => {
+    const el = mockTextarea();
+    Object.defineProperty(el, "scrollHeight", { configurable: true, value: 24 });
+    setTextareaValue(el, "");
+    assert.equal(el.value, "");
+    assert.equal(el.style.height, "24px");
   });
 });
