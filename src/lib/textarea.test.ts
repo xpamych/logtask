@@ -3,8 +3,13 @@ import test from "node:test";
 import { fitTextarea } from "./textarea.ts";
 
 function mockTextarea() {
+  const style: Record<string, unknown> = {};
+  style.setProperty = (name: string, value: string) => {
+    style[name] = value;
+  };
+  style.getPropertyValue = (name: string) => String(style[name] ?? "");
   return {
-    style: {} as Record<string, string>,
+    style,
     scrollHeight: 120,
   } as unknown as HTMLTextAreaElement;
 }
@@ -27,7 +32,7 @@ test("textarea использует нативный field-sizing при под�
   withFieldSizing(true, () => {
     const el = mockTextarea();
     fitTextarea(el);
-    assert.equal(el.style.fieldSizing, "content");
+    assert.equal(el.style.getPropertyValue("field-sizing"), "content");
     assert.equal(el.style.overflow, "hidden");
   });
 });
@@ -37,7 +42,7 @@ test("textarea без field-sizing растёт по scrollHeight и перес�
     const el = mockTextarea();
     fitTextarea(el);
     assert.equal(el.style.height, "120px");
-    el.scrollHeight = 240;
+    Object.defineProperty(el, "scrollHeight", { configurable: true, value: 240 });
     fitTextarea(el);
     assert.equal(el.style.height, "240px");
     assert.equal(el.style.overflow, "hidden");

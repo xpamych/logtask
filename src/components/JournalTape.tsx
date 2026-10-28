@@ -11,6 +11,7 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName, journalLogseqTitle } from "~/lib/text";
+import { fitTextarea } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
@@ -145,7 +146,11 @@ export function JournalTape(props: {
 
   const openComposer = (day: string) => {
     setComposerDay(day);
-    queueMicrotask(() => composerEl?.focus());
+    queueMicrotask(() => {
+      if (!composerEl) return;
+      composerEl.focus();
+      fitTextarea(composerEl);
+    });
   };
 
   // keepOpen (Enter): запись сохраняется, редактор очищается и остаётся
@@ -267,6 +272,7 @@ export function JournalTape(props: {
                         class="block-edit"
                         placeholder="Новая запись…"
                         rows={1}
+                        onInput={(e) => fitTextarea(e.currentTarget)}
                         onKeyDown={onComposerKeyDown}
                         onBlur={() => void submitComposer(false)}
                       />

@@ -2,6 +2,7 @@ import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid
 import type { JSX } from "solid-js";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { clickCaretPosition, renderSourceMap } from "~/lib/text";
+import { fitTextarea } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot } from "./StatusPrioDot";
@@ -63,6 +64,7 @@ export function BlockView(props: {
 
   const onEditInput = async (e: HTMLTextAreaElement) => {
     setDraft(e.value);
+    fitTextarea(e);
     const q = autocompleteQuery(e.value);
     if (q === null) {
       setAcOpen(false);
@@ -197,6 +199,7 @@ export function BlockView(props: {
       const el = textareaEl;
       if (!el) return;
       el.focus();
+      fitTextarea(el);
       // фокус ставит каретку в конец текста и ускролливает большой блок —
       // возвращаем скролл в начало; курсор — в точку клика (или в начало)
       const pos = Math.min(clickPos ?? 0, el.value.length);
@@ -565,11 +568,7 @@ export function BlockView(props: {
             onInput={(e) => void onEditInput(e.currentTarget)}
             onKeyDown={onKeyDown}
             onBlur={() => void save()}
-            rows={Math.max(
-              1,
-              draft().split("\n").length,
-              Math.ceil(draft().length / 60),
-            )}
+            rows={1}
           />
           <Show when={acOpen()}>
             <div class="ac-list">

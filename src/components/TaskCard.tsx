@@ -10,6 +10,7 @@ import {
   taskSetQuadrant,
   taskSetStatus,
 } from "~/lib/api";
+import { fitTextarea } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot, MARKERS, STATUS_COLORS } from "./StatusPrioDot";
@@ -110,6 +111,7 @@ export function TaskCard(props: {
       const el = textareaEl;
       if (!el) return;
       el.focus();
+      fitTextarea(el);
       el.setSelectionRange(0, 0);
       el.scrollTop = 0;
     });
@@ -218,8 +220,11 @@ export function TaskCard(props: {
           when={editing()}
           fallback={
             <div class="task-card-text" title="Редактировать" onClick={startEdit}>
-              {t.content ? (
-                <RichText text={t.content} onOpenPage={props.onOpenPage} />
+              {t.content || t.extra.length > 0 ? (
+                <RichText
+                  text={[t.content, ...t.extra].join("\n")}
+                  onOpenPage={props.onOpenPage}
+                />
               ) : (
                 <span class="muted">·</span>
               )}
@@ -231,7 +236,10 @@ export function TaskCard(props: {
             class="block-edit task-card-edit"
             value={draft()}
             disabled={saving()}
-            onInput={(e) => setDraft(e.currentTarget.value)}
+            onInput={(e) => {
+              setDraft(e.currentTarget.value);
+              fitTextarea(e.currentTarget);
+            }}
             onKeyDown={(e) => {
               if (e.isComposing) return;
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -243,7 +251,7 @@ export function TaskCard(props: {
               }
             }}
             onBlur={() => void saveEdit()}
-            rows={Math.max(1, draft().split("\n").length, Math.ceil(draft().length / 60))}
+            rows={1}
           />
         </Show>
         <span

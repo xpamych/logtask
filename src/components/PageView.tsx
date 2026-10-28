@@ -15,6 +15,7 @@ import {
 import { formatJournalName } from "~/lib/text";
 import { splitBacklinks } from "~/lib/backlinks";
 import { focusMatchesPage } from "~/lib/focus";
+import { fitTextarea } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { IconStar } from "~/components/icons";
 import { BlockView } from "./BlockView";
@@ -72,7 +73,11 @@ export function PageView(props: {
 
   const openComposer = () => {
     setComposing(true);
-    queueMicrotask(() => composerEl?.focus());
+    queueMicrotask(() => {
+      if (!composerEl) return;
+      composerEl.focus();
+      fitTextarea(composerEl);
+    });
   };
 
   // keepOpen (Enter): блок сохраняется, редактор очищается и остаётся
@@ -404,6 +409,7 @@ export function PageView(props: {
                     class="block-edit"
                     placeholder="Новая запись…"
                     rows={1}
+                    onInput={(e) => fitTextarea(e.currentTarget)}
                     onKeyDown={onComposerKeyDown}
                     onBlur={() => void submitComposer(false)}
                   />

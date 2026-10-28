@@ -989,10 +989,6 @@ button.backlink:hover {
 .task-card-text {
   font-size: 13px;
   line-height: 1.35;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
 }
 
 .task-card-meta {
@@ -1249,9 +1245,8 @@ button.backlink:hover {
 }
 
 /* инлайн-редактирование блока: без рамки и фона — текст остаётся на месте,
-   как в Logseq; «поле ввода» только в карточке задачи (.task-card-edit).
-   Шрифт и высота строки наследуются от блока — редактирование не дёргает
-   вёрстку */
+   как в Logseq. Шрифт и высота строки наследуются от блока — редактирование
+   не дёргает вёрстку */
 .block-edit {
   width: 100%;
   min-height: 20px;
@@ -2332,16 +2327,10 @@ textarea.push-body {
   border-color: var(--danger);
 }
 
-/* инлайн-редактор в карточке задачи */
-/* в карточке задачи редактор — с рамкой, отдельным полем поверх карточки */
+/* инлайн-редактор в карточке задачи: общий вид с блоками страниц */
 .task-card-edit {
   flex: 1;
   min-width: 0;
-  padding: 2px 6px;
-  background: var(--bg);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  resize: vertical;
 }
 
 .task-card-text {
