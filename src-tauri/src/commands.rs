@@ -730,6 +730,28 @@ pub async fn kanban(state: tauri::State<'_, AppState>) -> Result<Vec<TaskColumn>
         .collect())
 }
 
+fn sort_nested_task_dtos(tasks: &mut [TaskDto], order: &std::collections::HashMap<String, usize>) {
+    for task in tasks.iter_mut() {
+        sort_nested_task_dtos(&mut task.children, order);
+    }
+    tasks.sort_by_key(|task| order.get(&task.uuid).copied().unwrap_or(usize::MAX));
+}
+
+fn query_task_dtos(graph: &Graph, q: &crate::core::query::SavedQuery) -> Vec<TaskDto> {
+    let sorted = graph.query(q);
+    let order: std::collections::HashMap<String, usize> = sorted
+        .iter()
+        .enumerate()
+        .map(|(index, (id, _))| (id.to_string(), index))
+        .collect();
+    let mut tasks: Vec<_> = strip_nested_tasks(graph, sorted)
+        .into_iter()
+        .map(|(id, block)| task_dto(graph, id, block))
+        .collect();
+    sort_nested_task_dtos(&mut tasks, &order);
+    tasks
+}
+
 /// Задачи по сохранённой подборке (фильтр + сортировка)
 #[tauri::command]
 pub fn tasks_by_query(
@@ -738,11 +760,7 @@ pub fn tasks_by_query(
 ) -> Result<Vec<TaskDto>, String> {
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
-    let entries = strip_nested_tasks(graph, graph.query(&q));
-    Ok(entries
-        .into_iter()
-        .map(|(id, block)| task_dto(graph, id, block))
-        .collect())
+    Ok(query_task_dtos(graph, &q))
 }
 
 /// Квадрант матрицы Эйзенхауэра
@@ -1938,7 +1956,38 @@ fn base64_encode(data: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{backlink_dtos, base64_encode, prev_journals_slice, task_dto};
+    use super::{backlink_dtos, base64_encode, prev_journals_slice, query_task_dtos, task_dto};
+
+    #[test]
+    fn tasks_by_query_sorts_nested_tasks_with_parent_rules() {
+        let dir = std::env::temp_dir().join("logtask_query_nested_sort_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::write(
+            dir.join("pages/Источник.md"),
+            "- TODO Родитель\n\t- TODO Без значений\n\t- TODO Низкая\n\t  urgency:: low\n\t- TODO Срочная\n\t  urgency:: high\n",
+        )
+        .unwrap();
+        let mut graph = crate::core::model::Graph::default();
+        graph.index_dir(&dir).unwrap();
+        let q = crate::core::query::SavedQuery {
+            title: "Тест".into(),
+            filter: crate::core::query::TaskFilter::default(),
+            sort: vec![crate::core::query::SortRule {
+                field: crate::core::query::SortField::Urgency,
+                direction: crate::core::query::SortDirection::Asc,
+            }],
+            collapsed: false,
+        };
+
+        let tasks = query_task_dtos(&graph, &q);
+        let names: Vec<_> = tasks[0]
+            .children
+            .iter()
+            .map(|task| task.content.as_str())
+            .collect();
+        assert_eq!(names, ["Срочная", "Низкая", "Без значений"]);
+    }
 
     #[test]
     fn task_dto_includes_visible_extra() {

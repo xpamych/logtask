@@ -123,8 +123,8 @@ impl Graph {
                     match rule.field {
                         SortField::Status => blk.status.map(|s| s.order()),
                         SortField::Priority => priority_key(blk),
-                        SortField::Urgency => Some(level_key(blk.effective_urgency())),
-                        SortField::Importance => Some(level_key(blk.effective_importance())),
+                        SortField::Urgency => blk.urgency.map(level_key),
+                        SortField::Importance => blk.importance.map(level_key),
                         SortField::CreatedAt => None, // no-op: created_at у блоков нет
                     }
                 };
@@ -300,12 +300,48 @@ mod tests {
 
     #[test]
     fn query_sort_chain_uses_second_field_as_tiebreak() {
-        // одинаковая важность (medium из [#B]) → решает статус asc: LATER раньше DOING
-        let g = graph_from("- DOING [#B] Б\n- LATER [#B] В\n");
+        // одинаковая важность → решает статус asc: LATER раньше DOING
+        let g = graph_from("- DOING Б\n  importance:: medium\n- LATER В\n  importance:: medium\n");
         let q = query_with(vec![
             rule(SortField::Importance, SortDirection::Desc),
             rule(SortField::Status, SortDirection::Asc),
         ]);
         assert_eq!(contents(&g, &q), vec!["В", "Б"]);
+    }
+
+    #[test]
+    fn query_sort_importance_ignores_priority_fallback() {
+        let g = graph_from(
+            "- TODO [#C] Без важности\n\
+             - TODO [#C] Явно низкая важность\n  importance:: low\n",
+        );
+        let q = query_with(vec![rule(SortField::Importance, SortDirection::Asc)]);
+        assert_eq!(
+            contents(&g, &q),
+            vec!["Явно низкая важность", "Без важности"]
+        );
+    }
+
+    #[test]
+    fn query_sort_levels_put_tasks_without_values_last() {
+        let g = graph_from(
+            "- TODO Без значений\n\
+             - TODO Важная без срочности\n  importance:: high\n\
+             - TODO Низкая\n  urgency:: low\n  importance:: low\n\
+             - TODO Срочная важная\n  urgency:: high\n  importance:: high\n",
+        );
+        let q = query_with(vec![
+            rule(SortField::Urgency, SortDirection::Asc),
+            rule(SortField::Importance, SortDirection::Asc),
+        ]);
+        assert_eq!(
+            contents(&g, &q),
+            vec![
+                "Срочная важная",
+                "Низкая",
+                "Важная без срочности",
+                "Без значений"
+            ]
+        );
     }
 }
