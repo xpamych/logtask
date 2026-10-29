@@ -8,6 +8,7 @@ import {
   SORT_FIELDS,
   tasksByQuery,
 } from "~/lib/api";
+import { refreshGuarded } from "~/lib/editState";
 import { QueryEditor } from "./QueryEditor";
 import { TaskCard } from "./TaskCard";
 
@@ -114,9 +115,10 @@ export function Queries(props: {
     }
   };
 
+  const guardedLoad = refreshGuarded(() => void load());
   createEffect(() => {
     void props.refreshKey;
-    void load();
+    guardedLoad();
   });
 
   const doImport = async () => {
@@ -240,7 +242,7 @@ export function Queries(props: {
                       task={task}
                       detailed
                       settings={props.settings}
-                      onChanged={() => void load()}
+                      onChanged={guardedLoad}
                       onOpenPage={props.onOpenPage}
                     />
                   )}

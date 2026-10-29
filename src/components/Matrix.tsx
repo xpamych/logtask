@@ -2,6 +2,7 @@ import { For, Show, createSignal, createEffect } from "solid-js";
 import type { JSX } from "solid-js";
 import type { MatrixQuadrant, Settings } from "~/lib/api";
 import { matrix, taskSetQuadrant } from "~/lib/api";
+import { refreshGuarded } from "~/lib/editState";
 import { TaskCard } from "./TaskCard";
 
 const QUADRANT_META: Record<
@@ -40,9 +41,10 @@ export function Matrix(props: {
     }
   };
 
+  const guardedLoad = refreshGuarded(() => void load());
   createEffect(() => {
     void props.refreshKey;
-    void load();
+    guardedLoad();
   });
 
   const onDrop = async (e: DragEvent, q: MatrixQuadrant) => {
@@ -117,7 +119,7 @@ export function Matrix(props: {
                       task={task}
                       draggable
                       settings={props.settings}
-                      onChanged={() => void load()}
+                      onChanged={guardedLoad}
                       onOpenPage={props.onOpenPage}
                     />
                   )}

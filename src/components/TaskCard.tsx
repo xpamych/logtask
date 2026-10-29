@@ -1,4 +1,4 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings, TaskDto } from "~/lib/api";
 import {
@@ -10,6 +10,7 @@ import {
   taskSetQuadrant,
   taskSetStatus,
 } from "~/lib/api";
+import { editingBlock, setEditingBlock } from "~/lib/editState";
 import { editorSource, persistedSource } from "~/lib/text";
 import { fitTextarea } from "~/lib/textarea";
 import { RichText } from "./RichText";
@@ -108,6 +109,7 @@ export function TaskCard(props: {
   const startEdit = () => {
     setDraft(editorSource(t.source));
     setEditing(true);
+    setEditingBlock(t.uuid);
     queueMicrotask(() => {
       const el = textareaEl;
       if (!el) return;
@@ -118,17 +120,26 @@ export function TaskCard(props: {
     });
   };
 
+  const stopEdit = () => {
+    setEditing(false);
+    if (editingBlock() === t.uuid) setEditingBlock(null);
+  };
+
+  onCleanup(() => {
+    if (editingBlock() === t.uuid) setEditingBlock(null);
+  });
+
   const saveEdit = async () => {
     if (saving()) return;
     const text = draft().trim();
     if (!text || text === editorSource(t.source).trim()) {
-      setEditing(false);
+      stopEdit();
       return;
     }
     setSaving(true);
     try {
       await blockUpdateText(t.uuid, persistedSource(text));
-      setEditing(false);
+      stopEdit();
       props.onChanged?.();
     } catch (e) {
       console.error("не удалось сохранить задачу:", e);
@@ -248,7 +259,7 @@ export function TaskCard(props: {
                 void saveEdit();
               } else if (e.key === "Escape") {
                 e.preventDefault();
-                setEditing(false);
+                stopEdit();
               }
             }}
             onBlur={() => void saveEdit()}

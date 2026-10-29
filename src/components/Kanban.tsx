@@ -2,6 +2,7 @@ import { For, Show, createMemo, createSignal, createEffect } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings, TaskColumn } from "~/lib/api";
 import { kanban, taskSetStatus } from "~/lib/api";
+import { refreshGuarded } from "~/lib/editState";
 import { TaskCard } from "./TaskCard";
 
 const CLOSED_MARKERS = ["DONE", "CANCELED"];
@@ -95,9 +96,10 @@ export function Kanban(props: {
     }
   };
 
+  const guardedLoad = refreshGuarded(() => void load());
   createEffect(() => {
     void props.refreshKey;
-    void load();
+    guardedLoad();
   });
 
   // оптимистичное перемещение задачи между колонками
@@ -204,7 +206,7 @@ export function Kanban(props: {
                     task={task}
                     draggable
                     settings={props.settings}
-                    onChanged={() => void load()}
+                    onChanged={guardedLoad}
                     onOpenPage={props.onOpenPage}
                   />
                 )}
