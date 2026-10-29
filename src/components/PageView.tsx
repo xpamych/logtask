@@ -370,9 +370,10 @@ export function PageView(props: {
               </div>
             </Show>
             <For each={p().blocks}>
-              {(block) => (
+              {(block, index) => (
                 <BlockView
                   block={block}
+                  firstBlock={index() === 0}
                   onOpenPage={props.onOpenPage}
                   onChanged={load}
                   onStatusChange={onStatusChange}

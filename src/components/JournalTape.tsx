@@ -239,9 +239,10 @@ export function JournalTape(props: {
               {(page) => (
                 <>
                   <For each={tapeBlocks(page())}>
-                    {(block) => (
+                    {(block, index) => (
                       <BlockView
                         block={block}
+                        firstBlock={index() === 0}
                         onOpenPage={props.onOpenPage}
                         onChanged={reload}
                         onStatusChange={onStatusChange}

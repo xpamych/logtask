@@ -457,6 +457,24 @@ impl Graph {
         id: &Uuid,
         root: &Path,
     ) -> std::io::Result<Option<(String, usize)>> {
+        self.merge_block_up_impl(id, None, root)
+    }
+
+    pub fn merge_block_up_with_source(
+        &mut self,
+        id: &Uuid,
+        source: &str,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
+        self.merge_block_up_impl(id, Some(source), root)
+    }
+
+    fn merge_block_up_impl(
+        &mut self,
+        id: &Uuid,
+        source: Option<&str>,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
         let page_name = self.page_of_block(id);
         if page_name.is_empty() {
             return Ok(None);
@@ -484,6 +502,9 @@ impl Graph {
             return Ok(None); // первому блоку не с кем склеиваться
         }
         let prev_id = page.order[pos - 1];
+        if let Some(source) = source {
+            self.blocks.get_mut(id).expect("блок").set_source(source);
+        }
 
         // данные текущего блока
         let (
@@ -610,6 +631,25 @@ impl Graph {
             return Ok(None); // последнему блоку не с кем склеиваться
         };
         self.merge_block_up(&next, root)
+    }
+
+    pub fn merge_block_down_with_source(
+        &mut self,
+        id: &Uuid,
+        source: &str,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
+        let page_name = self.page_of_block(id);
+        let Some(page) = self.pages.get(&page_name) else {
+            return Ok(None);
+        };
+        let Some(pos) = page.order.iter().position(|x| x == id) else {
+            return Ok(None);
+        };
+        let Some(&next) = page.order.get(pos + 1) else {
+            return Ok(None);
+        };
+        self.merge_block_up_impl(&next, Some(source), root)
     }
 
     /// Общий пролог операций над одной страницей: страница блока, пути,

@@ -250,3 +250,46 @@ fn merge_reindents_children_by_level() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn merge_uses_current_draft_instead_of_stale_content() {
+    let (dir, mut g) = graph_with("current_draft", "- Первый\n- Второй\n- Третий\n");
+    let id = block_id(&g, "Тест", "Второй");
+
+    g.merge_block_up_with_source(&id, "Второй изменён", &dir)
+        .unwrap();
+
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(
+        text, "- Первый\nВторой изменён\n- Третий\n",
+        "файл:\n{text}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn merge_empty_draft_does_not_restore_deleted_text() {
+    let (dir, mut g) = graph_with("empty_draft", "- Первый\n- Второй\n- Третий\n");
+    let id = block_id(&g, "Тест", "Второй");
+
+    g.merge_block_up_with_source(&id, "", &dir).unwrap();
+
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(text, "- Первый\n\n- Третий\n", "файл:\n{text}");
+    assert!(!text.contains("Второй"));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn merge_first_block_with_source_is_noop_in_memory_and_on_disk() {
+    let (dir, mut g) = graph_with("first_source", "- Первый\n- Второй\n");
+    let id = block_id(&g, "Тест", "Первый");
+
+    let result = g.merge_block_up_with_source(&id, "", &dir).unwrap();
+
+    assert!(result.is_none());
+    assert_eq!(g.blocks[&id].content, "Первый");
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(text, "- Первый\n- Второй\n");
+    let _ = fs::remove_dir_all(&dir);
+}

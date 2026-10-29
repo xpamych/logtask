@@ -1082,6 +1082,7 @@ pub struct MergeResultDto {
 async fn merge_cmd(
     uuid: String,
     op: &str,
+    source: Option<String>,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
@@ -1094,12 +1095,14 @@ async fn merge_cmd(
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
-        let r = match op {
-            "up" => graph.merge_block_up(&id, &root),
-            "down" => graph.merge_block_down(&id, &root),
-            "indent" => graph.indent_block(&id, &root),
-            "outdent" => graph.outdent_block(&id, &root),
-            other => return Err(format!("неизвестная операция: {other}")),
+        let r = match (op, source.as_deref()) {
+            ("up", Some(source)) => graph.merge_block_up_with_source(&id, source, &root),
+            ("up", None) => graph.merge_block_up(&id, &root),
+            ("down", Some(source)) => graph.merge_block_down_with_source(&id, source, &root),
+            ("down", None) => graph.merge_block_down(&id, &root),
+            ("indent", _) => graph.indent_block(&id, &root),
+            ("outdent", _) => graph.outdent_block(&id, &root),
+            (other, _) => return Err(format!("неизвестная операция: {other}")),
         };
         r.map_err(|e| format!("ошибка записи: {e}"))?
     };
@@ -1135,20 +1138,22 @@ pub fn log_frontend(msg: String) {
 #[tauri::command]
 pub async fn block_merge_up(
     uuid: String,
+    source: String,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
-    merge_cmd(uuid, "up", app, state).await
+    merge_cmd(uuid, "up", Some(source), app, state).await
 }
 
 /// Склеивает блок с нижестоящим (Delete в конце редактируемого блока).
 #[tauri::command]
 pub async fn block_merge_down(
     uuid: String,
+    source: String,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
-    merge_cmd(uuid, "down", app, state).await
+    merge_cmd(uuid, "down", Some(source), app, state).await
 }
 
 /// Tab: блок становится ребёнком предыдущего соседа (как в Logseq).
@@ -1158,7 +1163,7 @@ pub async fn block_indent(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
-    merge_cmd(uuid, "indent", app, state).await
+    merge_cmd(uuid, "indent", None, app, state).await
 }
 
 /// Shift+Tab: блок поднимается на уровень родителя.
@@ -1168,7 +1173,7 @@ pub async fn block_outdent(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
-    merge_cmd(uuid, "outdent", app, state).await
+    merge_cmd(uuid, "outdent", None, app, state).await
 }
 
 /// Enter в редакторе: разбивает блок на два по позиции курсора —

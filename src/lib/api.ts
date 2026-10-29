@@ -331,13 +331,13 @@ export interface MergeResult {
 }
 
 /** Склеить блок с вышестоящим (Backspace в начале блока) */
-export async function blockMergeUp(uuid: string): Promise<MergeResult | null> {
-  return invoke<MergeResult | null>("block_merge_up", { uuid });
+export async function blockMergeUp(uuid: string, source: string): Promise<MergeResult | null> {
+  return invoke<MergeResult | null>("block_merge_up", { uuid, source });
 }
 
 /** Склеить блок с нижестоящим (Delete в конце блока) */
-export async function blockMergeDown(uuid: string): Promise<MergeResult | null> {
-  return invoke<MergeResult | null>("block_merge_down", { uuid });
+export async function blockMergeDown(uuid: string, source: string): Promise<MergeResult | null> {
+  return invoke<MergeResult | null>("block_merge_down", { uuid, source });
 }
 
 /** Tab: сделать блок ребёнком предыдущего соседа */

@@ -30,6 +30,7 @@ const QUADRANT_HINT: Record<string, string> = {
 
 export function BlockView(props: {
   block: BlockDto;
+  firstBlock?: boolean;
   onOpenPage?: (name: string) => void;
   onChanged?: () => void;
   onStatusChange?: (uuid: string, marker: string) => void;
@@ -298,7 +299,7 @@ export function BlockView(props: {
     // блока, за ней — trailing; стык = начало строки «curLines-я с конца»
     const curLines = draft().split("\n").length;
     try {
-      const res = await blockMergeUp(b.uuid);
+      const res = await blockMergeUp(b.uuid, persistedSource(draft()));
       if (res) {
         setEditingBlock(res.uuid);
         setPendingEdit({ uuid: res.uuid, minusLines: curLines });
@@ -315,7 +316,7 @@ export function BlockView(props: {
     // стык = первая строка, которую добавит нижестоящий блок
     const atLine = draft().split("\n").length;
     try {
-      const res = await blockMergeDown(b.uuid);
+      const res = await blockMergeDown(b.uuid, persistedSource(draft()));
       if (res) {
         setEditingBlock(res.uuid);
         setPendingEdit({ uuid: res.uuid, atLine });
@@ -422,7 +423,7 @@ export function BlockView(props: {
       const el = e.currentTarget as HTMLTextAreaElement;
       if (e.key === "Backspace" && el.selectionStart === 0 && el.selectionEnd === 0) {
         e.preventDefault();
-        void mergeUp();
+        if (!props.firstBlock) void mergeUp();
         return;
       }
       if (
