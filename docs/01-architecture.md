@@ -90,7 +90,7 @@ backlinks или round-trip.
   `page_get`, `page_list`, `follow_link`, `search`, `backlinks_get`
 - Визуальный граф: `visual_graph_snapshot`, `visual_graph_local`,
   `visual_graph_path`, `visual_graph_layout_get`, `visual_graph_layout_save`,
-  `asset_open`, `asset_reveal`
+  `asset_open`, `asset_reveal`, `asset_save` (изображение из буфера в `assets/`)
 - Списки задач: `kanban`, `tasks_by_query`, `matrix`
 - Сохранённые запросы: `queries_list`, `queries_save`, `import_logseq_queries`
 - Правки: `task_set_status`, `task_set_quadrant`, `task_set_priority`,
