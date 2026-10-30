@@ -15,6 +15,8 @@ import {
   visualGraphLayoutSave,
 } from "~/lib/api";
 import { AllPages } from "~/components/AllPages";
+import { CommandPalette } from "~/components/CommandPalette";
+import type { PaletteCommand } from "~/components/CommandPalette";
 import { Contents } from "~/components/Contents";
 import { JournalTape } from "~/components/JournalTape";
 import { PageView } from "~/components/PageView";
@@ -30,6 +32,8 @@ import { GraphView } from "~/components/graph/GraphView";
 import { GraphSettings } from "~/components/graph/GraphSettings";
 import { LocalGraph } from "~/components/graph/LocalGraph";
 import { todayJournalName } from "~/lib/text";
+import { COMMAND_DEFINITIONS } from "~/lib/commands";
+import { effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { homeViewFromSetting } from "~/lib/homeView";
 import { loadGraphBootstrap } from "~/lib/startup";
 
@@ -110,6 +114,7 @@ const App: Component = () => {
   const [layoutResetKey, setLayoutResetKey] = createSignal(0);
   const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
   const [settingsSection, setSettingsSection] = createSignal<SettingsSection | null>(null);
+  const [paletteMode, setPaletteMode] = createSignal<"commands" | "pages" | null>(null);
   const [sidebarW, setSidebarW] = createSignal(DEFAULT_SETTINGS.sidebarWidth);
   const [panelW, setPanelW] = createSignal(DEFAULT_SETTINGS.taskpanelWidth);
   const [sidebarCollapsed, setSidebarCollapsed] = createSignal(loadCollapsed("logtask:sidebarCollapsed"));
@@ -303,6 +308,72 @@ const App: Component = () => {
 
   const showSettingsView = (section: SettingsSection) =>
     navigate({ kind: "settings", section });
+
+  const runGlobalCommand = (id: string) => {
+    switch (id) {
+      case "palette":
+        setPaletteMode((mode) => (mode === "commands" ? null : "commands"));
+        break;
+      case "quickPage":
+        setPaletteMode("pages");
+        break;
+      case "search":
+        document.querySelector<HTMLInputElement>(".topbar-search input")?.focus();
+        break;
+      case "newTask":
+        showJournal();
+        window.setTimeout(() => window.dispatchEvent(new Event("logtask:new-task")), 0);
+        break;
+      case "today":
+        showJournal();
+        break;
+      case "settings":
+        showSettingsView("general");
+        break;
+      case "help":
+        setPaletteMode("commands");
+        break;
+    }
+  };
+
+  const paletteCommands = (): PaletteCommand[] => {
+    const effective = effectiveShortcuts(settings().shortcuts);
+    if (paletteMode() === "pages") {
+      return pages().map((name) => ({
+        id: `page:${name}`,
+        label: name,
+        shortcut: null,
+        enabled: true,
+        run: () => openPage(name),
+      }));
+    }
+    return COMMAND_DEFINITIONS.filter((command) => command.context === "global").map(
+      (command) => ({
+        id: command.id,
+        label: command.label,
+        shortcut: effective[command.id],
+        enabled: effective[command.id] !== null,
+        run: () => runGlobalCommand(command.id),
+      }),
+    );
+  };
+
+  onMount(() => {
+    const isMac = navigator.platform.includes("Mac");
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
+      const shortcut = normalizeShortcut(e, isMac);
+      if (!shortcut || !shouldHandleGlobalShortcut(e.target, shortcut)) return;
+      const effective = effectiveShortcuts(settings().shortcuts);
+      const id = Object.keys(effective).find((key) => effective[key] === shortcut);
+      if (!id || !COMMAND_DEFINITIONS.some((command) => command.id === id && command.context === "global")) return;
+      if (paletteMode() && id !== "palette") return;
+      e.preventDefault();
+      runGlobalCommand(id);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+  });
 
   // домашний вид из настроек: кнопка «⌂» и стартовый экран графа
   const homeViewOf = (s: Settings): View => homeViewFromSetting(s.homeView);
@@ -726,6 +797,11 @@ const App: Component = () => {
         <Show when={toast()}>
           <div class="toast">{toast()}</div>
         </Show>
+        <CommandPalette
+          open={paletteMode() !== null}
+          commands={paletteCommands()}
+          onClose={() => setPaletteMode(null)}
+        />
       </div>
       </Show>
     </Show>

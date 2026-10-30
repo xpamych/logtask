@@ -63,3 +63,13 @@ export function shortcutConflict(
 export function isProtectedShortcut(shortcut: string): boolean {
   return ["mod+c", "mod+v", "mod+x", "mod+a", "mod+z", "mod+y"].includes(shortcut);
 }
+
+export function shouldHandleGlobalShortcut(
+  target: EventTarget | null,
+  shortcut: string,
+): boolean {
+  if (isProtectedShortcut(shortcut)) return false;
+  if (shortcut.startsWith("mod+")) return true;
+  const element = target as { tagName?: string; isContentEditable?: boolean } | null;
+  return !element?.isContentEditable && !["INPUT", "TEXTAREA", "SELECT"].includes(element?.tagName ?? "");
+}

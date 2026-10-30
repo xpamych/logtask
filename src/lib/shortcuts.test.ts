@@ -5,6 +5,7 @@ import {
   isProtectedShortcut,
   normalizeShortcut,
   shortcutConflict,
+  shouldHandleGlobalShortcut,
 } from "./shortcuts.ts";
 
 const key = (code: string, mods: Partial<KeyboardEvent> = {}) => ({
@@ -46,4 +47,15 @@ test("конфликт учитывает только один контекст
   const effective = effectiveShortcuts({});
   assert.equal(shortcutConflict("search", "mod+p", effective), "quickPage");
   assert.equal(shortcutConflict("taskEdit", "e", effective), null);
+});
+
+test("глобальные сочетания не мешают вводу и редактированию", () => {
+  const body = { tagName: "BODY", isContentEditable: false } as unknown as EventTarget;
+  const textarea = { tagName: "TEXTAREA", isContentEditable: false } as unknown as EventTarget;
+  const editable = { tagName: "DIV", isContentEditable: true } as unknown as EventTarget;
+  assert.equal(shouldHandleGlobalShortcut(body, "mod+k"), true);
+  assert.equal(shouldHandleGlobalShortcut(textarea, "mod+k"), true);
+  assert.equal(shouldHandleGlobalShortcut(textarea, "j"), false);
+  assert.equal(shouldHandleGlobalShortcut(editable, "j"), false);
+  assert.equal(shouldHandleGlobalShortcut(body, "mod+c"), false);
 });

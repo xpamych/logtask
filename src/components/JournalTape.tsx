@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { BacklinkDto, PageDto, Settings } from "~/lib/api";
 import {
@@ -10,7 +10,7 @@ import {
   pageGet,
   taskSetStatus,
 } from "~/lib/api";
-import { formatJournalName, journalLogseqTitle } from "~/lib/text";
+import { formatJournalName, journalLogseqTitle, todayJournalName } from "~/lib/text";
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { BlockView } from "./BlockView";
@@ -189,6 +189,12 @@ export function JournalTape(props: {
   };
 
   onMount(reload);
+
+  onMount(() => {
+    const openToday = () => openComposer(todayJournalName());
+    window.addEventListener("logtask:new-task", openToday);
+    onCleanup(() => window.removeEventListener("logtask:new-task", openToday));
+  });
 
   // бесконечная подгрузка: следим за скроллом самой ленты (.journal —
   // скролл-контейнер) и догружаем дни, когда до низа остаётся < 300px
