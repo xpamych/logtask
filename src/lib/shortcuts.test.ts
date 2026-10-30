@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  activeCommandContext,
   effectiveShortcuts,
   isProtectedShortcut,
   normalizeShortcut,
@@ -58,4 +59,12 @@ test("глобальные сочетания не мешают вводу и р
   assert.equal(shouldHandleGlobalShortcut(textarea, "j"), false);
   assert.equal(shouldHandleGlobalShortcut(editable, "j"), false);
   assert.equal(shouldHandleGlobalShortcut(body, "mod+c"), false);
+});
+
+test("меню задачи имеет приоритет над списком, но не разрешает буквы при вводе", () => {
+  assert.equal(activeCommandContext(true, false), "taskMenu");
+  assert.equal(activeCommandContext(false, false), "taskList");
+  assert.equal(activeCommandContext(true, true), "taskMenu");
+  assert.equal(shouldHandleGlobalShortcut({ tagName: "TEXTAREA" } as unknown as EventTarget, "1"), false);
+  assert.equal(shouldHandleGlobalShortcut({ tagName: "TEXTAREA" } as unknown as EventTarget, "mod+k"), true);
 });

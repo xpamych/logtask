@@ -2738,3 +2738,9 @@ textarea.push-body {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+.block-menu-shortcut {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-size: 0.85em;
+}

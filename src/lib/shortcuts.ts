@@ -64,6 +64,10 @@ export function isProtectedShortcut(shortcut: string): boolean {
   return ["mod+c", "mod+v", "mod+x", "mod+a", "mod+z", "mod+y"].includes(shortcut);
 }
 
+export function activeCommandContext(menuOpen: boolean, _textEditing: boolean): "taskMenu" | "taskList" {
+  return menuOpen ? "taskMenu" : "taskList";
+}
+
 export function shouldHandleGlobalShortcut(
   target: EventTarget | null,
   shortcut: string,

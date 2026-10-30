@@ -1,6 +1,7 @@
-import { For, Show, createSignal, onMount } from "solid-js";
+import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
+import { effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import {
   MARKERS,
   MARKER_LABELS,
@@ -59,6 +60,34 @@ export function BlockMenu(props: {
     if (x !== pos().x || y !== pos().y) setPos({ x, y });
   });
 
+  const levelCommand = (key: "urgency" | "importance", level: string) =>
+    `${key}${level[0].toUpperCase()}${level.slice(1)}`;
+  const levelShortcut = (key: "urgency" | "importance", level: string) =>
+    effectiveShortcuts(props.settings?.shortcuts ?? {})[levelCommand(key, level)];
+
+  onMount(() => {
+    const isMac = navigator.platform.includes("Mac");
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!props.task || e.isComposing) return;
+      const shortcut = normalizeShortcut(e, isMac);
+      if (!shortcut || !shouldHandleGlobalShortcut(e.target, shortcut)) return;
+      const effective = effectiveShortcuts(props.settings?.shortcuts ?? {});
+      const id = Object.keys(effective).find((key) => effective[key] === shortcut);
+      for (const key of ["urgency", "importance"] as const) {
+        for (const level of LEVELS) {
+          if (id !== levelCommand(key, level)) continue;
+          e.preventDefault();
+          const current = key === "urgency" ? props.urgency : props.importance;
+          props.onClose();
+          props.onLevel(key, current === level ? null : level);
+          return;
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+  });
+
   const statusLabel = (marker: string): string =>
     props.settings?.statuses.find((s) => s.marker === marker)?.label ??
     MARKER_LABELS[marker] ??
@@ -87,6 +116,7 @@ export function BlockMenu(props: {
             >
               <span class="status-dot" style={{ background: levelColor(l) }} />
               {LEVEL_LABELS[l]}
+              <kbd class="block-menu-shortcut">{levelShortcut(key, l)}</kbd>
             </button>
           );
         }}
