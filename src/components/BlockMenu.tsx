@@ -1,7 +1,8 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
-import { effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
+import { activeModalContext, pushModalContext } from "~/lib/modalState";
+import { commandForContext, effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import {
   MARKERS,
   MARKER_LABELS,
@@ -46,6 +47,8 @@ export function BlockMenu(props: {
 
   // прижимает меню к границам окна, чтобы не вылезало за экран
   onMount(() => {
+    const closeContext = pushModalContext("taskMenu");
+    onCleanup(closeContext);
     const el = menuEl;
     if (!el) return;
     const r = el.getBoundingClientRect();
@@ -71,11 +74,11 @@ export function BlockMenu(props: {
   onMount(() => {
     const isMac = navigator.platform.includes("Mac");
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!props.task || e.isComposing) return;
+      if (!props.task || e.isComposing || activeModalContext() !== "taskMenu") return;
       const shortcut = normalizeShortcut(e, isMac);
       if (!shortcut || !shouldHandleGlobalShortcut(e.target, shortcut)) return;
       const effective = effectiveShortcuts(props.settings?.shortcuts ?? {});
-      const id = Object.keys(effective).find((key) => effective[key] === shortcut);
+      const id = commandForContext(shortcut, effective, "taskMenu");
       for (const key of ["urgency", "importance"] as const) {
         for (const level of LEVELS) {
           if (id !== levelCommand(key, level)) continue;

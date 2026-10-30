@@ -1,8 +1,9 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
 import { COMMAND_DEFINITIONS } from "~/lib/commands";
 import type { CommandContext } from "~/lib/commands";
+import { pushModalContext } from "~/lib/modalState";
 import {
   effectiveShortcuts,
   formatShortcut,
@@ -26,6 +27,12 @@ export function ShortcutSettings(props: {
   const [error, setError] = createSignal<string | null>(null);
   const isMac = navigator.platform.includes("Mac");
   const effective = () => effectiveShortcuts(props.settings.shortcuts);
+
+  createEffect(() => {
+    if (!capturing()) return;
+    const close = pushModalContext("capture");
+    onCleanup(close);
+  });
 
   const save = (shortcuts: Record<string, string | null>) => {
     props.onChange({ ...props.settings, shortcuts });

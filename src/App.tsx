@@ -34,9 +34,11 @@ import { GraphSettings } from "~/components/graph/GraphSettings";
 import { LocalGraph } from "~/components/graph/LocalGraph";
 import { todayJournalName } from "~/lib/text";
 import { COMMAND_DEFINITIONS } from "~/lib/commands";
-import { effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
+import { activeModalContext, pushModalContext } from "~/lib/modalState";
+import { commandForContext, effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { homeViewFromSetting } from "~/lib/homeView";
 import { loadGraphBootstrap } from "~/lib/startup";
+import { selectedTaskUuid } from "~/lib/taskNavigation";
 
 const RECENT_PAGES_KEY = "logtask:recentPages";
 
@@ -349,16 +351,36 @@ const App: Component = () => {
         run: () => openPage(name),
       }));
     }
-    return COMMAND_DEFINITIONS.filter((command) => command.context === "global").map(
+    const globalCommands = COMMAND_DEFINITIONS.filter((command) => command.context === "global").map(
       (command) => ({
         id: command.id,
         label: command.label,
         shortcut: formatShortcut(effective[command.id], navigator.platform.includes("Mac")),
-        enabled: effective[command.id] !== null,
+        enabled: true,
         run: () => runGlobalCommand(command.id),
       }),
     );
+    if (!showTasks() || !selectedTaskUuid()) return globalCommands;
+    const taskCommands = COMMAND_DEFINITIONS.filter((command) => command.context === "taskList").map(
+      (command) => ({
+        id: command.id,
+        label: command.label,
+        shortcut: formatShortcut(effective[command.id], navigator.platform.includes("Mac")),
+        enabled: true,
+        run: () => queueMicrotask(() =>
+          window.dispatchEvent(new CustomEvent("logtask:task-command", { detail: command.id })),
+        ),
+      }),
+    );
+    return [...globalCommands, ...taskCommands];
   };
+
+  createEffect(() => {
+    const context = paletteMode() ? "palette" : helpOpen() ? "help" : null;
+    if (!context) return;
+    const close = pushModalContext(context);
+    onCleanup(close);
+  });
 
   onMount(() => {
     const isMac = navigator.platform.includes("Mac");
@@ -367,9 +389,9 @@ const App: Component = () => {
       const shortcut = normalizeShortcut(e, isMac);
       if (!shortcut || !shouldHandleGlobalShortcut(e.target, shortcut)) return;
       const effective = effectiveShortcuts(settings().shortcuts);
-      const id = Object.keys(effective).find((key) => effective[key] === shortcut);
-      if (!id || !COMMAND_DEFINITIONS.some((command) => command.id === id && command.context === "global")) return;
-      if (paletteMode() && id !== "palette") return;
+      const id = commandForContext(shortcut, effective, "global");
+      if (!id) return;
+      if (activeModalContext() && !(activeModalContext() === "palette" && id === "palette")) return;
       e.preventDefault();
       runGlobalCommand(id);
     };

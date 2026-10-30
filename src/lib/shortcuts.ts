@@ -23,6 +23,7 @@ function codeKey(code: string): string | null {
 }
 
 export function normalizeShortcut(e: ShortcutEvent, isMac: boolean): string | null {
+  if ((isMac && e.ctrlKey) || (!isMac && e.metaKey)) return null;
   const key = codeKey(e.code);
   if (!key) return null;
   const parts: string[] = [];
@@ -33,16 +34,33 @@ export function normalizeShortcut(e: ShortcutEvent, isMac: boolean): string | nu
   return parts.join("+");
 }
 
+export function isValidShortcut(shortcut: string): boolean {
+  return /^(?:(?:mod|alt|shift)\+)*(?:[a-z0-9]|,|f(?:[1-9]|1[0-9]|2[0-4])|space|enter|arrowdown|arrowup|backspace)$/.test(shortcut);
+}
+
 export function effectiveShortcuts(
   overrides: Record<string, string | null>,
 ): Record<string, string | null> {
   const result: Record<string, string | null> = {};
   for (const command of COMMAND_DEFINITIONS) {
-    result[command.id] = Object.hasOwn(overrides, command.id)
-      ? overrides[command.id]
+    const override = overrides[command.id];
+    result[command.id] = Object.hasOwn(overrides, command.id) &&
+      (override === null || isValidShortcut(override))
+      ? override
       : command.defaultShortcut;
   }
   return result;
+}
+
+export function commandForContext(
+  shortcut: string,
+  effective: Record<string, string | null>,
+  context: "global" | "taskList" | "taskMenu",
+): string | null {
+  const command = COMMAND_DEFINITIONS.find(
+    (item) => item.context === context && effective[item.id] === shortcut,
+  );
+  return command?.id ?? null;
 }
 
 export function shortcutConflict(
@@ -61,7 +79,18 @@ export function shortcutConflict(
 }
 
 export function isProtectedShortcut(shortcut: string): boolean {
-  return ["mod+c", "mod+v", "mod+x", "mod+a", "mod+z", "mod+y"].includes(shortcut);
+  return [
+    "mod+c",
+    "mod+v",
+    "mod+x",
+    "mod+a",
+    "mod+z",
+    "mod+y",
+    "mod+shift+z",
+    "mod+q",
+    "mod+enter",
+    "alt+f4",
+  ].includes(shortcut);
 }
 
 export function activeCommandContext(menuOpen: boolean, _textEditing: boolean): "taskMenu" | "taskList" {

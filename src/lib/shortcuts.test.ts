@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   activeCommandContext,
+  commandForContext,
   effectiveShortcuts,
   formatShortcut,
   isProtectedShortcut,
+  isValidShortcut,
   normalizeShortcut,
   resetShortcutOverride,
   shortcutConflict,
@@ -79,4 +81,24 @@ test("форматирование и сброс пользовательски�
   const overrides = { palette: "mod+shift+p", search: null };
   assert.deepEqual(resetShortcutOverride(overrides, "palette"), { search: null });
   assert.deepEqual(resetShortcutOverride(overrides, "missing"), overrides);
+});
+
+test("команда выбирается только в активном контексте", () => {
+  const effective = effectiveShortcuts({});
+  assert.equal(commandForContext("e", effective, "taskMenu"), "importanceHigh");
+  assert.equal(commandForContext("e", effective, "taskList"), "taskEdit");
+  assert.equal(commandForContext("mod+k", effective, "global"), "palette");
+  assert.equal(commandForContext("mod+k", effective, "taskList"), null);
+});
+
+test("повреждённые и опасные сочетания отклоняются", () => {
+  assert.equal(isValidShortcut("mod+shift+k"), true);
+  assert.equal(isValidShortcut("not a shortcut"), false);
+  assert.equal(isValidShortcut("mod+unknown"), false);
+  assert.equal(effectiveShortcuts({ palette: "not a shortcut" }).palette, "mod+k");
+  for (const shortcut of ["mod+shift+z", "mod+q", "mod+enter", "alt+f4"]) {
+    assert.equal(isProtectedShortcut(shortcut), true, shortcut);
+  }
+  assert.equal(normalizeShortcut(key("KeyK", { metaKey: true }), false), null);
+  assert.equal(normalizeShortcut(key("KeyK", { ctrlKey: true }), true), null);
 });

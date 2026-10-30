@@ -11,8 +11,9 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { editingBlock, setEditingBlock } from "~/lib/editState";
-import { effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
-import { selectedTaskUuid, setSelectedTaskUuid, visibleTaskUuid } from "~/lib/taskNavigation";
+import { activeModalContext } from "~/lib/modalState";
+import { commandForContext, effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
+import { primaryTaskElement, selectedTaskUuid, setSelectedTaskUuid, visibleTaskUuid } from "~/lib/taskNavigation";
 import { editorSource, persistedSource } from "~/lib/text";
 import { fitTextarea } from "~/lib/textarea";
 import { RichText } from "./RichText";
@@ -207,15 +208,11 @@ export function TaskCard(props: {
 
   onMount(() => {
     const isMac = navigator.platform.includes("Mac");
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.isComposing || editingBlock() !== null || selectedTaskUuid() !== t.uuid) return;
-      const shortcut = normalizeShortcut(e, isMac);
-      if (!shortcut || !shouldHandleGlobalShortcut(e.target, shortcut)) return;
-      const effective = effectiveShortcuts(props.settings?.shortcuts ?? {});
-      const id = Object.keys(effective).find((key) => effective[key] === shortcut);
-      const arrowDirection = e.code === "ArrowDown" ? 1 : e.code === "ArrowUp" ? -1 : null;
-      if (!id && !arrowDirection) return;
-      e.preventDefault();
+    const isPrimary = () => {
+      const elements = Array.from(document.querySelectorAll<HTMLElement>("[data-task-uuid]"));
+      return primaryTaskElement(elements, t.uuid) === rootEl;
+    };
+    const runCommand = (id: string, arrowDirection: 1 | -1 | null = null) => {
       if (id === "taskNext" || id === "taskPrevious" || arrowDirection) {
         const direction = arrowDirection ?? (id === "taskNext" ? 1 : -1);
         const elements = Array.from(document.querySelectorAll<HTMLElement>("[data-task-uuid]"));
@@ -235,8 +232,28 @@ export function TaskCard(props: {
         void onStatus(t.done ? "TODO" : "DONE");
       }
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing || editingBlock() !== null || activeModalContext() || selectedTaskUuid() !== t.uuid || !isPrimary()) return;
+      const shortcut = normalizeShortcut(e, isMac);
+      if (!shortcut || !shouldHandleGlobalShortcut(e.target, shortcut)) return;
+      const effective = effectiveShortcuts(props.settings?.shortcuts ?? {});
+      const id = commandForContext(shortcut, effective, "taskList");
+      const arrowDirection = e.code === "ArrowDown" ? 1 : e.code === "ArrowUp" ? -1 : null;
+      if (!id && !arrowDirection) return;
+      e.preventDefault();
+      if (id) runCommand(id, arrowDirection);
+      else if (arrowDirection) runCommand("", arrowDirection);
+    };
+    const onPaletteCommand = (e: Event) => {
+      if (activeModalContext() || editingBlock() !== null || selectedTaskUuid() !== t.uuid || !isPrimary()) return;
+      runCommand((e as CustomEvent<string>).detail);
+    };
     window.addEventListener("keydown", onKeyDown);
-    onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+    window.addEventListener("logtask:task-command", onPaletteCommand);
+    onCleanup(() => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("logtask:task-command", onPaletteCommand);
+    });
   });
 
   return (

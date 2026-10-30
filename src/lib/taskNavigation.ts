@@ -14,3 +14,10 @@ export function visibleTaskUuid(
   const nextIndex = Math.max(0, Math.min(visible.length - 1, currentIndex + direction));
   return visible[nextIndex].dataset.taskUuid!;
 }
+
+export function primaryTaskElement(
+  elements: readonly HTMLElement[],
+  uuid: string,
+): HTMLElement | null {
+  return elements.find((element) => element.offsetParent !== null && element.dataset.taskUuid === uuid) ?? null;
+}
