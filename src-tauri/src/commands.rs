@@ -1802,14 +1802,24 @@ fn image_extension(data: &[u8], _mime: &str) -> Option<&'static str> {
 fn save_image(root: &std::path::Path, data: &[u8], mime: &str) -> Result<String, String> {
     let extension = image_extension(data, mime)
         .ok_or("поддерживаются только PNG, JPEG, GIF и WebP размером до 25 МБ")?;
+    std::fs::create_dir_all(root).map_err(|e| format!("создание корня графа: {e}"))?;
+    let root_canon = root
+        .canonicalize()
+        .map_err(|e| format!("корень графа: {e}"))?;
     let assets = root.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| format!("создание assets: {e}"))?;
+    let assets_canon = assets
+        .canonicalize()
+        .map_err(|e| format!("каталог assets: {e}"))?;
+    if !assets_canon.starts_with(&root_canon) {
+        return Err("каталог assets находится за пределами графа".into());
+    }
     let name = format!(
         "pasted-{}.{}",
         uuid::Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext)),
         extension
     );
-    crate::core::fswrite::atomic_write_bytes(&assets.join(&name), data)
+    crate::core::fswrite::atomic_write_bytes(&assets_canon.join(&name), data)
         .map_err(|e| format!("сохранение изображения: {e}"))?;
     Ok(format!("assets/{name}"))
 }
@@ -2096,6 +2106,24 @@ mod tests {
         assert_eq!(std::fs::read(dir.join(first)).unwrap(), data);
         assert_eq!(std::fs::read(dir.join(second)).unwrap(), data);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn asset_save_rejects_assets_symlink_outside_root() {
+        let dir = std::env::temp_dir().join("logtask_asset_save_symlink");
+        let outside = std::env::temp_dir().join("logtask_asset_save_outside");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, dir.join("assets")).unwrap();
+
+        let result = super::save_image(&dir, b"\x89PNG\r\n\x1a\nxxxx", "image/png");
+        assert!(result.is_err());
+        assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { insertAtCursor, pasteImage } from "./pasteImage.ts";
+import { insertAtCursor, pasteImage, waitForImagePaste } from "./pasteImage.ts";
 
 const textarea = (value: string, start: number, end = start) =>
   ({ value, selectionStart: start, selectionEnd: end }) as HTMLTextAreaElement;
@@ -52,11 +52,45 @@ test("повторная вставка во время записи игнор�
   const file = new File([new Uint8Array([1])], "screen.png", { type: "image/png" });
   const area = textarea("abc", 1);
   let finish!: (path: string) => void;
-  const pending = pasteImage(event([{ type: "image/png", file }]), area, () => new Promise((resolve) => { finish = resolve; }));
-  await Promise.resolve();
+  let started!: () => void;
+  const start = new Promise<void>((resolve) => { started = resolve; });
+  const pending = pasteImage(event([{ type: "image/png", file }]), area, () => {
+    started();
+    return new Promise((resolve) => { finish = resolve; });
+  });
+  await start;
   const second = await pasteImage(event([{ type: "image/png", file }]), area, async () => "assets/second.png");
   assert.deepEqual(second, { handled: true });
   finish("assets/first.png");
   const first = await pending;
   assert.equal(first.text, "a![[../assets/first.png]]bc");
+});
+
+test("сохранение ждёт завершения вставки изображения", async () => {
+  const file = new File([new Uint8Array([1])], "screen.png", { type: "image/png" });
+  const area = textarea("abc", 1);
+  let finish!: (path: string) => void;
+  let started!: () => void;
+  const start = new Promise<void>((resolve) => { started = resolve; });
+  const inserted = pasteImage(event([{ type: "image/png", file }]), area, () => {
+    started();
+    return new Promise((resolve) => { finish = resolve; });
+  });
+  await start;
+  let completed = false;
+  const waiting = waitForImagePaste(area).then(() => { completed = true; });
+  await Promise.resolve();
+  assert.equal(completed, false);
+  finish("assets/x.png");
+  await waiting;
+  await inserted;
+  assert.equal(completed, true);
+});
+
+test("неподдерживаемый формат не перехватывается", async () => {
+  const file = new File([new Uint8Array([1])], "image.bmp", { type: "image/bmp" });
+  const result = await pasteImage(event([{ type: "image/bmp", file }]), textarea("abc", 1), async () => {
+    throw new Error("не должен вызываться");
+  });
+  assert.deepEqual(result, { handled: false });
 });

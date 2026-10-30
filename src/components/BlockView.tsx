@@ -2,7 +2,7 @@ import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid
 import type { JSX } from "solid-js";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { clickCaretPosition, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
-import { pasteImage } from "~/lib/pasteImage";
+import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
@@ -55,12 +55,15 @@ export function BlockView(props: {
   let textareaEl: HTMLTextAreaElement | undefined;
   let allPages: string[] | null = null;
   const [pasteError, setPasteError] = createSignal<string | null>(null);
+  const [pasteBusy, setPasteBusy] = createSignal(false);
 
   const onImagePaste = async (e: ClipboardEvent) => {
     const el = textareaEl;
     if (!el) return;
     setPasteError(null);
+    setPasteBusy(true);
     const result = await pasteImage(e, el, assetSave);
+    setPasteBusy(false);
     if (result.error) {
       setPasteError(result.error);
       return;
@@ -265,6 +268,7 @@ export function BlockView(props: {
   const save = async () => {
     // Enter прячет textarea → WebKit шлёт blur → повторный save: пропускаем
     if (saving()) return;
+    if (textareaEl) await waitForImagePaste(textareaEl);
     const text = draft().trim();
     if (!text || text === editorSource(b.source).trim()) {
       stopEdit();
@@ -282,7 +286,8 @@ export function BlockView(props: {
     }
   };
 
-  const cancel = () => {
+  const cancel = async () => {
+    if (textareaEl) await waitForImagePaste(textareaEl);
     stopEdit();
     setDraft(editorSource(b.source));
   };
@@ -588,13 +593,14 @@ export function BlockView(props: {
             ref={textareaEl}
             class="block-edit"
             value={draft()}
-            disabled={saving()}
+            disabled={saving() || pasteBusy()}
             onInput={(e) => void onEditInput(e.currentTarget)}
             onKeyDown={onKeyDown}
             onPaste={(e) => void onImagePaste(e)}
             onBlur={() => void save()}
             rows={1}
           />
+          <Show when={pasteBusy()}><div class="muted">Сохранение изображения…</div></Show>
           <Show when={pasteError()}>{(message) => <div class="error">{message()}</div>}</Show>
           <Show when={acOpen()}>
             <div class="ac-list">

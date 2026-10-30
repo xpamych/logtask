@@ -16,7 +16,7 @@ import { activeModalContext } from "~/lib/modalState";
 import { commandForContext, effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { primaryTaskElement, selectedTaskUuid, setSelectedTaskUuid, visibleTaskUuid } from "~/lib/taskNavigation";
 import { editorSource, persistedSource } from "~/lib/text";
-import { pasteImage } from "~/lib/pasteImage";
+import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
 import { fitTextarea } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
@@ -90,12 +90,15 @@ export function TaskCard(props: {
   let textareaEl: HTMLTextAreaElement | undefined;
   let rootEl: HTMLDivElement | undefined;
   const [pasteError, setPasteError] = createSignal<string | null>(null);
+  const [pasteBusy, setPasteBusy] = createSignal(false);
 
   const onImagePaste = async (e: ClipboardEvent) => {
     const el = textareaEl;
     if (!el) return;
     setPasteError(null);
+    setPasteBusy(true);
     const result = await pasteImage(e, el, assetSave);
+    setPasteBusy(false);
     if (result.error) {
       setPasteError(result.error);
       return;
@@ -159,6 +162,7 @@ export function TaskCard(props: {
 
   const saveEdit = async () => {
     if (saving()) return;
+    if (textareaEl) await waitForImagePaste(textareaEl);
     const text = draft().trim();
     if (!text || text === editorSource(t.source).trim()) {
       stopEdit();
@@ -174,6 +178,11 @@ export function TaskCard(props: {
     } finally {
       setSaving(false);
     }
+  };
+
+  const cancelEdit = async () => {
+    if (textareaEl) await waitForImagePaste(textareaEl);
+    stopEdit();
   };
 
   const onStatus = async (marker: string) => {
@@ -329,7 +338,7 @@ export function TaskCard(props: {
             ref={textareaEl}
             class="block-edit task-card-edit"
             value={draft()}
-            disabled={saving()}
+            disabled={saving() || pasteBusy()}
             onInput={(e) => {
               setDraft(e.currentTarget.value);
               fitTextarea(e.currentTarget);
@@ -342,12 +351,13 @@ export function TaskCard(props: {
                 void saveEdit();
               } else if (e.key === "Escape") {
                 e.preventDefault();
-                stopEdit();
+                void cancelEdit();
               }
             }}
             onBlur={() => void saveEdit()}
             rows={1}
           />
+          <Show when={pasteBusy()}><div class="muted">Сохранение изображения…</div></Show>
           <Show when={pasteError()}>{(message) => <div class="error">{message()}</div>}</Show>
         </Show>
         <span
