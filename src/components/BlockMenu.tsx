@@ -1,7 +1,7 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
-import { effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
+import { effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import {
   MARKERS,
   MARKER_LABELS,
@@ -63,7 +63,10 @@ export function BlockMenu(props: {
   const levelCommand = (key: "urgency" | "importance", level: string) =>
     `${key}${level[0].toUpperCase()}${level.slice(1)}`;
   const levelShortcut = (key: "urgency" | "importance", level: string) =>
-    effectiveShortcuts(props.settings?.shortcuts ?? {})[levelCommand(key, level)];
+    formatShortcut(
+      effectiveShortcuts(props.settings?.shortcuts ?? {})[levelCommand(key, level)],
+      navigator.platform.includes("Mac"),
+    );
 
   onMount(() => {
     const isMac = navigator.platform.includes("Mac");

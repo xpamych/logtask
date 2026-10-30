@@ -2764,3 +2764,26 @@ textarea.push-body {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+.shortcut-help {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.shortcut-help h3 {
+  margin: 16px 0 8px;
+  font-size: 0.95rem;
+}
+
+.shortcut-help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-help-row kbd {
+  color: var(--fg-muted);
+  white-space: nowrap;
+}

@@ -23,6 +23,7 @@ import { PageView } from "~/components/PageView";
 import PanelResizer from "~/components/PanelResizer";
 import { SettingsPage } from "~/components/SettingsPage";
 import type { SettingsSection } from "~/components/SettingsPage";
+import { ShortcutHelp } from "~/components/ShortcutHelp";
 import { Sidebar } from "~/components/Sidebar";
 import { TasksPage } from "~/components/TasksPage";
 import { Topbar } from "~/components/Topbar";
@@ -33,7 +34,7 @@ import { GraphSettings } from "~/components/graph/GraphSettings";
 import { LocalGraph } from "~/components/graph/LocalGraph";
 import { todayJournalName } from "~/lib/text";
 import { COMMAND_DEFINITIONS } from "~/lib/commands";
-import { effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
+import { effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { homeViewFromSetting } from "~/lib/homeView";
 import { loadGraphBootstrap } from "~/lib/startup";
 
@@ -115,6 +116,7 @@ const App: Component = () => {
   const [settings, setSettings] = createSignal<Settings>(DEFAULT_SETTINGS);
   const [settingsSection, setSettingsSection] = createSignal<SettingsSection | null>(null);
   const [paletteMode, setPaletteMode] = createSignal<"commands" | "pages" | null>(null);
+  const [helpOpen, setHelpOpen] = createSignal(false);
   const [sidebarW, setSidebarW] = createSignal(DEFAULT_SETTINGS.sidebarWidth);
   const [panelW, setPanelW] = createSignal(DEFAULT_SETTINGS.taskpanelWidth);
   const [sidebarCollapsed, setSidebarCollapsed] = createSignal(loadCollapsed("logtask:sidebarCollapsed"));
@@ -331,7 +333,7 @@ const App: Component = () => {
         showSettingsView("general");
         break;
       case "help":
-        setPaletteMode("commands");
+        setHelpOpen((open) => !open);
         break;
     }
   };
@@ -351,7 +353,7 @@ const App: Component = () => {
       (command) => ({
         id: command.id,
         label: command.label,
-        shortcut: effective[command.id],
+        shortcut: formatShortcut(effective[command.id], navigator.platform.includes("Mac")),
         enabled: effective[command.id] !== null,
         run: () => runGlobalCommand(command.id),
       }),
@@ -802,6 +804,7 @@ const App: Component = () => {
           commands={paletteCommands()}
           onClose={() => setPaletteMode(null)}
         />
+        <ShortcutHelp open={helpOpen()} settings={settings()} onClose={() => setHelpOpen(false)} />
       </div>
       </Show>
     </Show>

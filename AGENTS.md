@@ -70,6 +70,8 @@ Logtask — десктоп-приложение: лёгкая замена Logse
      настройки; `lib/graph/` — фильтры, кластеры, Worker layout, live/persistence.
    - `lib/api.ts` — типизированные обёртки над `invoke()` для каждой
      IPC-команды. Новую команду добавляй и туда.
+   - `lib/commands.ts` + `lib/shortcuts.ts` — единый реестр команд, контекстов
+     и пользовательских сочетаний для клавиатуры, палитры, настроек и справки.
    - Стили — один файл `public/styles/global.css` с CSS-переменными и темами
      (`body.theme-dark` / `body.theme-light`).
 
@@ -145,8 +147,8 @@ cargo test --workspace
   keyring).
 
 Проверка фронтенда — типизация (`npm run typecheck`, входит в `npm run build`)
-и unit-тесты чистой логики графа через встроенный Node test runner:
-`node --test src/lib/graph/*.test.ts src/components/graph/*.test.ts`.
+и unit-тесты чистой логики через встроенный Node test runner:
+`node --conditions=browser --test src/lib/graph/*.test.ts src/components/graph/*.test.ts src/lib/*.test.ts`.
 
 ## Соглашения по коду
 
