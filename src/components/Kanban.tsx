@@ -3,6 +3,7 @@ import type { JSX } from "solid-js";
 import type { Settings, TaskColumn } from "~/lib/api";
 import { kanban, taskSetStatus } from "~/lib/api";
 import { refreshGuarded } from "~/lib/editState";
+import { selectedTaskUuid, setSelectedTaskUuid } from "~/lib/taskNavigation";
 import { TaskCard } from "./TaskCard";
 
 const CLOSED_MARKERS = ["DONE", "CANCELED"];
@@ -204,6 +205,8 @@ export function Kanban(props: {
                 {(task) => (
                   <TaskCard
                     task={task}
+                    selected={selectedTaskUuid() === task.uuid}
+                    onSelect={() => setSelectedTaskUuid(task.uuid)}
                     draggable
                     settings={props.settings}
                     onChanged={guardedLoad}

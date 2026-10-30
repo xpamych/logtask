@@ -9,6 +9,7 @@ import {
   tasksByQuery,
 } from "~/lib/api";
 import { refreshGuarded } from "~/lib/editState";
+import { selectedTaskUuid, setSelectedTaskUuid } from "~/lib/taskNavigation";
 import { QueryEditor } from "./QueryEditor";
 import { TaskCard } from "./TaskCard";
 
@@ -240,6 +241,8 @@ export function Queries(props: {
                   {(task) => (
                     <TaskCard
                       task={task}
+                      selected={selectedTaskUuid() === task.uuid}
+                      onSelect={() => setSelectedTaskUuid(task.uuid)}
                       detailed
                       settings={props.settings}
                       onChanged={guardedLoad}

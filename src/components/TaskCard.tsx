@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onCleanup } from "solid-js";
+import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings, TaskDto } from "~/lib/api";
 import {
@@ -11,6 +11,8 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { editingBlock, setEditingBlock } from "~/lib/editState";
+import { effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
+import { selectedTaskUuid, setSelectedTaskUuid, visibleTaskUuid } from "~/lib/taskNavigation";
 import { editorSource, persistedSource } from "~/lib/text";
 import { fitTextarea } from "~/lib/textarea";
 import { RichText } from "./RichText";
@@ -67,6 +69,8 @@ export function TaskCard(props: {
   draggable?: boolean;
   /** развёрнутый вид (подборки): + таблица свойств блока */
   detailed?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
   settings?: Settings | null;
   /** вызывается после смены статуса/приоритета/сохранения текста */
   onChanged?: () => void;
@@ -81,6 +85,7 @@ export function TaskCard(props: {
   const openMenu = (pos: { x: number; y: number }) => setMenuPos(pos);
   const [showChildren, setShowChildren] = createSignal(false);
   let textareaEl: HTMLTextAreaElement | undefined;
+  let rootEl: HTMLDivElement | undefined;
 
   const childStatusColor = (marker: string | null): string =>
     (marker && props.settings?.statuses.find((s) => s.marker === marker)?.color) ||
@@ -200,15 +205,53 @@ export function TaskCard(props: {
     }
   };
 
+  onMount(() => {
+    const isMac = navigator.platform.includes("Mac");
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing || editingBlock() !== null || selectedTaskUuid() !== t.uuid) return;
+      const shortcut = normalizeShortcut(e, isMac);
+      if (!shortcut || !shouldHandleGlobalShortcut(e.target, shortcut)) return;
+      const effective = effectiveShortcuts(props.settings?.shortcuts ?? {});
+      const id = Object.keys(effective).find((key) => effective[key] === shortcut);
+      const arrowDirection = e.code === "ArrowDown" ? 1 : e.code === "ArrowUp" ? -1 : null;
+      if (!id && !arrowDirection) return;
+      e.preventDefault();
+      if (id === "taskNext" || id === "taskPrevious" || arrowDirection) {
+        const direction = arrowDirection ?? (id === "taskNext" ? 1 : -1);
+        const elements = Array.from(document.querySelectorAll<HTMLElement>("[data-task-uuid]"));
+        const uuid = visibleTaskUuid(elements, direction, t.uuid);
+        if (uuid) {
+          setSelectedTaskUuid(uuid);
+          document.querySelector<HTMLElement>(`[data-task-uuid="${CSS.escape(uuid)}"]`)?.scrollIntoView({ block: "nearest" });
+        }
+      } else if (id === "taskOpen") {
+        props.onOpenPage?.(t.page, t.uuid);
+      } else if (id === "taskEdit") {
+        startEdit();
+      } else if (id === "taskMenu" && rootEl) {
+        const rect = rootEl.getBoundingClientRect();
+        openMenu({ x: rect.left + 24, y: rect.top + 24 });
+      } else if (id === "taskToggleDone") {
+        void onStatus(t.done ? "TODO" : "DONE");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+  });
+
   return (
     <div
+      ref={rootEl}
       class="task-card"
+      data-task-uuid={t.uuid}
       classList={{
         "task-done": t.done,
         "task-prio-a": t.priority === "[#A]",
         "task-prio-b": t.priority === "[#B]",
+        "task-selected": props.selected,
       }}
       title={editing() ? undefined : t.content}
+      onClick={props.onSelect}
       draggable={props.draggable && !editing()}
       onDragStart={onDragStart}
       onContextMenu={(e) => {
@@ -312,6 +355,8 @@ export function TaskCard(props: {
             {(c) => (
               <TaskCard
                 task={c}
+                selected={selectedTaskUuid() === c.uuid}
+                onSelect={() => setSelectedTaskUuid(c.uuid)}
                 onOpenPage={props.onOpenPage}
                 settings={props.settings}
                 onChanged={props.onChanged}

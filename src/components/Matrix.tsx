@@ -3,6 +3,7 @@ import type { JSX } from "solid-js";
 import type { MatrixQuadrant, Settings } from "~/lib/api";
 import { matrix, taskSetQuadrant } from "~/lib/api";
 import { refreshGuarded } from "~/lib/editState";
+import { selectedTaskUuid, setSelectedTaskUuid } from "~/lib/taskNavigation";
 import { TaskCard } from "./TaskCard";
 
 const QUADRANT_META: Record<
@@ -117,6 +118,8 @@ export function Matrix(props: {
                   {(task) => (
                     <TaskCard
                       task={task}
+                      selected={selectedTaskUuid() === task.uuid}
+                      onSelect={() => setSelectedTaskUuid(task.uuid)}
                       draggable
                       settings={props.settings}
                       onChanged={guardedLoad}

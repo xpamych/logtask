@@ -2733,3 +2733,8 @@ textarea.push-body {
   padding: 20px;
   text-align: center;
 }
+
+.task-card.task-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

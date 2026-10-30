@@ -1,6 +1,9 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
+import { editingBlock } from "~/lib/editState";
+import { effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
+import { selectedTaskUuid, setSelectedTaskUuid, visibleTaskUuid } from "~/lib/taskNavigation";
 import { Kanban } from "./Kanban";
 import { Matrix } from "./Matrix";
 import { Queries } from "./Queries";
@@ -47,6 +50,29 @@ export function TasksPage(props: {
     setBoardView(v);
     localStorage.setItem(BOARD_KEY, v);
   };
+
+  onMount(() => {
+    const isMac = navigator.platform.includes("Mac");
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing || editingBlock() !== null) return;
+      const selected = selectedTaskUuid();
+      if (selected && document.querySelector(`[data-task-uuid="${CSS.escape(selected)}"]`)) return;
+      const shortcut = normalizeShortcut(e, isMac);
+      if (!shortcut || !shouldHandleGlobalShortcut(e.target, shortcut)) return;
+      const effective = effectiveShortcuts(props.settings?.shortcuts ?? {});
+      const id = Object.keys(effective).find((key) => effective[key] === shortcut);
+      const direction = e.code === "ArrowDown" || id === "taskNext" ? 1 : e.code === "ArrowUp" || id === "taskPrevious" ? -1 : null;
+      if (!direction) return;
+      const elements = Array.from(document.querySelectorAll<HTMLElement>("[data-task-uuid]"));
+      const uuid = visibleTaskUuid(elements, direction, selected);
+      if (!uuid) return;
+      e.preventDefault();
+      setSelectedTaskUuid(uuid);
+      document.querySelector<HTMLElement>(`[data-task-uuid="${CSS.escape(uuid)}"]`)?.scrollIntoView({ block: "nearest" });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+  });
 
   return (
     <main class="tasks-page">
