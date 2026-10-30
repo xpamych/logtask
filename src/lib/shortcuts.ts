@@ -77,3 +77,29 @@ export function shouldHandleGlobalShortcut(
   const element = target as { tagName?: string; isContentEditable?: boolean } | null;
   return !element?.isContentEditable && !["INPUT", "TEXTAREA", "SELECT"].includes(element?.tagName ?? "");
 }
+
+export function formatShortcut(shortcut: string | null, isMac: boolean): string {
+  if (!shortcut) return "Не назначено";
+  return shortcut
+    .split("+")
+    .map((part) => {
+      if (part === "mod") return isMac ? "Cmd" : "Ctrl";
+      if (part === "shift") return "Shift";
+      if (part === "alt") return "Alt";
+      if (part === "space") return "Space";
+      if (part === "enter") return "Enter";
+      if (part === "arrowdown") return "↓";
+      if (part === "arrowup") return "↑";
+      return part.length === 1 ? part.toUpperCase() : part;
+    })
+    .join("+");
+}
+
+export function resetShortcutOverride(
+  overrides: Record<string, string | null>,
+  id: string,
+): Record<string, string | null> {
+  const result = { ...overrides };
+  delete result[id];
+  return result;
+}

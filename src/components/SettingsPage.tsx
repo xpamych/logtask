@@ -3,13 +3,15 @@ import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
 import { IconArrowDown, IconArrowUp } from "~/components/icons";
 import { IntegrationSources } from "./IntegrationSources";
+import { ShortcutSettings } from "./ShortcutSettings";
 
-export type SettingsSection = "general" | "appearance" | "tasks" | "integrations";
+export type SettingsSection = "general" | "appearance" | "tasks" | "shortcuts" | "integrations";
 
 export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "general", label: "Общие" },
   { id: "appearance", label: "Внешний вид" },
   { id: "tasks", label: "Задачи" },
+  { id: "shortcuts", label: "Горячие клавиши" },
   { id: "integrations", label: "Интеграции" },
 ];
 
@@ -199,6 +201,13 @@ export function SettingsPage(props: {
             </div>
           )}
         </Index>
+      </Show>
+
+      <Show when={props.section === "shortcuts"}>
+        <ShortcutSettings
+          settings={props.settings}
+          onChange={(settings) => props.onChange(settings, { immediate: true })}
+        />
       </Show>
 
       <Show when={props.section === "integrations"}>

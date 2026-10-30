@@ -2744,3 +2744,23 @@ textarea.push-body {
   color: var(--fg-muted);
   font-size: 0.85em;
 }
+
+.shortcut-settings-group h2 {
+  margin: 24px 0 8px;
+  font-size: 1rem;
+}
+
+.shortcut-settings-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.shortcut-capture {
+  min-width: 150px;
+}
+
+.shortcut-capture.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}

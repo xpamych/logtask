@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   activeCommandContext,
   effectiveShortcuts,
+  formatShortcut,
   isProtectedShortcut,
   normalizeShortcut,
+  resetShortcutOverride,
   shortcutConflict,
   shouldHandleGlobalShortcut,
 } from "./shortcuts.ts";
@@ -67,4 +69,14 @@ test("меню задачи имеет приоритет над списком,
   assert.equal(activeCommandContext(true, true), "taskMenu");
   assert.equal(shouldHandleGlobalShortcut({ tagName: "TEXTAREA" } as unknown as EventTarget, "1"), false);
   assert.equal(shouldHandleGlobalShortcut({ tagName: "TEXTAREA" } as unknown as EventTarget, "mod+k"), true);
+});
+
+test("форматирование и сброс пользовательских сочетаний", () => {
+  assert.equal(formatShortcut("mod+shift+k", false), "Ctrl+Shift+K");
+  assert.equal(formatShortcut("mod+shift+k", true), "Cmd+Shift+K");
+  assert.equal(formatShortcut("j", false), "J");
+  assert.equal(formatShortcut(null, false), "Не назначено");
+  const overrides = { palette: "mod+shift+p", search: null };
+  assert.deepEqual(resetShortcutOverride(overrides, "palette"), { search: null });
+  assert.deepEqual(resetShortcutOverride(overrides, "missing"), overrides);
 });
