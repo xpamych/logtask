@@ -55,6 +55,7 @@ const DEFAULT_SETTINGS: Settings = {
   ],
   integrations: { sources: [] },
   graphView: DEFAULT_GRAPH_VIEW_SETTINGS,
+  shortcuts: {},
 };
 
 function loadRecentPages(): string[] {

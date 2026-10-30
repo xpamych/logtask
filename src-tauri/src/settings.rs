@@ -127,6 +127,9 @@ pub struct Settings {
     pub integrations: crate::sync::config::IntegrationsConfig,
     #[serde(default)]
     pub graph_view: GraphViewSettings,
+    /// переопределения горячих клавиш: id команды → сочетание или null
+    #[serde(default)]
+    pub shortcuts: std::collections::HashMap<String, Option<String>>,
 }
 
 fn default_theme() -> String {
@@ -222,6 +225,7 @@ impl Default for Settings {
             statuses: default_statuses(),
             integrations: Default::default(),
             graph_view: Default::default(),
+            shortcuts: Default::default(),
         }
     }
 }
@@ -343,6 +347,24 @@ mod tests {
         assert_eq!(loaded.graph_view.groups.len(), 1);
         assert_eq!(loaded.graph_view.groups[0].query, "tag:active");
         assert!(loaded.graph_view.groups[0].clustered);
+    }
+
+    #[test]
+    fn shortcuts_default_empty_and_roundtrip() {
+        let old: Settings = serde_json::from_str("{}").unwrap();
+        assert!(old.shortcuts.is_empty());
+
+        let mut s = Settings::default();
+        s.shortcuts
+            .insert("palette".into(), Some("mod+shift+p".into()));
+        s.shortcuts.insert("search".into(), None);
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.shortcuts.get("palette"),
+            Some(&Some("mod+shift+p".into()))
+        );
+        assert_eq!(back.shortcuts.get("search"), Some(&None));
     }
 
     #[test]

@@ -396,6 +396,7 @@ export interface Settings {
   statuses: StatusConfig[];
   integrations: IntegrationsConfig;
   graphView: GraphViewSettings;
+  shortcuts: Record<string, string | null>;
 }
 
 export async function settingsGet(): Promise<Settings> {
