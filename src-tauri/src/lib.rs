@@ -86,6 +86,7 @@ pub fn run() {
             commands::recent_graphs,
             commands::recent_remove,
             commands::asset_data_url,
+            commands::asset_save,
             commands::favicon_data_url,
             commands::web_title,
             commands::open_external,

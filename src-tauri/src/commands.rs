@@ -1780,6 +1780,51 @@ fn resolve_asset_path(root: &std::path::Path, path: &str) -> Result<std::path::P
     Ok(canon)
 }
 
+const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
+
+fn image_extension(data: &[u8], _mime: &str) -> Option<&'static str> {
+    if data.len() > MAX_IMAGE_BYTES {
+        return None;
+    }
+    if data.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("png")
+    } else if data.starts_with(b"\xff\xd8\xff") {
+        Some("jpg")
+    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        Some("gif")
+    } else if data.len() >= 12 && data.starts_with(b"RIFF") && &data[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    }
+}
+
+fn save_image(root: &std::path::Path, data: &[u8], mime: &str) -> Result<String, String> {
+    let extension = image_extension(data, mime)
+        .ok_or("поддерживаются только PNG, JPEG, GIF и WebP размером до 25 МБ")?;
+    let assets = root.join("assets");
+    std::fs::create_dir_all(&assets).map_err(|e| format!("создание assets: {e}"))?;
+    let name = format!(
+        "pasted-{}.{}",
+        uuid::Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext)),
+        extension
+    );
+    crate::core::fswrite::atomic_write_bytes(&assets.join(&name), data)
+        .map_err(|e| format!("сохранение изображения: {e}"))?;
+    Ok(format!("assets/{name}"))
+}
+
+#[tauri::command]
+pub fn asset_save(
+    data: Vec<u8>,
+    mime: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    save_image(&root, &data, &mime)
+}
+
 /// Картинка из графа как data-URL (для <img> в webview).
 #[tauri::command]
 pub async fn asset_data_url(
@@ -2010,6 +2055,47 @@ mod tests {
 
         let dto = task_dto(&graph, id, block);
         assert_eq!(dto.extra, ["продолжение", "![[../assets/image.png]]"]);
+    }
+
+    #[test]
+    fn asset_save_detects_image_signatures() {
+        assert_eq!(
+            super::image_extension(b"\x89PNG\r\n\x1a\nxxxx", "image/png"),
+            Some("png")
+        );
+        assert_eq!(
+            super::image_extension(b"\xff\xd8\xff\xe0xxxx", "image/jpeg"),
+            Some("jpg")
+        );
+        assert_eq!(
+            super::image_extension(b"GIF89a-rest", "image/gif"),
+            Some("gif")
+        );
+        assert_eq!(
+            super::image_extension(b"RIFF1234WEBP-rest", "image/webp"),
+            Some("webp")
+        );
+        assert_eq!(super::image_extension(b"not an image", "image/png"), None);
+        assert_eq!(super::image_extension(b"", "image/png"), None);
+        assert_eq!(
+            super::image_extension(&vec![0; 25 * 1024 * 1024 + 1], "image/png"),
+            None
+        );
+    }
+
+    #[test]
+    fn asset_save_writes_unique_files() {
+        let dir = std::env::temp_dir().join("logtask_asset_save_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let data = b"\x89PNG\r\n\x1a\nxxxx";
+        let first = super::save_image(&dir, data, "image/png").unwrap();
+        let second = super::save_image(&dir, data, "image/png").unwrap();
+        assert_ne!(first, second);
+        assert!(first.starts_with("assets/pasted-"));
+        assert!(first.ends_with(".png"));
+        assert_eq!(std::fs::read(dir.join(first)).unwrap(), data);
+        assert_eq!(std::fs::read(dir.join(second)).unwrap(), data);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

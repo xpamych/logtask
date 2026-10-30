@@ -12,6 +12,10 @@ static NEXT_TMP_ID: AtomicU64 = AtomicU64::new(0);
 /// Родительская директория также fsync'ится (для надёжности на ext4).
 /// Права исходного файла сохраняются (rename сбрасывает их на umask).
 pub fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
+    atomic_write_bytes(path, text.as_bytes())
+}
+
+pub fn atomic_write_bytes(path: &Path, data: &[u8]) -> std::io::Result<()> {
     let file_name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -28,7 +32,7 @@ pub fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
 
     let result = (|| -> std::io::Result<()> {
         let mut f = File::create(&tmp)?;
-        f.write_all(text.as_bytes())?;
+        f.write_all(data)?;
         f.sync_all()?;
         drop(f);
 

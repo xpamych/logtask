@@ -545,6 +545,11 @@ export async function search(query: string): Promise<SearchHit[]> {
   return invoke<SearchHit[]>("search", { query });
 }
 
+/** Сохраняет изображение из буфера в assets графа */
+export async function assetSave(data: number[], mime: string): Promise<string> {
+  return invoke<string>("asset_save", { data, mime });
+}
+
 /** Открывает внешнюю ссылку в системном браузере (IPC → opener-плагин в Rust) */
 export async function openExternal(url: string): Promise<void> {
   return invoke<void>("open_external", { url });
