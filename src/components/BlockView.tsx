@@ -2,12 +2,14 @@ import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid
 import type { JSX } from "solid-js";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { clickCaretPosition, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
+import { pasteImage } from "~/lib/pasteImage";
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot } from "./StatusPrioDot";
 import type { BlockDto, Settings } from "~/lib/api";
 import {
+  assetSave,
   blockIndent,
   blockMergeDown,
   blockMergeUp,
@@ -52,6 +54,26 @@ export function BlockView(props: {
   const [acIndex, setAcIndex] = createSignal(0);
   let textareaEl: HTMLTextAreaElement | undefined;
   let allPages: string[] | null = null;
+  const [pasteError, setPasteError] = createSignal<string | null>(null);
+
+  const onImagePaste = async (e: ClipboardEvent) => {
+    const el = textareaEl;
+    if (!el) return;
+    setPasteError(null);
+    const result = await pasteImage(e, el, assetSave);
+    if (result.error) {
+      setPasteError(result.error);
+      return;
+    }
+    if (result.text !== undefined && result.caret !== undefined) {
+      setDraft(result.text);
+      queueMicrotask(() => {
+        setTextareaValue(el, result.text!);
+        el.setSelectionRange(result.caret!, result.caret!);
+        fitTextarea(el);
+      });
+    }
+  };
 
   /// автодополнение: найти незакрытое [[ в тексте
   const autocompleteQuery = (text: string): string | null => {
@@ -569,9 +591,11 @@ export function BlockView(props: {
             disabled={saving()}
             onInput={(e) => void onEditInput(e.currentTarget)}
             onKeyDown={onKeyDown}
+            onPaste={(e) => void onImagePaste(e)}
             onBlur={() => void save()}
             rows={1}
           />
+          <Show when={pasteError()}>{(message) => <div class="error">{message()}</div>}</Show>
           <Show when={acOpen()}>
             <div class="ac-list">
               <For each={acItems()}>

@@ -2,6 +2,7 @@ import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings, TaskDto } from "~/lib/api";
 import {
+  assetSave,
   blockDelete,
   blockSetProp,
   blockUpdateText,
@@ -15,6 +16,7 @@ import { activeModalContext } from "~/lib/modalState";
 import { commandForContext, effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { primaryTaskElement, selectedTaskUuid, setSelectedTaskUuid, visibleTaskUuid } from "~/lib/taskNavigation";
 import { editorSource, persistedSource } from "~/lib/text";
+import { pasteImage } from "~/lib/pasteImage";
 import { fitTextarea } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
@@ -87,6 +89,26 @@ export function TaskCard(props: {
   const [showChildren, setShowChildren] = createSignal(false);
   let textareaEl: HTMLTextAreaElement | undefined;
   let rootEl: HTMLDivElement | undefined;
+  const [pasteError, setPasteError] = createSignal<string | null>(null);
+
+  const onImagePaste = async (e: ClipboardEvent) => {
+    const el = textareaEl;
+    if (!el) return;
+    setPasteError(null);
+    const result = await pasteImage(e, el, assetSave);
+    if (result.error) {
+      setPasteError(result.error);
+      return;
+    }
+    if (result.text !== undefined && result.caret !== undefined) {
+      setDraft(result.text);
+      queueMicrotask(() => {
+        el.value = result.text!;
+        el.setSelectionRange(result.caret!, result.caret!);
+        fitTextarea(el);
+      });
+    }
+  };
 
   const childStatusColor = (marker: string | null): string =>
     (marker && props.settings?.statuses.find((s) => s.marker === marker)?.color) ||
@@ -312,6 +334,7 @@ export function TaskCard(props: {
               setDraft(e.currentTarget.value);
               fitTextarea(e.currentTarget);
             }}
+            onPaste={(e) => void onImagePaste(e)}
             onKeyDown={(e) => {
               if (e.isComposing) return;
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -325,6 +348,7 @@ export function TaskCard(props: {
             onBlur={() => void saveEdit()}
             rows={1}
           />
+          <Show when={pasteError()}>{(message) => <div class="error">{message()}</div>}</Show>
         </Show>
         <span
           class="task-page"
