@@ -1824,6 +1824,45 @@ fn save_image(root: &std::path::Path, data: &[u8], mime: &str) -> Result<String,
     Ok(format!("assets/{name}"))
 }
 
+fn encode_rgba_png(image: arboard::ImageData) -> Result<Vec<u8>, String> {
+    let rgba = image::RgbaImage::from_raw(
+        image.width as u32,
+        image.height as u32,
+        image.bytes.into_owned(),
+    )
+    .ok_or("некорректные данные изображения")?;
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(rgba)
+        .write_to(&mut out, image::ImageFormat::Png)
+        .map_err(|e| format!("кодирование PNG: {e}"))?;
+    Ok(out.into_inner())
+}
+
+#[cfg(target_os = "linux")]
+fn gtk_clipboard_image(root: &std::path::Path) -> Option<String> {
+    let pixbuf = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD).wait_for_image()?;
+    let data = pixbuf.save_to_bufferv("png", &[]).ok()?;
+    save_image(root, &data, "image/png").ok()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn gtk_clipboard_image(_root: &std::path::Path) -> Option<String> {
+    None
+}
+
+#[tauri::command]
+pub fn clipboard_asset_save(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+        if let Ok(image) = clipboard.get_image() {
+            let data = encode_rgba_png(image)?;
+            return save_image(&root, &data, "image/png").map(Some);
+        }
+    }
+    Ok(gtk_clipboard_image(&root))
+}
+
 #[tauri::command]
 pub fn asset_save(
     data: Vec<u8>,
@@ -2065,6 +2104,19 @@ mod tests {
 
         let dto = task_dto(&graph, id, block);
         assert_eq!(dto.extra, ["продолжение", "![[../assets/image.png]]"]);
+    }
+
+    #[test]
+    fn clipboard_asset_encodes_rgba_as_png() {
+        let rgba = arboard::ImageData {
+            width: 1,
+            height: 1,
+            bytes: std::borrow::Cow::Borrowed(&[255, 0, 0, 255]),
+        };
+        let png = super::encode_rgba_png(rgba).unwrap();
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let decoded = image::load_from_memory(&png).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (1, 1));
     }
 
     #[test]
