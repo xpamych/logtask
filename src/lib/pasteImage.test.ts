@@ -5,13 +5,14 @@ import { insertAtCursor, pasteImage, waitForImagePaste } from "./pasteImage.ts";
 const textarea = (value: string, start: number, end = start) =>
   ({ value, selectionStart: start, selectionEnd: end }) as HTMLTextAreaElement;
 
-const event = (items: { type: string; file?: File }[]) =>
+const event = (items: { type: string; file?: File }[], files: File[] = []) =>
   ({
     clipboardData: {
       items: items.map((item) => ({
         type: item.type,
         getAsFile: () => item.file ?? null,
       })),
+      files,
     },
     preventDefault() {},
   }) as unknown as ClipboardEvent;
@@ -93,4 +94,10 @@ test("неподдерживаемый формат не перехватыва�
     throw new Error("не должен вызываться");
   });
   assert.deepEqual(result, { handled: false });
+});
+
+test("изображение читается из files при пустом items", async () => {
+  const file = new File([new Uint8Array([1, 2])], "screen.png", { type: "image/png" });
+  const result = await pasteImage(event([], [file]), textarea("ab", 1), async () => "assets/x.png");
+  assert.deepEqual(result, { handled: true, text: "a![[../assets/x.png]]b", caret: 21 });
 });

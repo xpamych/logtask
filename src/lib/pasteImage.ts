@@ -29,8 +29,10 @@ export function pasteImage(
   const item = Array.from(e.clipboardData?.items ?? []).find((item) =>
     SUPPORTED_MIME.has(item.type),
   );
-  const file = item?.getAsFile();
-  if (!item || !file) return Promise.resolve({ handled: false });
+  const file = item?.getAsFile() ?? Array.from(e.clipboardData?.files ?? []).find((file) =>
+    SUPPORTED_MIME.has(file.type),
+  );
+  if (!file) return Promise.resolve({ handled: false });
   e.preventDefault();
   const operation = (async () => {
     try {
