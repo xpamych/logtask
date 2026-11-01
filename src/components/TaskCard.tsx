@@ -3,6 +3,7 @@ import type { JSX } from "solid-js";
 import type { Settings, TaskDto } from "~/lib/api";
 import {
   assetSave,
+  clipboardAssetSave,
   blockDelete,
   blockSetProp,
   blockUpdateText,
@@ -97,7 +98,7 @@ export function TaskCard(props: {
     if (!el) return;
     setPasteError(null);
     setPasteBusy(true);
-    const result = await pasteImage(e, el, assetSave);
+    const result = await pasteImage(e, el, assetSave, clipboardAssetSave);
     setPasteBusy(false);
     if (result.error) {
       setPasteError(result.error);

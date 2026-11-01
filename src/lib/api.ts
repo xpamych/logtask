@@ -550,6 +550,11 @@ export async function assetSave(data: number[], mime: string): Promise<string> {
   return invoke<string>("asset_save", { data, mime });
 }
 
+/** Читает изображение или файл напрямую из системного clipboard */
+export async function clipboardAssetSave(): Promise<string | null> {
+  return invoke<string | null>("clipboard_asset_save");
+}
+
 /** Открывает внешнюю ссылку в системном браузере (IPC → opener-плагин в Rust) */
 export async function openExternal(url: string): Promise<void> {
   return invoke<void>("open_external", { url });

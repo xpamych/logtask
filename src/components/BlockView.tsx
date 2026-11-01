@@ -10,6 +10,7 @@ import { StatusPrioDot } from "./StatusPrioDot";
 import type { BlockDto, Settings } from "~/lib/api";
 import {
   assetSave,
+  clipboardAssetSave,
   blockIndent,
   blockMergeDown,
   blockMergeUp,
@@ -62,7 +63,7 @@ export function BlockView(props: {
     if (!el) return;
     setPasteError(null);
     setPasteBusy(true);
-    const result = await pasteImage(e, el, assetSave);
+    const result = await pasteImage(e, el, assetSave, clipboardAssetSave);
     setPasteBusy(false);
     if (result.error) {
       setPasteError(result.error);

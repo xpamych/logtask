@@ -2,7 +2,7 @@ export type AssetSave = (data: number[], mime: string) => Promise<string>;
 
 const pending = new WeakMap<HTMLTextAreaElement, Promise<unknown>>();
 
-const SUPPORTED_MIME = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const SUPPORTED_MIME = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/x-qt-image"]);
 
 export function insertAtCursor(
   text: string,
@@ -20,6 +20,7 @@ export function pasteImage(
   e: ClipboardEvent,
   textarea: HTMLTextAreaElement,
   save: AssetSave,
+  nativeSave?: () => Promise<string | null>,
 ): Promise<{ handled: boolean; text?: string; caret?: number; error?: string }> {
   const current = pending.get(textarea);
   if (current) {
@@ -32,12 +33,14 @@ export function pasteImage(
   const file = item?.getAsFile() ?? Array.from(e.clipboardData?.files ?? []).find((file) =>
     SUPPORTED_MIME.has(file.type),
   );
-  if (!file) return Promise.resolve({ handled: false });
-  e.preventDefault();
+  if (!file && !nativeSave) return Promise.resolve({ handled: false });
   const operation = (async () => {
     try {
-      const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
-      const path = await save(bytes, file.type);
+      const path = file
+        ? await save(Array.from(new Uint8Array(await file.arrayBuffer())), file.type)
+        : await nativeSave!();
+      if (!path) return { handled: false };
+      e.preventDefault();
       const insertion = `![[../${path}]]`;
       return { handled: true, ...insertAtCursor(textarea.value, textarea.selectionStart, textarea.selectionEnd, insertion) };
     } catch (error) {

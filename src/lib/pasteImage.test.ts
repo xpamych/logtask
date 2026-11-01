@@ -101,3 +101,16 @@ test("изображение читается из files при пустом ite
   const result = await pasteImage(event([], [file]), textarea("ab", 1), async () => "assets/x.png");
   assert.deepEqual(result, { handled: true, text: "a![[../assets/x.png]]b", caret: 21 });
 });
+
+test("поддерживается application/x-qt-image", async () => {
+  const file = new File([new Uint8Array([1])], "screen", { type: "application/x-qt-image" });
+  const result = await pasteImage(event([{ type: "application/x-qt-image", file }]), textarea("ab", 1), async () => "assets/x.png");
+  assert.equal(result.handled, true);
+});
+
+test("пустой DOM clipboard использует нативный fallback", async () => {
+  const result = await pasteImage(event([]), textarea("ab", 1), async () => {
+    throw new Error("DOM save не нужен");
+  }, async () => "assets/native.png");
+  assert.deepEqual(result, { handled: true, text: "a![[../assets/native.png]]b", caret: 26 });
+});
