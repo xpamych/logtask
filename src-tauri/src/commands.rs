@@ -1839,52 +1839,30 @@ fn encode_rgba_png(image: arboard::ImageData) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(target_os = "linux")]
-fn gtk_clipboard_image(root: &std::path::Path) -> Option<String> {
-    let pixbuf = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD).wait_for_image()?;
-    let data = pixbuf.save_to_bufferv("png", &[]).ok()?;
-    save_image(root, &data, "image/png").ok()
+fn gtk_clipboard_image(root: &std::path::Path) -> Result<Option<String>, String> {
+    let Some(pixbuf) = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD).wait_for_image() else {
+        return Ok(None);
+    };
+    let data = pixbuf
+        .save_to_bufferv("png", &[])
+        .map_err(|e| format!("кодирование PNG из GTK: {e}"))?;
+    save_image(root, &data, "image/png").map(Some)
 }
 
 #[cfg(not(target_os = "linux"))]
-fn gtk_clipboard_image(_root: &std::path::Path) -> Option<String> {
-    None
-}
-
-fn decode_file_uri(uri: &str) -> Option<std::path::PathBuf> {
-    let raw = uri
-        .strip_prefix("file://localhost/")
-        .map(|path| format!("/{path}"))
-        .or_else(|| uri.strip_prefix("file://").map(str::to_string))?;
-    if !raw.starts_with('/') {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    let raw = raw.as_bytes();
-    let mut i = 0;
-    while i < raw.len() {
-        if raw[i] == b'%' && i + 2 < raw.len() {
-            let hex = std::str::from_utf8(&raw[i + 1..i + 3]).ok()?;
-            let value = u8::from_str_radix(hex, 16).ok()?;
-            bytes.push(value);
-            i += 3;
-        } else {
-            bytes.push(raw[i]);
-            i += 1;
-        }
-    }
-    String::from_utf8(bytes).ok().map(std::path::PathBuf::from)
-}
-
-fn clipboard_file_uris(text: &str) -> Vec<std::path::PathBuf> {
-    text.lines()
-        .filter(|line| line.starts_with("file://"))
-        .filter_map(decode_file_uri)
-        .collect()
+fn gtk_clipboard_image(_root: &std::path::Path) -> Result<Option<String>, String> {
+    Ok(None)
 }
 
 fn save_clipboard_file(path: &std::path::Path, root: &std::path::Path) -> Result<String, String> {
     if !path.is_file() {
         return Err(format!("не файл: {}", path.display()));
+    }
+    let size = std::fs::metadata(path)
+        .map_err(|e| format!("метаданные файла: {e}"))?
+        .len();
+    if size > MAX_IMAGE_BYTES as u64 {
+        return Err("файл больше 25 МБ".into());
     }
     std::fs::create_dir_all(root).map_err(|e| format!("создание корня графа: {e}"))?;
     let root_canon = root
@@ -1923,13 +1901,13 @@ pub fn clipboard_asset_save(state: tauri::State<'_, AppState>) -> Result<Option<
             let data = encode_rgba_png(image)?;
             return save_image(&root, &data, "image/png").map(Some);
         }
-        if let Ok(text) = clipboard.get_text() {
-            if let Some(path) = clipboard_file_uris(&text).first() {
+        if let Ok(paths) = clipboard.get().file_list() {
+            if let Some(path) = paths.first() {
                 return save_clipboard_file(path, &root).map(Some);
             }
         }
     }
-    Ok(gtk_clipboard_image(&root))
+    gtk_clipboard_image(&root)
 }
 
 #[tauri::command]
@@ -2189,15 +2167,6 @@ mod tests {
     }
 
     #[test]
-    fn clipboard_file_uris_decode_paths_and_ignore_text() {
-        let paths = super::clipboard_file_uris("file:///tmp/a%20b.png\nfile:///tmp/c.pdf");
-        assert_eq!(paths.len(), 2);
-        assert_eq!(paths[0], std::path::PathBuf::from("/tmp/a b.png"));
-        assert!(super::clipboard_file_uris("file://host/tmp/a.png").is_empty());
-        assert!(super::clipboard_file_uris("обычный текст").is_empty());
-    }
-
-    #[test]
     fn clipboard_file_copies_original_with_unique_name() {
         let dir = std::env::temp_dir().join("logtask_clipboard_file_root");
         let source = std::env::temp_dir().join("logtask clipboard source.pdf");
@@ -2210,6 +2179,20 @@ mod tests {
         assert!(first.ends_with(".pdf"));
         assert_eq!(std::fs::read(dir.join(first)).unwrap(), b"document");
         assert!(super::save_clipboard_file(&dir, &dir).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&source);
+    }
+
+    #[test]
+    fn clipboard_file_rejects_oversized_source() {
+        let dir = std::env::temp_dir().join("logtask_clipboard_file_limit_root");
+        let source = std::env::temp_dir().join("logtask_clipboard_oversized.bin");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&source);
+        let file = std::fs::File::create(&source).unwrap();
+        file.set_len(25 * 1024 * 1024 + 1).unwrap();
+        drop(file);
+        assert!(super::save_clipboard_file(&source, &dir).is_err());
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_file(&source);
     }

@@ -13,8 +13,12 @@ const event = (items: { type: string; file?: File }[], files: File[] = []) =>
         getAsFile: () => item.file ?? null,
       })),
       files,
+      getData: () => "plain",
     },
-    preventDefault() {},
+    defaultPrevented: false,
+    preventDefault(this: { defaultPrevented: boolean }) {
+      this.defaultPrevented = true;
+    },
   }) as unknown as ClipboardEvent;
 
 test("разметка вставляется на место курсора и вместо выделения", () => {
@@ -113,4 +117,25 @@ test("пустой DOM clipboard использует нативный fallback"
     throw new Error("DOM save не нужен");
   }, async () => "assets/native.png");
   assert.deepEqual(result, { handled: true, text: "a![[../assets/native.png]]b", caret: 26 });
+});
+
+test("preventDefault вызывается до завершения native IPC", async () => {
+  const e = event([]);
+  let finish!: (path: string | null) => void;
+  const pending = pasteImage(e, textarea("ab", 1), async () => "unused", () => new Promise((resolve) => { finish = resolve; }));
+  assert.equal(e.defaultPrevented, true);
+  finish("assets/native.png");
+  await pending;
+});
+
+test("пустой native fallback вставляет обычный текст", async () => {
+  const result = await pasteImage(event([]), textarea("ab", 1), async () => "unused", async () => null);
+  assert.deepEqual(result, { handled: true, text: "aplainb", caret: 6 });
+});
+
+test("ошибка native fallback не меняет draft", async () => {
+  const result = await pasteImage(event([]), textarea("ab", 1), async () => "unused", async () => {
+    throw new Error("нет доступа");
+  });
+  assert.deepEqual(result, { handled: true, error: "нет доступа" });
 });

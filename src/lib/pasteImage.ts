@@ -34,13 +34,16 @@ export function pasteImage(
     SUPPORTED_MIME.has(file.type),
   );
   if (!file && !nativeSave) return Promise.resolve({ handled: false });
+  e.preventDefault();
   const operation = (async () => {
     try {
       const path = file
         ? await save(Array.from(new Uint8Array(await file.arrayBuffer())), file.type)
         : await nativeSave!();
-      if (!path) return { handled: false };
-      e.preventDefault();
+      if (!path) {
+        const text = e.clipboardData?.getData("text/plain") ?? "";
+        return { handled: true, ...insertAtCursor(textarea.value, textarea.selectionStart, textarea.selectionEnd, text) };
+      }
       const insertion = `![[../${path}]]`;
       return { handled: true, ...insertAtCursor(textarea.value, textarea.selectionStart, textarea.selectionEnd, insertion) };
     } catch (error) {
