@@ -1850,6 +1850,70 @@ fn gtk_clipboard_image(_root: &std::path::Path) -> Option<String> {
     None
 }
 
+fn decode_file_uri(uri: &str) -> Option<std::path::PathBuf> {
+    let raw = uri
+        .strip_prefix("file://localhost/")
+        .map(|path| format!("/{path}"))
+        .or_else(|| uri.strip_prefix("file://").map(str::to_string))?;
+    if !raw.starts_with('/') {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    let raw = raw.as_bytes();
+    let mut i = 0;
+    while i < raw.len() {
+        if raw[i] == b'%' && i + 2 < raw.len() {
+            let hex = std::str::from_utf8(&raw[i + 1..i + 3]).ok()?;
+            let value = u8::from_str_radix(hex, 16).ok()?;
+            bytes.push(value);
+            i += 3;
+        } else {
+            bytes.push(raw[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(bytes).ok().map(std::path::PathBuf::from)
+}
+
+fn clipboard_file_uris(text: &str) -> Vec<std::path::PathBuf> {
+    text.lines()
+        .filter(|line| line.starts_with("file://"))
+        .filter_map(decode_file_uri)
+        .collect()
+}
+
+fn save_clipboard_file(path: &std::path::Path, root: &std::path::Path) -> Result<String, String> {
+    if !path.is_file() {
+        return Err(format!("не файл: {}", path.display()));
+    }
+    std::fs::create_dir_all(root).map_err(|e| format!("создание корня графа: {e}"))?;
+    let root_canon = root
+        .canonicalize()
+        .map_err(|e| format!("корень графа: {e}"))?;
+    let assets = root.join("assets");
+    std::fs::create_dir_all(&assets).map_err(|e| format!("создание assets: {e}"))?;
+    let assets_canon = assets
+        .canonicalize()
+        .map_err(|e| format!("каталог assets: {e}"))?;
+    if !assets_canon.starts_with(&root_canon) {
+        return Err("каталог assets находится за пределами графа".into());
+    }
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let name = format!(
+        "pasted-{}{}",
+        uuid::Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext)),
+        if extension.is_empty() {
+            String::new()
+        } else {
+            format!(".{extension}")
+        }
+    );
+    let data = std::fs::read(path).map_err(|e| format!("чтение файла: {e}"))?;
+    crate::core::fswrite::atomic_write_bytes(&assets_canon.join(&name), &data)
+        .map_err(|e| format!("сохранение файла: {e}"))?;
+    Ok(format!("assets/{name}"))
+}
+
 #[tauri::command]
 pub fn clipboard_asset_save(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
     let root = state.root.read().clone();
@@ -1858,6 +1922,11 @@ pub fn clipboard_asset_save(state: tauri::State<'_, AppState>) -> Result<Option<
         if let Ok(image) = clipboard.get_image() {
             let data = encode_rgba_png(image)?;
             return save_image(&root, &data, "image/png").map(Some);
+        }
+        if let Ok(text) = clipboard.get_text() {
+            if let Some(path) = clipboard_file_uris(&text).first() {
+                return save_clipboard_file(path, &root).map(Some);
+            }
         }
     }
     Ok(gtk_clipboard_image(&root))
@@ -2117,6 +2186,32 @@ mod tests {
         assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
         let decoded = image::load_from_memory(&png).unwrap();
         assert_eq!((decoded.width(), decoded.height()), (1, 1));
+    }
+
+    #[test]
+    fn clipboard_file_uris_decode_paths_and_ignore_text() {
+        let paths = super::clipboard_file_uris("file:///tmp/a%20b.png\nfile:///tmp/c.pdf");
+        assert_eq!(paths.len(), 2);
+        assert_eq!(paths[0], std::path::PathBuf::from("/tmp/a b.png"));
+        assert!(super::clipboard_file_uris("file://host/tmp/a.png").is_empty());
+        assert!(super::clipboard_file_uris("обычный текст").is_empty());
+    }
+
+    #[test]
+    fn clipboard_file_copies_original_with_unique_name() {
+        let dir = std::env::temp_dir().join("logtask_clipboard_file_root");
+        let source = std::env::temp_dir().join("logtask clipboard source.pdf");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&source);
+        std::fs::write(&source, b"document").unwrap();
+        let first = super::save_clipboard_file(&source, &dir).unwrap();
+        let second = super::save_clipboard_file(&source, &dir).unwrap();
+        assert_ne!(first, second);
+        assert!(first.ends_with(".pdf"));
+        assert_eq!(std::fs::read(dir.join(first)).unwrap(), b"document");
+        assert!(super::save_clipboard_file(&dir, &dir).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&source);
     }
 
     #[test]
