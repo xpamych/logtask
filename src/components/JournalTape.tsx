@@ -13,6 +13,7 @@ import {
 import { formatJournalName, journalLogseqTitle, todayJournalName } from "~/lib/text";
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
+import { visibleJournalsAfterRefresh } from "~/lib/journalRefresh";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
 
@@ -79,24 +80,35 @@ export function JournalTape(props: {
 
   const reload = async () => {
     const my = ++epoch;
+    const scrollTop = mainEl?.scrollTop ?? 0;
     setError(null);
-    setDays([]);
-    setPages({});
-    setDone(false);
-    setLoading(false);
-    let journals: string[];
+    setLoading(true);
     try {
-      journals = await journalList();
+      const journals = await journalList();
+      if (my !== epoch) return;
+      if (journals.length === 0) {
+        setDays([]);
+        setPages({});
+        setDone(true);
+        setError("журналов не найдено");
+        return;
+      }
+      const names = visibleJournalsAfterRefresh(days(), journals, PAGE_SIZE);
+      const fresh = await Promise.all(names.map((name) => pageGet(name)));
+      if (my !== epoch) return;
+      setPages(Object.fromEntries(names.map((name, index) => [name, fresh[index]])));
+      setDays(names);
+      setDone(journals.length <= names.length);
+      requestAnimationFrame(() => {
+        if (my !== epoch || !mainEl) return;
+        mainEl.scrollTop = scrollTop;
+        maybeLoadMore();
+      });
     } catch (e) {
       if (my === epoch) setError(String(e));
-      return;
+    } finally {
+      if (my === epoch) setLoading(false);
     }
-    if (my !== epoch) return;
-    if (journals.length === 0) {
-      setError("журналов не найдено");
-      return;
-    }
-    await appendDays(journals.slice(0, PAGE_SIZE), my);
   };
 
   const onStatusChange = async (uuid: string, marker: string): Promise<string> => {
