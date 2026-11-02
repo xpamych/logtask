@@ -177,12 +177,14 @@ export function PageView(props: {
     }
   };
 
-  const onStatusChange = async (uuid: string, marker: string) => {
+  const onStatusChange = async (uuid: string, marker: string): Promise<string> => {
     try {
-      await taskSetStatus(uuid, marker);
-      await load();
+      const freshUuid = await taskSetStatus(uuid, marker);
+      guardedLoad();
+      return freshUuid;
     } catch (e) {
       setError(String(e));
+      throw e;
     }
   };
 
@@ -375,7 +377,7 @@ export function PageView(props: {
                   block={block}
                   firstBlock={index() === 0}
                   onOpenPage={props.onOpenPage}
-                  onChanged={load}
+                  onChanged={guardedLoad}
                   onStatusChange={onStatusChange}
                   onDelete={onDelete}
                   onNavigate={onBlockNavigate}

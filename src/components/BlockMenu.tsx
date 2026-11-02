@@ -1,6 +1,7 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
+import { trackOpenBlockMenu } from "~/lib/editState";
 import { activeModalContext, pushModalContext } from "~/lib/modalState";
 import { commandForContext, effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import {
@@ -44,11 +45,17 @@ export function BlockMenu(props: {
 }): JSX.Element {
   let menuEl: HTMLDivElement | undefined;
   const [pos, setPos] = createSignal(props.pos);
+  const [status, setStatus] = createSignal(props.status);
+  const [priority, setPriority] = createSignal(props.priority);
+  const [urgency, setUrgency] = createSignal(props.urgency);
+  const [importance, setImportance] = createSignal(props.importance);
+  const [clockRunning, setClockRunning] = createSignal(props.clockRunning);
 
   // прижимает меню к границам окна, чтобы не вылезало за экран
   onMount(() => {
     const closeContext = pushModalContext("taskMenu");
     onCleanup(closeContext);
+    onCleanup(trackOpenBlockMenu());
     const el = menuEl;
     if (!el) return;
     const r = el.getBoundingClientRect();
@@ -83,9 +90,11 @@ export function BlockMenu(props: {
         for (const level of LEVELS) {
           if (id !== levelCommand(key, level)) continue;
           e.preventDefault();
-          const current = key === "urgency" ? props.urgency : props.importance;
-          props.onClose();
-          props.onLevel(key, current === level ? null : level);
+          const current = key === "urgency" ? urgency() : importance();
+          const next = current === level ? null : level;
+          if (key === "urgency") setUrgency(next);
+          else setImportance(next);
+          props.onLevel(key, next);
           return;
         }
       }
@@ -109,15 +118,17 @@ export function BlockMenu(props: {
       <div class="block-menu-title">{title}</div>
       <For each={LEVELS}>
         {(l) => {
-          const cur = () => (key === "urgency" ? props.urgency : props.importance);
+          const cur = () => (key === "urgency" ? urgency() : importance());
           return (
             <button
               class="block-menu-item"
               classList={{ active: cur() === l }}
               onClick={() => {
-                props.onClose();
                 // повторное нажатие на активный уровень — снимает его
-                props.onLevel(key, cur() === l ? null : l);
+                const next = cur() === l ? null : l;
+                if (key === "urgency") setUrgency(next);
+                else setImportance(next);
+                props.onLevel(key, next);
               }}
             >
               <span class="status-dot" style={{ background: levelColor(l) }} />
@@ -151,9 +162,9 @@ export function BlockMenu(props: {
           {(m) => (
             <button
               class="block-menu-item"
-              classList={{ active: props.status === m }}
+              classList={{ active: status() === m }}
               onClick={() => {
-                props.onClose();
+                setStatus(m);
                 props.onStatus(m);
               }}
             >
@@ -169,11 +180,12 @@ export function BlockMenu(props: {
             {(p) => (
               <button
                 class="block-menu-item"
-                classList={{ active: props.priority === `[#${p}]` }}
+                classList={{ active: priority() === `[#${p}]` }}
                 onClick={() => {
-                  props.onClose();
                   // повторное нажатие на активный приоритет — снимает его
-                  props.onPriority(props.priority === `[#${p}]` ? null : p);
+                  const next = priority() === `[#${p}]` ? null : p;
+                  setPriority(next === null ? null : `[#${next}]`);
+                  props.onPriority(next);
                 }}
               >
                 <span class={`prio-icon prio-${p.toLowerCase()}`}>
@@ -195,13 +207,13 @@ export function BlockMenu(props: {
                 <div class="block-menu-title">Учёт времени</div>
                 <button
                   class="block-menu-item"
-                  classList={{ active: props.clockRunning }}
+                  classList={{ active: clockRunning() }}
                   onClick={() => {
-                    props.onClose();
+                    setClockRunning(!clockRunning());
                     onClock()();
                   }}
                 >
-                  {props.clockRunning ? "Остановить таймер" : "Начать учёт времени"}
+                  {clockRunning() ? "Остановить таймер" : "Начать учёт времени"}
                 </button>
               </>
             )}
@@ -210,10 +222,7 @@ export function BlockMenu(props: {
           <div class="block-menu-title">Прочее</div>
           <button
             class="block-menu-item"
-            onClick={() => {
-              props.onClose();
-              props.onDeadline();
-            }}
+            onClick={() => props.onDeadline()}
           >
             Дедлайн…
           </button>

@@ -301,6 +301,30 @@ impl Graph {
         Ok(Some(page_name))
     }
 
+    /// Создаёт журнал указанного дня со служебным заголовком Logseq.
+    /// Существующий файл не изменяется. Индекс обновляет вызывающий код.
+    pub fn ensure_journal_file(root: &Path, name: &str) -> std::io::Result<bool> {
+        use std::io::Write;
+
+        let dir = root.join("journals");
+        std::fs::create_dir_all(&dir)?;
+        let path = dir.join(format!("{name}.md"));
+        let title = format!("- {}\n", super::model::journal_title(name));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut file) => {
+                file.write_all(title.as_bytes())?;
+                file.sync_all()?;
+                Ok(true)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Создаёт пустой файл pages/<name>.md. Индекс не трогает —
     /// переиндексация делается снаружи (watcher::reindex_and_emit).
     /// Файл, уже существующий на диске, не затирается: создание идёт

@@ -99,12 +99,14 @@ export function JournalTape(props: {
     await appendDays(journals.slice(0, PAGE_SIZE), my);
   };
 
-  const onStatusChange = async (uuid: string, marker: string) => {
+  const onStatusChange = async (uuid: string, marker: string): Promise<string> => {
     try {
-      await taskSetStatus(uuid, marker);
-      await reload();
+      const freshUuid = await taskSetStatus(uuid, marker);
+      guardedReload();
+      return freshUuid;
     } catch (e) {
       setError(String(e));
+      throw e;
     }
   };
 
@@ -250,7 +252,7 @@ export function JournalTape(props: {
                         block={block}
                         firstBlock={index() === 0}
                         onOpenPage={props.onOpenPage}
-                        onChanged={reload}
+                        onChanged={guardedReload}
                         onStatusChange={onStatusChange}
                         onDelete={onDelete}
                         onNavigate={onBlockNavigate}

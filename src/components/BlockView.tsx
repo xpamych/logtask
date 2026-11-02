@@ -1,5 +1,6 @@
 import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
+import { createStore } from "solid-js/store";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { clickCaretPosition, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
 import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
@@ -36,14 +37,14 @@ export function BlockView(props: {
   firstBlock?: boolean;
   onOpenPage?: (name: string) => void;
   onChanged?: () => void;
-  onStatusChange?: (uuid: string, marker: string) => void;
+  onStatusChange?: (uuid: string, marker: string) => Promise<string>;
   onDelete?: (uuid: string) => void | Promise<void>;
   /** переход кареткой на соседний блок (стрелки в редакторе);
    *  возвращает false, если соседа нет */
   onNavigate?: (uuid: string, dir: -1 | 1) => boolean;
   settings?: Settings | null;
 }): JSX.Element {
-  const b = props.block;
+  const [b, setB] = createStore<BlockDto>(props.block);
   const onOpen = props.onOpenPage;
 
   const [editing, setEditing] = createSignal(false);
@@ -480,14 +481,20 @@ export function BlockView(props: {
     }
   };
 
+  const onStatus = async (marker: string) => {
+    const freshUuid = await props.onStatusChange?.(b.uuid, marker);
+    if (freshUuid) setB("uuid", freshUuid);
+    setB("status", marker);
+  };
+
   const onClockToggle = async () => {
-    setMenu(null);
+    const running = !b.clockRunning;
     try {
-      if (b.clockRunning) {
-        await clockStop(b.uuid);
-      } else {
-        await clockStart(b.uuid);
-      }
+      const freshUuid = b.clockRunning
+        ? await clockStop(b.uuid)
+        : await clockStart(b.uuid);
+      setB("uuid", freshUuid);
+      setB("clockRunning", running);
       props.onChanged?.();
     } catch (e) {
       console.error("ошибка CLOCK:", e);
@@ -495,9 +502,10 @@ export function BlockView(props: {
   };
 
   const onPriority = async (prio: string | null) => {
-    setMenu(null);
     try {
-      await taskSetPriority(b.uuid, prio);
+      const freshUuid = await taskSetPriority(b.uuid, prio);
+      setB("uuid", freshUuid);
+      setB("priority", prio === null ? null : `[#${prio}]`);
       props.onChanged?.();
     } catch (e) {
       console.error("ошибка приоритета:", e);
@@ -505,13 +513,14 @@ export function BlockView(props: {
   };
 
   const onLevel = async (key: "urgency" | "importance", level: string | null) => {
-    setMenu(null);
     try {
-      await taskSetQuadrant(
+      const freshUuid = await taskSetQuadrant(
         b.uuid,
         key === "urgency" ? level : null,
         key === "importance" ? level : null,
       );
+      setB("uuid", freshUuid);
+      setB(key, level);
       props.onChanged?.();
     } catch (e) {
       console.error("ошибка уровня:", e);
@@ -519,14 +528,16 @@ export function BlockView(props: {
   };
 
   const onDeadline = async () => {
-    setMenu(null);
     const value = window.prompt(
       "Дедлайн (YYYY-MM-DD):",
       b.deadline ?? "",
     );
     if (value === null) return;
+    const deadline = value.trim() || null;
     try {
-      await blockSetProp(b.uuid, "deadline", value.trim() || null);
+      const freshUuid = await blockSetProp(b.uuid, "deadline", deadline);
+      setB("uuid", freshUuid);
+      setB("deadline", deadline);
       props.onChanged?.();
     } catch (e) {
       console.error("ошибка deadline:", e);
@@ -572,7 +583,7 @@ export function BlockView(props: {
         urgency={b.urgency}
         importance={b.importance}
         settings={props.settings}
-        onStatus={(m) => props.onStatusChange?.(b.uuid, m)}
+        onStatus={(m) => void onStatus(m)}
         onPriority={(p) => void onPriority(p)}
         onMenu={(pos) => setMenu(pos)}
       />
@@ -652,7 +663,7 @@ export function BlockView(props: {
             task={b.task}
             clockRunning={b.clockRunning}
             settings={props.settings}
-            onStatus={(m) => props.onStatusChange?.(b.uuid, m)}
+            onStatus={(m) => void onStatus(m)}
             onPriority={(p) => void onPriority(p)}
             onLevel={(k, l) => void onLevel(k, l)}
             onDeadline={() => void onDeadline()}

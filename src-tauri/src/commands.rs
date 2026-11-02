@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri::Manager;
 
 use crate::core::index::IndexStats;
 use crate::core::model::{Block, Graph, PageKind, Status};
@@ -205,6 +206,18 @@ pub async fn graph_load(
         log::warn!("watcher не запущен: {e}");
     }
 
+    // раз в минуту проверяем смену суток: работает и после пробуждения ОС
+    if let Some(handle) = state.journal_task.lock().take() {
+        handle.abort();
+    }
+    let app_journal = app.clone();
+    *state.journal_task.lock() = Some(tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            ensure_journal_after_rollover(&app_journal);
+        }
+    }));
+
     // фоновая синхронизация интеграций: стартовый прогон + тикер интервалов
     if let Some(handle) = state.sync_task.lock().take() {
         handle.abort();
@@ -244,6 +257,9 @@ pub fn graph_summary(state: tauri::State<'_, AppState>) -> Result<GraphSummary, 
 /// Файлы графа не трогаем — только «закрыть» в приложении.
 #[tauri::command]
 pub fn graph_close(state: tauri::State<'_, AppState>) {
+    if let Some(handle) = state.journal_task.lock().take() {
+        handle.abort();
+    }
     if let Some(handle) = state.sync_task.lock().take() {
         handle.abort();
     }
@@ -879,14 +895,21 @@ pub async fn task_set_quadrant(
         return Err("нужно указать хотя бы одно свойство".into());
     }
 
-    let page = {
+    let (page, position) = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
-        graph
+        let page_name = graph.page_of_block(&id);
+        let position = graph
+            .pages
+            .get(&page_name)
+            .and_then(|page| page.order.iter().position(|block| block == &id))
+            .ok_or("блок не найден в графе")?;
+        let page = graph
             .set_block_quadrant(&id, urgency, importance, &root)
-            .map_err(|e| format!("ошибка записи: {e}"))?
+            .map_err(|e| format!("ошибка записи: {e}"))?;
+        (page, position)
     };
 
     let Some(page) = page else {
@@ -894,7 +917,7 @@ pub async fn task_set_quadrant(
     };
     mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
-    Ok(page)
+    reindexed_block_uuid(&state, &page, position)
 }
 
 /// Сохранённые запросы графа (читает/пишет <граф>/.logtask/queries.json)
@@ -967,14 +990,21 @@ pub async fn task_set_status(
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
     let status = Status::from_marker(&marker).ok_or(format!("неизвестный маркер: {marker}"))?;
 
-    let page = {
+    let (page, position) = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
-        graph
+        let page_name = graph.page_of_block(&id);
+        let position = graph
+            .pages
+            .get(&page_name)
+            .and_then(|page| page.order.iter().position(|block| block == &id))
+            .ok_or("блок не найден в графе")?;
+        let page = graph
             .set_block_status(&id, status, &root)
-            .map_err(|e| format!("ошибка записи: {e}"))?
+            .map_err(|e| format!("ошибка записи: {e}"))?;
+        (page, position)
     };
 
     let Some(page) = page else {
@@ -1016,7 +1046,20 @@ pub async fn task_set_status(
             }
         });
     }
-    Ok(page)
+    reindexed_block_uuid(&state, &page, position)
+}
+
+/// UUID блока после полной переиндексации: открытое меню продолжает
+/// изменять ту же позицию на той же странице, а не устаревший идентификатор.
+fn reindexed_block_uuid(state: &AppState, page: &str, position: usize) -> Result<String, String> {
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    graph
+        .pages
+        .get(page)
+        .and_then(|page| page.order.get(position))
+        .map(|id| id.to_string())
+        .ok_or_else(|| "блок не найден после переиндексации".into())
 }
 
 /// Меняет текст блока (редактирование в UI)
@@ -1266,21 +1309,15 @@ fn ensure_today_journal(root: &std::path::Path, graph: &mut Graph) {
     if graph.pages.contains_key(&name) {
         return;
     }
-    let path = root.join("journals").join(format!("{name}.md"));
-    if path.exists() {
-        return;
-    }
-    if let Err(e) = std::fs::create_dir_all(path.parent().unwrap_or(root)) {
-        log::warn!("не удалось создать папку journals: {e}");
-        return;
-    }
-    // Logseq добавляет заголовок-дату первой строкой
     let title = format!("- {}\n", crate::core::model::journal_title(&name));
-    if let Err(e) = crate::core::fswrite::atomic_write(&path, &title) {
-        log::warn!("не удалось создать {path:?}: {e}");
-        return;
+    match Graph::ensure_journal_file(root, &name) {
+        Ok(true) => log::info!("создана страница журнала: {name}"),
+        Ok(false) => return,
+        Err(e) => {
+            log::warn!("не удалось создать журнал {name}: {e}");
+            return;
+        }
     }
-    log::info!("создана страница журнала: {name}");
     // индексируем новый файл, чтобы он появился сразу
     let mut stats = IndexStats {
         pages: 0,
@@ -1303,6 +1340,25 @@ fn ensure_today_journal(root: &std::path::Path, graph: &mut Graph) {
 /// Имя сегодняшнего журнала: "2026_09_30"
 fn today_journal_name() -> String {
     chrono::Local::now().format("%Y_%m_%d").to_string()
+}
+
+/// Проверка из фонового таймера: после смены суток создаёт новый журнал
+/// и отправляет обычное событие обновления графа в открытую ленту.
+fn ensure_journal_after_rollover(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let Some(root) = state.root.read().clone() else {
+        return;
+    };
+    let name = today_journal_name();
+    match Graph::ensure_journal_file(&root, &name) {
+        Ok(true) => {
+            log::info!("создана страница журнала после смены суток: {name}");
+            mark_self_write(&state);
+            crate::watcher::reindex_and_emit(app);
+        }
+        Ok(false) => {}
+        Err(e) => log::warn!("не удалось создать журнал после смены суток: {e}"),
+    }
 }
 
 /// Удаляет пустые журналы, кроме сегодняшнего. Ошибка очистки не мешает
@@ -1353,12 +1409,18 @@ async fn clock_toggle(
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
     let now = crate::core::model::org_timestamp_now();
 
-    let result = {
+    let (result, position) = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
-        graph
+        let page_name = graph.page_of_block(&id);
+        let position = graph
+            .pages
+            .get(&page_name)
+            .and_then(|page| page.order.iter().position(|block| block == &id))
+            .ok_or("блок не найден в графе")?;
+        let result = graph
             .mutate_block(&id, &root, |b| {
                 if start {
                     b.clock_start(&now);
@@ -1366,7 +1428,8 @@ async fn clock_toggle(
                     let _ = b.clock_stop(&now);
                 }
             })
-            .map_err(|e| format!("ошибка записи: {e}"))?
+            .map_err(|e| format!("ошибка записи: {e}"))?;
+        (result, position)
     };
 
     let Some(page) = result else {
@@ -1374,7 +1437,7 @@ async fn clock_toggle(
     };
     mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
-    Ok(page)
+    reindexed_block_uuid(&state, &page, position)
 }
 
 /// Настройки графа (тема, шрифты, статусы канбана)
@@ -1516,14 +1579,21 @@ pub async fn task_set_priority(
         }
     };
 
-    let page = {
+    let (page, position) = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
-        graph
+        let page_name = graph.page_of_block(&id);
+        let position = graph
+            .pages
+            .get(&page_name)
+            .and_then(|page| page.order.iter().position(|block| block == &id))
+            .ok_or("блок не найден в графе")?;
+        let page = graph
             .mutate_block(&id, &root, |b| b.set_priority(prio))
-            .map_err(|e| format!("ошибка записи: {e}"))?
+            .map_err(|e| format!("ошибка записи: {e}"))?;
+        (page, position)
     };
 
     let Some(page) = page else {
@@ -1531,7 +1601,7 @@ pub async fn task_set_priority(
     };
     mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
-    Ok(page)
+    reindexed_block_uuid(&state, &page, position)
 }
 
 /// Устанавливает свойство (deadline/scheduled/urgency/importance…)
@@ -1547,14 +1617,21 @@ pub async fn block_set_prop(
     let root = root.ok_or("граф не загружен")?;
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
 
-    let page = {
+    let (page, position) = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
-        graph
+        let page_name = graph.page_of_block(&id);
+        let position = graph
+            .pages
+            .get(&page_name)
+            .and_then(|page| page.order.iter().position(|block| block == &id))
+            .ok_or("блок не найден в графе")?;
+        let page = graph
             .mutate_block(&id, &root, |b| b.set_prop(&key, value.as_deref()))
-            .map_err(|e| format!("ошибка записи: {e}"))?
+            .map_err(|e| format!("ошибка записи: {e}"))?;
+        (page, position)
     };
 
     let Some(page) = page else {
@@ -1562,7 +1639,7 @@ pub async fn block_set_prop(
     };
     mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
-    Ok(page)
+    reindexed_block_uuid(&state, &page, position)
 }
 
 /// Список недавних графов

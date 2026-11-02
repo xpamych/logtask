@@ -1,5 +1,6 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
+import { createStore } from "solid-js/store";
 import type { Settings, TaskDto } from "~/lib/api";
 import {
   assetSave,
@@ -16,6 +17,7 @@ import { editingBlock, setEditingBlock } from "~/lib/editState";
 import { activeModalContext } from "~/lib/modalState";
 import { commandForContext, effectiveShortcuts, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { primaryTaskElement, selectedTaskUuid, setSelectedTaskUuid, visibleTaskUuid } from "~/lib/taskNavigation";
+import { applyTaskMenuChange } from "~/lib/taskMenuState";
 import { editorSource, persistedSource } from "~/lib/text";
 import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
 import { fitTextarea } from "~/lib/textarea";
@@ -79,7 +81,7 @@ export function TaskCard(props: {
   /** вызывается после смены статуса/приоритета/сохранения текста */
   onChanged?: () => void;
 }): JSX.Element {
-  const t = props.task;
+  const [t, setT] = createStore<TaskDto>(props.task);
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal("");
   const [saving, setSaving] = createSignal(false);
@@ -188,7 +190,9 @@ export function TaskCard(props: {
 
   const onStatus = async (marker: string) => {
     try {
-      await taskSetStatus(t.uuid, marker);
+      const freshUuid = await taskSetStatus(t.uuid, marker);
+      setT("uuid", freshUuid);
+      setT(applyTaskMenuChange(t, { kind: "status", value: marker }));
       props.onChanged?.();
     } catch (e) {
       console.error("не удалось сменить статус:", e);
@@ -197,7 +201,9 @@ export function TaskCard(props: {
 
   const onPriority = async (prio: string | null) => {
     try {
-      await taskSetPriority(t.uuid, prio);
+      const freshUuid = await taskSetPriority(t.uuid, prio);
+      setT("uuid", freshUuid);
+      setT(applyTaskMenuChange(t, { kind: "priority", value: prio }));
       props.onChanged?.();
     } catch (e) {
       console.error("не удалось сменить приоритет:", e);
@@ -206,11 +212,13 @@ export function TaskCard(props: {
 
   const onLevel = async (key: "urgency" | "importance", level: string | null) => {
     try {
-      await taskSetQuadrant(
+      const freshUuid = await taskSetQuadrant(
         t.uuid,
         key === "urgency" ? level : null,
         key === "importance" ? level : null,
       );
+      setT("uuid", freshUuid);
+      setT(applyTaskMenuChange(t, { kind: key, value: level }));
       props.onChanged?.();
     } catch (e) {
       console.error("не удалось сменить уровень:", e);
@@ -220,8 +228,11 @@ export function TaskCard(props: {
   const onDeadline = async () => {
     const value = window.prompt("Дедлайн (YYYY-MM-DD, пусто — убрать):", t.deadline ?? "");
     if (value === null) return;
+    const deadline = value.trim() || null;
     try {
-      await blockSetProp(t.uuid, "deadline", value.trim() || null);
+      const freshUuid = await blockSetProp(t.uuid, "deadline", deadline);
+      setT("uuid", freshUuid);
+      setT(applyTaskMenuChange(t, { kind: "deadline", value: deadline }));
       props.onChanged?.();
     } catch (e) {
       console.error("не удалось поставить дедлайн:", e);
