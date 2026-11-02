@@ -986,6 +986,17 @@ button.backlink:hover {
   min-width: 0;
 }
 
+.task-context > .task-card-head .task-card-text {
+  color: var(--fg-muted);
+}
+
+.task-context-badge {
+  flex: none;
+  align-self: center;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
 .task-card-text {
   font-size: 13px;
   line-height: 1.35;

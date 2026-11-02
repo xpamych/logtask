@@ -227,6 +227,8 @@ export interface TaskDto {
   scheduled: string | null;
   tags: string[];
   done: boolean;
+  /** родитель показан только как путь к совпавшей вложенной задаче */
+  context: boolean;
   props: [string, string][];
   /** видимые строки-продолжения без свойств и LOGBOOK */
   extra: string[];

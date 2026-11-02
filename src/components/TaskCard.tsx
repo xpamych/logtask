@@ -309,6 +309,7 @@ export function TaskCard(props: {
         "task-prio-a": t.priority === "[#A]",
         "task-prio-b": t.priority === "[#B]",
         "task-selected": props.selected,
+        "task-context": t.context,
       }}
       title={editing() ? undefined : t.content}
       onClick={props.onSelect}
@@ -371,6 +372,9 @@ export function TaskCard(props: {
           />
           <Show when={pasteBusy()}><div class="muted">Сохранение изображения…</div></Show>
           <Show when={pasteError()}>{(message) => <div class="error">{message()}</div>}</Show>
+        </Show>
+        <Show when={t.context}>
+          <span class="task-context-badge">контекст</span>
         </Show>
         <span
           class="task-page"

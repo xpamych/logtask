@@ -16,6 +16,7 @@ const task: TaskDto = {
   scheduled: null,
   tags: [],
   done: false,
+  context: false,
   props: [],
   extra: [],
   source: "TODO Задача",

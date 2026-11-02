@@ -59,6 +59,13 @@ function pluralTasks(n: number): string {
   return `${n} задач`;
 }
 
+function countMatches(tasks: TaskDto[]): number {
+  return tasks.reduce(
+    (count, task) => count + (task.context ? 0 : 1) + countMatches(task.children),
+    0,
+  );
+}
+
 /** Человекочитаемое описание фильтра: «открытые · В работе · #проект» */
 export function filterSummary(q: SavedQuery, settings?: Settings | null): string {
   const parts: string[] = [q.filter.open ? "открытые" : "все статусы"];
@@ -222,7 +229,7 @@ export function Queries(props: {
               <span class="query-title">{q.title}</span>
               <span class="query-summary">{filterSummary(q, props.settings)}</span>
               <span class="query-count">
-                {pluralTasks(results()[q.title]?.length ?? 0)}
+                {pluralTasks(countMatches(results()[q.title] ?? []))}
               </span>
               <span
                 class="query-edit"

@@ -610,6 +610,8 @@ pub struct TaskDto {
     pub scheduled: Option<String>,
     pub tags: Vec<String>,
     pub done: bool,
+    /// Родитель показан только ради пути к совпавшей вложенной задаче
+    pub context: bool,
     /// свойства блока (source-id, author, url…), отсортированные по ключу
     pub props: Vec<(String, String)>,
     /// видимые строки-продолжения без свойств и LOGBOOK
@@ -657,6 +659,7 @@ fn task_dto(graph: &Graph, id: uuid::Uuid, block: &Block) -> TaskDto {
         scheduled: block.props.get("scheduled").cloned(),
         tags,
         done: block.status.map(|s| s.is_done()).unwrap_or(false),
+        context: false,
         props,
         extra: block_extra(block),
         source: block.edit_source(),
@@ -767,9 +770,52 @@ fn query_task_dtos(graph: &Graph, q: &crate::core::query::SavedQuery) -> Vec<Tas
         .enumerate()
         .map(|(index, (id, _))| (id.to_string(), index))
         .collect();
-    let mut tasks: Vec<_> = strip_nested_tasks(graph, sorted)
+    let matched: std::collections::HashSet<uuid::Uuid> =
+        sorted.iter().map(|(id, _)| *id).collect();
+    let mut included = matched.clone();
+    for id in &matched {
+        let mut parent = graph.blocks.get(id).and_then(|block| block.parent);
+        while let Some(id) = parent {
+            included.insert(id);
+            parent = graph.blocks.get(&id).and_then(|block| block.parent);
+        }
+    }
+
+    fn tree_dto(
+        graph: &Graph,
+        id: uuid::Uuid,
+        matched: &std::collections::HashSet<uuid::Uuid>,
+        included: &std::collections::HashSet<uuid::Uuid>,
+    ) -> Option<TaskDto> {
+        let block = graph.blocks.get(&id)?;
+        let mut dto = task_dto(graph, id, block);
+        dto.context = !matched.contains(&id);
+        dto.children = block
+            .children
+            .iter()
+            .filter(|id| included.contains(id))
+            .filter_map(|id| tree_dto(graph, *id, matched, included))
+            .collect();
+        Some(dto)
+    }
+
+    let mut roots = Vec::new();
+    for (id, _) in &sorted {
+        let mut root = *id;
+        while let Some(parent) = graph.blocks.get(&root).and_then(|block| block.parent) {
+            if included.contains(&parent) {
+                root = parent;
+            } else {
+                break;
+            }
+        }
+        if !roots.contains(&root) {
+            roots.push(root);
+        }
+    }
+    let mut tasks: Vec<_> = roots
         .into_iter()
-        .map(|(id, block)| task_dto(graph, id, block))
+        .filter_map(|id| tree_dto(graph, id, &matched, &included))
         .collect();
     sort_nested_task_dtos(&mut tasks, &order);
     tasks
@@ -2212,6 +2258,37 @@ mod tests {
             .map(|task| task.content.as_str())
             .collect();
         assert_eq!(names, ["Срочная", "Низкая", "Без значений"]);
+    }
+
+    #[test]
+    fn tasks_by_query_wraps_matching_child_with_parent_context() {
+        let dir = std::env::temp_dir().join("logtask_query_parent_context_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::write(
+            dir.join("pages/Источник.md"),
+            "- DONE Родитель\n\t- DOING Подходит\n\t- TODO Не подходит\n",
+        )
+        .unwrap();
+        let mut graph = crate::core::model::Graph::default();
+        graph.index_dir(&dir).unwrap();
+        let q = crate::core::query::SavedQuery {
+            title: "В работе".into(),
+            filter: crate::core::query::TaskFilter {
+                status: vec![crate::core::model::Status::Doing],
+                ..Default::default()
+            },
+            sort: vec![],
+            collapsed: false,
+        };
+
+        let tasks = query_task_dtos(&graph, &q);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].content, "Родитель");
+        assert!(tasks[0].context);
+        assert_eq!(tasks[0].children.len(), 1);
+        assert_eq!(tasks[0].children[0].content, "Подходит");
+        assert!(!tasks[0].children[0].context);
     }
 
     #[test]
