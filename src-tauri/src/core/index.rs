@@ -337,6 +337,42 @@ impl Graph {
             })
     }
 
+    /// Удаляет файлы журналов, которые лента показывает пустыми: без блоков
+    /// либо только со служебным заголовком даты. Сегодняшний день и страницы
+    /// с непустой преамбулой сохраняются. Индекс обновляет вызывающий код.
+    pub fn delete_empty_journals(&self, root: &Path, today: &str) -> std::io::Result<Vec<String>> {
+        let mut candidates: Vec<(&String, &super::model::Page)> = self
+            .pages
+            .iter()
+            .filter(|(name, page)| {
+                page.kind == PageKind::Journal
+                    && name.as_str() != today
+                    && page.preamble.iter().all(|line| line.trim().is_empty())
+                    && match page.order.as_slice() {
+                        [] => true,
+                        [id] => self.blocks.get(id).is_some_and(|block| {
+                            block.content.trim() == super::model::journal_title(name)
+                        }),
+                        _ => false,
+                    }
+            })
+            .collect();
+        candidates.sort_by_key(|(name, _)| *name);
+
+        let mut removed = Vec::new();
+        for (name, page) in candidates {
+            let rel = page
+                .path
+                .clone()
+                .unwrap_or_else(|| default_rel_path(name, page.kind));
+            let abs = root.join(rel);
+            check_mtime(&abs, page.mtime)?;
+            std::fs::remove_file(&abs)?;
+            removed.push(name.clone());
+        }
+        Ok(removed)
+    }
+
     /// Меняет статус задачи (drag&drop в канбане, кружок статуса, меню).
     /// Учёт времени привязан к статусу «В работе»: переход в DOING запускает
     /// CLOCK, выход из DOING останавливает (если идёт).

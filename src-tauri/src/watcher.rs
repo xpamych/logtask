@@ -99,7 +99,16 @@ pub fn reindex_and_emit(app: &AppHandle) {
 
     let mut graph = Graph::default();
     match graph.index_dir(&root) {
-        Ok(stats) => {
+        Ok(mut stats) => {
+            if crate::commands::cleanup_empty_journals(&root, &graph) {
+                match graph.index_dir(&root) {
+                    Ok(fresh) => stats = fresh,
+                    Err(e) => {
+                        log::warn!("ошибка переиндексации после очистки журналов: {e}");
+                        return;
+                    }
+                }
+            }
             log::info!(
                 "граф переиндексирован: {} журналов, {} страниц, {} задач",
                 stats.journals,

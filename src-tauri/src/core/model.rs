@@ -131,6 +131,28 @@ pub fn days_to_ymd(days: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
+/// Заголовок журнала как в Logseq: "Sep 30th, 2026"
+pub fn journal_title(name: &str) -> String {
+    let mut parts = name.split('_');
+    let (y, m, d) = (
+        parts.next().unwrap_or("1970"),
+        parts.next().unwrap_or("01"),
+        parts.next().unwrap_or("01"),
+    );
+    let month = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let m_idx: usize = (m.parse::<usize>().unwrap_or(1)).saturating_sub(1).min(11);
+    let day: u32 = d.parse().unwrap_or(1);
+    let suffix = match day % 10 {
+        1 if day != 11 => "st",
+        2 if day != 12 => "nd",
+        3 if day != 13 => "rd",
+        _ => "th",
+    };
+    format!("{} {}{}, {}", month[m_idx], day, suffix, y)
+}
+
 /// deadline:: в формате YYYY-MM-DD — скоро ли (в пределах days дней)?
 /// Просроченный дедлайн тоже срочный — нижней границы нет.
 pub fn deadline_is_soon(deadline: &str, days: i64) -> bool {

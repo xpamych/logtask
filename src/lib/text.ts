@@ -109,7 +109,7 @@ export function todayJournalName(): string {
 
 /** Заголовок-дата, который Logtask пишет первой строкой в новый файл журнала
  *  (как Logseq): "2026_09_30" → "Sep 30th, 2026". Зеркалит journal_title
- *  в src-tauri/src/commands.rs. */
+ *  в src-tauri/src/core/model.rs. */
 export function journalLogseqTitle(name: string): string {
   const match = /^(\d{4})_(\d{2})_(\d{2})$/.exec(name);
   if (!match) return "";

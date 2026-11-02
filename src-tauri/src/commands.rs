@@ -158,12 +158,19 @@ pub async fn graph_load(
     }
 
     let mut graph = Graph::default();
-    let stats: IndexStats = graph
-        .index_dir(std::path::Path::new(&root))
+    let root_path = std::path::Path::new(&root);
+    let mut stats: IndexStats = graph
+        .index_dir(root_path)
         .map_err(|e| format!("ошибка индексации: {e}"))?;
 
+    if cleanup_empty_journals(root_path, &graph) {
+        stats = graph
+            .index_dir(root_path)
+            .map_err(|e| format!("ошибка индексации: {e}"))?;
+    }
+
     // создаём сегодняшнюю страницу журнала, если её ещё нет
-    ensure_today_journal(std::path::Path::new(&root), &mut graph);
+    ensure_today_journal(root_path, &mut graph);
 
     log::info!(
         "граф загружен: {root}: {} журналов, {} страниц, {} блоков, {} задач, {} обратных ссылок",
@@ -1268,7 +1275,7 @@ fn ensure_today_journal(root: &std::path::Path, graph: &mut Graph) {
         return;
     }
     // Logseq добавляет заголовок-дату первой строкой
-    let title = format!("- {}\n", journal_title(&name));
+    let title = format!("- {}\n", crate::core::model::journal_title(&name));
     if let Err(e) = crate::core::fswrite::atomic_write(&path, &title) {
         log::warn!("не удалось создать {path:?}: {e}");
         return;
@@ -1298,26 +1305,21 @@ fn today_journal_name() -> String {
     chrono::Local::now().format("%Y_%m_%d").to_string()
 }
 
-/// Заголовок журнала как в Logseq: "Sep 30th, 2026"
-fn journal_title(name: &str) -> String {
-    let mut parts = name.split('_');
-    let (y, m, d) = (
-        parts.next().unwrap_or("1970"),
-        parts.next().unwrap_or("01"),
-        parts.next().unwrap_or("01"),
-    );
-    let month = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    let m_idx: usize = (m.parse::<usize>().unwrap_or(1)).saturating_sub(1).min(11);
-    let day: u32 = d.parse().unwrap_or(1);
-    let suffix = match day % 10 {
-        1 if day != 11 => "st",
-        2 if day != 12 => "nd",
-        3 if day != 13 => "rd",
-        _ => "th",
-    };
-    format!("{} {}{}, {}", month[m_idx], day, suffix, y)
+/// Удаляет пустые журналы, кроме сегодняшнего. Ошибка очистки не мешает
+/// открыть граф: файл остаётся на диске и будет показан как прежде.
+pub(crate) fn cleanup_empty_journals(root: &std::path::Path, graph: &Graph) -> bool {
+    match graph.delete_empty_journals(root, &today_journal_name()) {
+        Ok(removed) => {
+            for name in &removed {
+                log::info!("удалён пустой журнал: {name}");
+            }
+            !removed.is_empty()
+        }
+        Err(e) => {
+            log::warn!("не удалось очистить пустые журналы: {e}");
+            false
+        }
+    }
 }
 
 /// Запускает CLOCK на задаче (если уже идёт — ничего не делает)
