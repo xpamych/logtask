@@ -1087,7 +1087,8 @@ pub async fn task_set_status(
             let gkey = crate::sync::secrets::graph_key(std::path::Path::new(&root));
             if let Err(e) = crate::sync::push_status_standalone(cfg, &gkey, &rid, status).await {
                 log::warn!("push статуса {rid} в {src}: {e}");
-                crate::sync::state::record_error(std::path::Path::new(&root), &src, Some(e));
+                let _ =
+                    crate::sync::state::record_error(std::path::Path::new(&root), &src, Some(e));
             }
         });
     }

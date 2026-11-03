@@ -1015,6 +1015,21 @@ impl Graph {
         status: Option<super::model::Status>,
         root: &Path,
     ) -> std::io::Result<Option<Uuid>> {
+        self.append_block_with(page_name, content, status, root, |_| {})
+    }
+
+    /// Добавляет и полностью настраивает блок до единственной записи страницы.
+    pub fn append_block_with<F>(
+        &mut self,
+        page_name: &str,
+        content: &str,
+        status: Option<super::model::Status>,
+        root: &Path,
+        configure: F,
+    ) -> std::io::Result<Option<Uuid>>
+    where
+        F: FnOnce(&mut super::model::Block),
+    {
         let Some(page) = self.pages.get(page_name) else {
             return Ok(None);
         };
@@ -1038,6 +1053,7 @@ impl Graph {
             block.status = None;
             block.raw.marker_str = String::new();
         }
+        configure(&mut block);
         let id = block.id.expect("свежий uuid");
         self.block_page.insert(id, page_name.to_string());
         self.blocks.insert(id, block);

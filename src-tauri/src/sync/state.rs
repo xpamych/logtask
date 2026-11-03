@@ -58,11 +58,29 @@ pub fn save(root: &Path, state: &SyncState) -> Result<(), String> {
     crate::core::fswrite::atomic_write(&state_path(root), &text).map_err(|e| e.to_string())
 }
 
-/// Записывает ошибку источника, не трогая остальное состояние
-pub fn record_error(root: &Path, source: &str, error: Option<String>) {
+pub fn state_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
+/// Атомарно меняет один источник, сохраняя обновления остальных источников.
+pub fn update<R>(
+    root: &Path,
+    source: &str,
+    f: impl FnOnce(&mut SourceState) -> R,
+) -> Result<R, String> {
+    let _guard = state_lock()
+        .lock()
+        .map_err(|e| format!("блокировка state: {e}"))?;
     let mut st = load(root);
-    st.sources.entry(source.to_string()).or_default().last_error = error;
-    let _ = save(root, &st);
+    let result = f(st.sources.entry(source.to_string()).or_default());
+    save(root, &st)?;
+    Ok(result)
+}
+
+/// Записывает ошибку источника, не трогая остальное состояние
+pub fn record_error(root: &Path, source: &str, error: Option<String>) -> Result<(), String> {
+    update(root, source, |state| state.last_error = error)
 }
 
 #[cfg(test)]
@@ -139,14 +157,53 @@ mod tests {
         );
         save(&root, &st).unwrap();
 
-        record_error(&root, "gitea", Some("HTTP 401".into()));
+        record_error(&root, "gitea", Some("HTTP 401".into())).unwrap();
         let loaded = load(&root);
         let src = loaded.sources.get("gitea").unwrap();
         assert_eq!(src.last_error.as_deref(), Some("HTTP 401"));
         assert!(src.tasks.contains_key("o/r#1"));
 
-        record_error(&root, "gitea", None);
+        record_error(&root, "gitea", None).unwrap();
         assert!(load(&root).sources["gitea"].last_error.is_none());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn concurrent_sources_preserve_both_states() {
+        let root = temp_root("concurrent");
+        let mut handles = vec![];
+        for source in ["gitea", "github"] {
+            let root = root.clone();
+            let source = source.to_string();
+            handles.push(std::thread::spawn(move || {
+                update(&root, &source, |state| {
+                    state.last_sync = Some("2026-11-03T12:00:00+03:00".into());
+                })
+                .unwrap();
+            }));
+        }
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let loaded = load(&root);
+        assert!(loaded.sources.contains_key("gitea"));
+        assert!(loaded.sources.contains_key("github"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn state_save_error_is_reported() {
+        let root = temp_root("save-error");
+        std::fs::write(root.join(".logtask"), "не каталог").unwrap();
+
+        let result = update(&root, "gitea", |_| {});
+
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read_to_string(root.join(".logtask")).unwrap(),
+            "не каталог"
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

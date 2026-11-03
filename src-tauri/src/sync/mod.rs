@@ -154,8 +154,11 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
     let remote = match fetch_all(&client, cfg, &gkey).await {
         Ok(t) => t,
         Err(e) => {
-            state::record_error(&root, &cfg.id, Some(e.clone()));
-            report.error = Some(e);
+            if let Err(state_error) = state::record_error(&root, &cfg.id, Some(e.clone())) {
+                report.error = Some(format!("{e}; state: {state_error}"));
+            } else {
+                report.error = Some(e);
+            }
             return report;
         }
     };
@@ -163,7 +166,7 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
     // 2. merge + запись страниц — под write-блокировкой, без сети
     let mut sync_state = state::load(&root);
     let mut pushes: Vec<(String, Status)> = vec![];
-    {
+    let summary = {
         let mut guard = state.graph.write();
         let Some(graph) = guard.as_mut() else {
             report.error = Some("граф не загружен".into());
@@ -178,8 +181,8 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
             src_state,
             &mut pushes,
             &mut report,
-        );
-    }
+        )
+    };
 
     // 3. push локальных изменений на сервер (успешные — обновят state)
     let mut pushed_ok: HashSet<String> = HashSet::new();
@@ -188,34 +191,38 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
             Ok(()) => {
                 pushed_ok.insert(rid.clone());
             }
-            Err(e) => {
-                state::record_error(&root, &cfg.id, Some(e.clone()));
-                report.error = Some(e);
-            }
+            Err(e) => report.error = Some(e),
         }
     }
     report.pushed = pushed_ok.len();
 
-    // 4. обновляем отпечатки/статусы в state по итоговому графу
-    {
-        let guard = state.graph.read();
-        if let Some(graph) = guard.as_ref() {
-            let src_state = sync_state.sources.entry(cfg.id.clone()).or_default();
-            refresh_task_states(graph, cfg, &remote, src_state, &pushed_ok);
+    // 4. state перечитывается под общей блокировкой: другие источники не теряются
+    let mut completed = summary.completed;
+    completed.extend(pushed_ok);
+    let source_state = sync_state.sources.remove(&cfg.id).unwrap_or_default();
+    let state_result = state::update(&root, &cfg.id, |src_state| {
+        *src_state = source_state;
+        if let Some(graph) = state.graph.read().as_ref() {
+            refresh_task_states(graph, cfg, &remote, src_state, &completed);
         }
-    }
-    {
-        let src_state = sync_state.sources.entry(cfg.id.clone()).or_default();
-        src_state.last_sync = Some(chrono::Local::now().to_rfc3339());
-        // фиксируем итоговую ошибку (push/merge), иначе save затрёт record_error
+        if report.error.is_none() {
+            src_state.last_sync = Some(chrono::Local::now().to_rfc3339());
+        }
         src_state.last_error = report.error.clone();
+    });
+    if let Err(e) = state_result {
+        report.error = Some(format!("сохранение state: {e}"));
     }
-    let _ = state::save(&root, &sync_state);
 
     // 5. переиндексация и событие для UI
     crate::commands::mark_self_write(state);
     crate::watcher::reindex_and_emit(app);
     report
+}
+
+#[derive(Default)]
+struct MergeSummary {
+    completed: HashSet<String>,
 }
 
 /// Применяет merge к графу. Чистая часть синка — тестируется без сети.
@@ -227,20 +234,18 @@ fn apply_merge(
     src_state: &mut SourceState,
     pushes: &mut Vec<(String, Status)>,
     report: &mut SyncReport,
-) {
+) -> MergeSummary {
+    let mut summary = MergeSummary::default();
     let mut by_page: HashMap<&str, Vec<&RemoteTask>> = HashMap::new();
     for t in remote {
         by_page.entry(t.page.as_str()).or_default().push(t);
     }
 
-    // страницы для обхода: из remote + страницы, где у источника уже есть блоки
-    // (иначе при пустом remote не сработает обработка исчезнувших задач)
     let mut pages: Vec<String> = by_page.keys().map(|s| s.to_string()).collect();
     for name in graph.pages.keys() {
-        if by_page.contains_key(name.as_str()) {
-            continue;
-        }
-        if !page_blocks_with_source(graph, name, &cfg.id).is_empty() {
+        if !by_page.contains_key(name.as_str())
+            && !page_blocks_with_source(graph, name, &cfg.id).is_empty()
+        {
             pages.push(name.clone());
         }
     }
@@ -254,12 +259,6 @@ fn apply_merge(
         let remote_ids: HashSet<&str> = tasks.iter().map(|t| t.id.as_str()).collect();
 
         for &t in tasks {
-            // uuid блоков пересоздаются при каждой записи страницы
-            // (reload_page после mutate/delete), поэтому нельзя держать
-            // список existing, вычисленный до цикла: после первой же записи
-            // он протухает и merge добавляет дубли. Ищем свежо перед
-            // каждой операцией; заодно удаляем дубли source-id, оставшиеся
-            // от прошлых гонок/этого бага.
             loop {
                 let matches: Vec<uuid::Uuid> = page_blocks_with_source(graph, page, &cfg.id)
                     .into_iter()
@@ -269,8 +268,17 @@ fn apply_merge(
                 if matches.len() <= 1 {
                     break;
                 }
-                let _ = graph.delete_block(&matches[1], root);
-                report.removed += 1;
+                match graph.delete_block(&matches[1], root) {
+                    Ok(Some(_)) => report.removed += 1,
+                    Ok(None) => {
+                        report.error = Some(format!("{}: дубль не найден", t.id));
+                        break;
+                    }
+                    Err(e) => {
+                        report.error = Some(format!("{}: удаление дубля: {e}", t.id));
+                        break;
+                    }
+                }
             }
             let found = page_blocks_with_source(graph, page, &cfg.id)
                 .into_iter()
@@ -279,14 +287,22 @@ fn apply_merge(
             let block = found.and_then(|u| graph.blocks.get(&u));
             let prev = src_state.tasks.get(&t.id);
             match merge::decide(Some(t), block, prev) {
-                merge::Action::Add => {
-                    add_task(graph, root, page, cfg, t);
-                    report.added += 1;
-                }
-                merge::Action::Update => {
+                merge::Action::Add => match add_task(graph, root, page, cfg, t) {
+                    Ok(()) => {
+                        report.added += 1;
+                        summary.completed.insert(t.id.clone());
+                    }
+                    Err(e) => report.error = Some(format!("{}: добавление: {e}", t.id)),
+                },
+                merge::Action::Update | merge::Action::Conflict => {
                     if let Some(uuid) = found {
-                        update_task(graph, root, &uuid, cfg, t);
-                        report.updated += 1;
+                        match update_task(graph, root, &uuid, cfg, t) {
+                            Ok(()) => {
+                                report.updated += 1;
+                                summary.completed.insert(t.id.clone());
+                            }
+                            Err(e) => report.error = Some(format!("{}: обновление: {e}", t.id)),
+                        }
                     }
                 }
                 merge::Action::Push => {
@@ -294,20 +310,13 @@ fn apply_merge(
                         pushes.push((t.id.clone(), status));
                     }
                 }
-                merge::Action::Conflict => {
-                    // менялись и локально, и на сервере — сервер истина,
-                    // блок просто приводим к серверному состоянию
-                    if let Some(uuid) = found {
-                        update_task(graph, root, &uuid, cfg, t);
-                        report.updated += 1;
-                    }
+                merge::Action::Keep => {
+                    summary.completed.insert(t.id.clone());
                 }
                 _ => {}
             }
         }
 
-        // исчезнувшие с сервера: пересчитываем список после каждой записи
-        // (uuid протухают), обработанные запоминаем, чтобы не зациклиться
         let mut handled: HashSet<String> = HashSet::new();
         while let Some((uuid, sid)) = page_blocks_with_source(graph, page, &cfg.id)
             .into_iter()
@@ -317,21 +326,27 @@ fn apply_merge(
             let block = graph.blocks.get(&uuid);
             let prev = src_state.tasks.get(&sid);
             match merge::decide(None, block, prev) {
-                merge::Action::Remove => {
-                    let _ = graph.delete_block(&uuid, root);
-                    src_state.tasks.remove(&sid);
-                    report.removed += 1;
-                }
+                merge::Action::Remove => match graph.delete_block(&uuid, root) {
+                    Ok(Some(_)) => {
+                        src_state.tasks.remove(&sid);
+                        report.removed += 1;
+                    }
+                    Ok(None) => report.error = Some(format!("{sid}: блок не найден")),
+                    Err(e) => report.error = Some(format!("{sid}: удаление: {e}")),
+                },
                 merge::Action::MarkMissing => {
                     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-                    let _ = graph.mutate_block(&uuid, root, |b| {
+                    if let Err(e) = graph.mutate_block(&uuid, root, |b| {
                         b.set_prop("sync-missing", Some(&today));
-                    });
+                    }) {
+                        report.error = Some(format!("{sid}: sync-missing: {e}"));
+                    }
                 }
                 _ => {}
             }
         }
     }
+    summary
 }
 
 /// Создаёт файл страницы, если её ещё нет (пустой — наполнится задачами)
@@ -401,19 +416,24 @@ fn task_props(cfg: &SourceConfig, t: &RemoteTask) -> Vec<(String, String)> {
     v
 }
 
-fn add_task(graph: &mut Graph, root: &Path, page: &str, cfg: &SourceConfig, t: &RemoteTask) {
-    let Ok(Some(uuid)) = graph.append_block(page, &sanitize(&t.title), Some(t.status), root) else {
-        log::warn!("sync: не удалось добавить блок на страницу {page}");
-        return;
-    };
+fn add_task(
+    graph: &mut Graph,
+    root: &Path,
+    page: &str,
+    cfg: &SourceConfig,
+    t: &RemoteTask,
+) -> std::io::Result<()> {
     let priority = t.priority;
     let props = task_props(cfg, t);
-    let _ = graph.mutate_block(&uuid, root, |b| {
-        b.set_priority(priority);
-        for (k, v) in &props {
-            b.set_prop(k, Some(v));
-        }
-    });
+    graph
+        .append_block_with(page, &sanitize(&t.title), Some(t.status), root, |block| {
+            block.set_priority(priority);
+            for (key, value) in &props {
+                block.set_prop(key, Some(value));
+            }
+        })?
+        .ok_or_else(|| std::io::Error::other("страница не найдена"))?;
+    Ok(())
 }
 
 /// Обновляет блок по данным сервера; заодно снимает служебные пометки
@@ -424,12 +444,12 @@ fn update_task(
     uuid: &uuid::Uuid,
     cfg: &SourceConfig,
     t: &RemoteTask,
-) {
+) -> std::io::Result<()> {
     let priority = t.priority;
     let props = task_props(cfg, t);
     let title = sanitize(&t.title);
     let status = t.status;
-    let _ = graph.mutate_block(uuid, root, |b| {
+    graph.mutate_block(uuid, root, |b| {
         b.set_status(status);
         // set_content перепарсивает [#X] и сбрасывает priority — поэтому раньше
         b.set_content(&title);
@@ -443,7 +463,8 @@ fn update_task(
         }
         b.set_prop("sync-conflict", None);
         b.set_prop("sync-missing", None);
-    });
+    })?;
+    Ok(())
 }
 
 /// Пересчитывает TaskState по итоговому графу:
@@ -456,9 +477,12 @@ fn refresh_task_states(
     cfg: &SourceConfig,
     remote: &[RemoteTask],
     src_state: &mut SourceState,
-    pushed_ok: &HashSet<String>,
+    completed: &HashSet<String>,
 ) {
     for t in remote {
+        if !completed.contains(&t.id) {
+            continue;
+        }
         let uuid = graph.blocks.iter().find_map(|(id, b)| {
             if b.props.get("source").map(|s| s.as_str()) == Some(cfg.id.as_str())
                 && b.props.get("source-id").map(|s| s.as_str()) == Some(t.id.as_str())
@@ -472,7 +496,7 @@ fn refresh_task_states(
         let Some(block) = graph.blocks.get(&uuid) else {
             continue;
         };
-        let was_pushed = pushed_ok.contains(&t.id);
+        let was_pushed = completed.contains(&t.id);
         // неуспешный push: оставляем старый state — синк повторит попытку
         let push_failed = block.status.map(|s| s.to_marker()) != Some(t.status.to_marker())
             && !was_pushed
@@ -618,10 +642,11 @@ mod tests {
         let mut graph = load_graph(root);
         let mut pushes = vec![];
         let mut report = SyncReport::default();
-        apply_merge(&mut graph, root, cfg, remote, st, &mut pushes, &mut report);
+        let summary = apply_merge(&mut graph, root, cfg, remote, st, &mut pushes, &mut report);
         // обновляем state как sync_inner
-        let pushed: HashSet<String> = pushes.iter().map(|(id, _)| id.clone()).collect();
-        refresh_task_states(&graph, cfg, remote, st, &pushed);
+        let mut completed = summary.completed;
+        completed.extend(pushes.iter().map(|(id, _)| id.clone()));
+        refresh_task_states(&graph, cfg, remote, st, &completed);
         (report, pushes)
     }
 
@@ -931,6 +956,108 @@ mod tests {
         assert_eq!(report.removed, 0);
         let text = page_text(&root, "PPDB - TODO");
         assert!(text.contains("sync-missing::"), "файл:\n{text}");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn failed_add_does_not_increment_or_duplicate() {
+        let root = temp_graph("failed-add");
+        let cfg = test_cfg();
+        let path = root.join("pages/PPDB - TODO.md");
+        std::fs::write(&path, "- существующий блок\n").unwrap();
+        let mut graph = load_graph(&root);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::fs::write(&path, "- внешняя правка\n").unwrap();
+        let mut st = SourceState::default();
+        let mut pushes = vec![];
+        let mut report = SyncReport::default();
+
+        apply_merge(
+            &mut graph,
+            &root,
+            &cfg,
+            &[task("ppdb-1", "Новая", Status::Todo)],
+            &mut st,
+            &mut pushes,
+            &mut report,
+        );
+
+        assert_eq!(report.added, 0);
+        assert!(report.error.is_some());
+        assert!(!page_text(&root, "PPDB - TODO").contains("source-id:: ppdb-1"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn failed_remove_keeps_task_state() {
+        let root = temp_graph("failed-remove");
+        let cfg = test_cfg();
+        let mut st = SourceState::default();
+        run_merge(
+            &root,
+            &cfg,
+            &[task("ppdb-1", "Задача", Status::Todo)],
+            &mut st,
+        );
+        let mut graph = load_graph(&root);
+        let path = root.join("pages/PPDB - TODO.md");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::fs::write(&path, "- внешняя правка\n").unwrap();
+        let mut pushes = vec![];
+        let mut report = SyncReport::default();
+
+        apply_merge(
+            &mut graph,
+            &root,
+            &cfg,
+            &[],
+            &mut st,
+            &mut pushes,
+            &mut report,
+        );
+
+        assert_eq!(report.removed, 0);
+        assert!(report.error.is_some());
+        assert!(st.tasks.contains_key("ppdb-1"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn mark_missing_error_sets_report_and_blocks_last_sync() {
+        let root = temp_graph("failed-missing");
+        let cfg = test_cfg();
+        let mut st = SourceState::default();
+        run_merge(
+            &root,
+            &cfg,
+            &[task("ppdb-1", "Задача", Status::Todo)],
+            &mut st,
+        );
+        let mut graph = load_graph(&root);
+        let uuid = *graph.pages["PPDB - TODO"].order.first().unwrap();
+        graph
+            .blocks
+            .get_mut(&uuid)
+            .unwrap()
+            .set_content("Локальная правка");
+        let path = root.join("pages/PPDB - TODO.md");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::fs::write(&path, "- TODO внешняя правка\n").unwrap();
+        let mut pushes = vec![];
+        let mut report = SyncReport::default();
+
+        apply_merge(
+            &mut graph,
+            &root,
+            &cfg,
+            &[],
+            &mut st,
+            &mut pushes,
+            &mut report,
+        );
+
+        assert!(report.error.is_some());
+        assert!(st.tasks.contains_key("ppdb-1"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

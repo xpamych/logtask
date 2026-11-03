@@ -560,3 +560,33 @@ fn doing_status_toggles_clock() {
     let b = graph.all_tasks().into_iter().next().expect("задача").1;
     assert!(!b.clock_running());
 }
+
+#[test]
+fn imported_task_is_written_with_source_atomically() {
+    let dir = std::env::temp_dir().join("logtask_append_configured_test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("pages")).unwrap();
+    fs::write(dir.join("pages/Источник.md"), "").unwrap();
+    let mut graph = Graph::default();
+    graph.index_dir(&dir).unwrap();
+
+    graph
+        .append_block_with(
+            "Источник",
+            "Задача",
+            Some(Status::Todo),
+            &dir,
+            |block| {
+                block.set_priority(Some(logtask_lib::core::model::Priority::B));
+                block.set_prop("source", Some("ppdb"));
+                block.set_prop("source-id", Some("ppdb-1"));
+            },
+        )
+        .unwrap();
+
+    let text = fs::read_to_string(dir.join("pages/Источник.md")).unwrap();
+    assert!(text.contains("- TODO [#B] Задача"), "{text}");
+    assert!(text.contains("source:: ppdb"), "{text}");
+    assert!(text.contains("source-id:: ppdb-1"), "{text}");
+    let _ = fs::remove_dir_all(&dir);
+}
