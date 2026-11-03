@@ -1,5 +1,7 @@
 import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { stablePosition } from "~/lib/graph/layout";
+import { interpolateValue, smoothStepAmount, transitionAlpha, zoomCameraTarget } from "./motion";
+import { GeometryBatch } from "./geometry";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
 import { createRenderEdgeCache, graphNodeLabelOpacity, graphNodeRadius, graphNodeRole, indexSceneNodes } from "./renderEdges";
@@ -65,14 +67,28 @@ export class WebGlRenderer {
   private nodeById = new Map<string, SceneNode>();
   private cachedRenderEdges = createRenderEdgeCache();
   private renderEdges: RenderEdge[] = [];
+  private lineBatch = new GeometryBatch();
+  private arrowBatch = new GeometryBatch();
+  private nodeBatch = new GeometryBatch();
+  private edgeColor: RGBA = [0.35, 0.75, 0.8, 0.78];
+  private foreground = "#dddddd";
   private settings: GraphViewSettings | null = null;
   private positions = new Map<string, { x: number; y: number }>();
+  private targetPositions = new Map<string, { x: number; y: number }>();
+  private positionsInitialized = false;
   private camera: Camera = { x: 0, y: 0, zoom: 1 };
+  private cameraTarget: Camera | null = null;
   private frame = 0;
+  private lastFrameTime = 0;
+  private motionPreference: MediaQueryList;
+  private onMotionPreference: () => void;
   private resizeObserver: ResizeObserver;
+  private themeObserver: MutationObserver;
   private labels: CanvasRenderingContext2D | null;
   private highlighted = new Set<string>();
   private hovered: string | null = null;
+  private nodeAlphas = new Map<string, number>();
+  private edgeAlphas = new Map<string, number>();
   onCameraChange: ((camera: Camera) => void) | null = null;
   onFrameTime: ((milliseconds: number) => void) | null = null;
 
@@ -98,30 +114,63 @@ export class WebGlRenderer {
     this.buffer = gl.createBuffer()!;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    this.motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    this.onMotionPreference = () => {
+      this.cameraTarget = null;
+      for (const [id, point] of this.targetPositions) this.positions.set(id, point);
+      this.request();
+    };
+    this.motionPreference.addEventListener("change", this.onMotionPreference);
+    this.themeObserver = new MutationObserver(() => {
+      this.refreshStyles();
+      this.request();
+    });
+    this.themeObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     this.resize();
+  }
+
+  private refreshStyles() {
+    const styles = getComputedStyle(document.body);
+    this.edgeColor = color(styles.getPropertyValue("--graph-edge") || "#536575", 0.78);
+    this.foreground = styles.getPropertyValue("--fg") || "#dddddd";
   }
 
   setScene(scene: SceneGraph, settings: GraphViewSettings) {
     this.scene = scene;
     this.nodeById = indexSceneNodes(scene.nodes);
     this.renderEdges = this.cachedRenderEdges(scene.edges);
+    this.edgeAlphas.clear();
     this.settings = settings;
+    this.refreshStyles();
     const ids = new Set(scene.nodes.map((node) => node.id));
     this.positions.forEach((_, id) => {
-      if (!ids.has(id)) this.positions.delete(id);
+      if (!ids.has(id)) {
+        this.positions.delete(id);
+        this.targetPositions.delete(id);
+        this.nodeAlphas.delete(id);
+      }
     });
     for (const node of scene.nodes) {
-      if (!this.positions.has(node.id)) this.positions.set(node.id, stablePosition(node.id));
+      if (!this.positions.has(node.id)) {
+        const point = stablePosition(node.id);
+        this.positions.set(node.id, point);
+        this.targetPositions.set(node.id, point);
+      }
     }
     this.request();
   }
 
   setPositions(entries: GraphLayoutEntry[]) {
+    const initialize = !this.positionsInitialized;
+    this.positionsInitialized = true;
     for (const entry of entries) {
-      if (Number.isFinite(entry.x) && Number.isFinite(entry.y)) {
-        this.positions.set(entry.id, { x: entry.x, y: entry.y });
+      if (!Number.isFinite(entry.x) || !Number.isFinite(entry.y)) continue;
+      const target = { x: entry.x, y: entry.y };
+      this.targetPositions.set(entry.id, target);
+      if (initialize || this.motionPreference.matches || entry.pinned || !this.positions.has(entry.id)) {
+        this.positions.set(entry.id, target);
       }
     }
     this.request();
@@ -146,8 +195,18 @@ export class WebGlRenderer {
   }
 
   setCamera(camera: Camera) {
+    this.cameraTarget = null;
     this.camera = { ...camera, zoom: Math.max(0.05, Math.min(5, camera.zoom)) };
     this.onCameraChange?.({ ...this.camera });
+    this.request();
+  }
+
+  private transitionCamera(target: Camera) {
+    if (this.motionPreference.matches) {
+      this.setCamera(target);
+      return;
+    }
+    this.cameraTarget = target;
     this.request();
   }
 
@@ -186,18 +245,18 @@ export class WebGlRenderer {
   }
 
   zoomBy(factor: number, x = this.canvas.clientWidth / 2, y = this.canvas.clientHeight / 2) {
-    const before = this.screenToWorld(x, y);
-    const zoom = Math.max(0.05, Math.min(5, this.camera.zoom * factor));
-    this.camera = {
-      x: before.x - (x - this.canvas.clientWidth / 2) / zoom,
-      y: before.y - (y - this.canvas.clientHeight / 2) / zoom,
-      zoom,
-    };
-    this.onCameraChange?.({ ...this.camera });
-    this.request();
+    this.transitionCamera(zoomCameraTarget(
+      this.cameraTarget ?? this.camera,
+      factor,
+      x,
+      y,
+      this.canvas.clientWidth,
+      this.canvas.clientHeight,
+    ));
   }
 
   panBy(dx: number, dy: number) {
+    this.cameraTarget = null;
     this.camera.x -= dx / this.camera.zoom;
     this.camera.y -= dy / this.camera.zoom;
     this.onCameraChange?.({ ...this.camera });
@@ -218,12 +277,12 @@ export class WebGlRenderer {
         (this.canvas.clientHeight - 80) / Math.max(100, maxY - minY),
       )),
     );
-    this.setCamera({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom });
+    this.transitionCamera({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom });
   }
 
   centerOn(id: string) {
     const point = this.positions.get(id);
-    if (point) this.setCamera({ ...this.camera, ...point });
+    if (point) this.transitionCamera({ ...this.camera, ...point });
   }
 
   private resize() {
@@ -244,17 +303,80 @@ export class WebGlRenderer {
 
   private request() {
     if (this.frame) return;
-    this.frame = requestAnimationFrame(() => {
+    this.frame = requestAnimationFrame((now) => {
       this.frame = 0;
+      const moving = this.advanceMotion(now);
       this.draw();
+      if (moving) this.request();
+      else this.lastFrameTime = 0;
     });
   }
 
-  private vertex(vertices: number[], x: number, y: number, rgba: RGBA) {
-    vertices.push(x, y, ...rgba);
+  private advanceMotion(now: number): boolean {
+    const elapsed = this.lastFrameTime === 0 ? 0 : now - this.lastFrameTime;
+    this.lastFrameTime = now;
+    let moving = false;
+    for (const [id, target] of this.targetPositions) {
+      const current = this.positions.get(id) ?? target;
+      const x = interpolateValue(current.x, target.x, elapsed, 0.12);
+      const y = interpolateValue(current.y, target.y, elapsed, 0.12);
+      if (Math.abs(target.x - x) > 0.02 || Math.abs(target.y - y) > 0.02) {
+        moving = true;
+        this.positions.set(id, { x, y });
+      } else {
+        this.positions.set(id, target);
+      }
+    }
+    if (this.cameraTarget) {
+      const target = this.cameraTarget;
+      const amount = smoothStepAmount(elapsed, 0.18);
+      this.camera = {
+        x: this.camera.x + (target.x - this.camera.x) * amount,
+        y: this.camera.y + (target.y - this.camera.y) * amount,
+        zoom: this.camera.zoom + (target.zoom - this.camera.zoom) * amount,
+      };
+      if (
+        Math.abs(target.x - this.camera.x) > 0.02 ||
+        Math.abs(target.y - this.camera.y) > 0.02 ||
+        Math.abs(target.zoom - this.camera.zoom) > 0.0001
+      ) {
+        moving = true;
+      } else {
+        this.camera = target;
+        this.cameraTarget = null;
+      }
+      this.onCameraChange?.({ ...this.camera });
+    }
+    return this.advanceOpacity(elapsed) || moving;
   }
 
-  private line(vertices: number[], ax: number, ay: number, bx: number, by: number, rgba: RGBA) {
+  private advanceOpacity(elapsed: number): boolean {
+    const active = this.activeHighlight();
+    let moving = false;
+    for (const node of this.scene.nodes) {
+      const target = graphNodeRole(node.id, this.hovered, active) === "muted" ? 0.25 : 1;
+      const current = this.nodeAlphas.get(node.id) ?? target;
+      const next = transitionAlpha(current, target, elapsed, 0.12, this.motionPreference.matches);
+      this.nodeAlphas.set(node.id, next.value);
+      moving ||= next.moving;
+    }
+    for (const edge of this.renderEdges) {
+      const key = `${edge.source}->${edge.target}`;
+      const muted = active.size > 0 && !(active.has(edge.source) && active.has(edge.target));
+      const target = muted ? 0.08 : this.edgeColor[3];
+      const current = this.edgeAlphas.get(key) ?? target;
+      const next = transitionAlpha(current, target, elapsed, 0.12, this.motionPreference.matches);
+      this.edgeAlphas.set(key, next.value);
+      moving ||= next.moving;
+    }
+    return moving;
+  }
+
+  private vertex(vertices: GeometryBatch, x: number, y: number, rgba: RGBA) {
+    vertices.vertex(x, y, ...rgba);
+  }
+
+  private line(vertices: GeometryBatch, ax: number, ay: number, bx: number, by: number, rgba: RGBA) {
     const dx = bx - ax;
     const dy = by - ay;
     const length = Math.hypot(dx, dy);
@@ -262,27 +384,30 @@ export class WebGlRenderer {
     const width = 0.35 * (this.settings?.edgeScale ?? 1);
     const ox = (-dy / length) * width;
     const oy = (dx / length) * width;
-    this.triangle(vertices, [ax + ox, ay + oy], [ax - ox, ay - oy], [bx + ox, by + oy], rgba);
-    this.triangle(vertices, [ax - ox, ay - oy], [bx - ox, by - oy], [bx + ox, by + oy], rgba);
+    this.triangle(vertices, ax + ox, ay + oy, ax - ox, ay - oy, bx + ox, by + oy, rgba);
+    this.triangle(vertices, ax - ox, ay - oy, bx - ox, by - oy, bx + ox, by + oy, rgba);
   }
 
   private triangle(
-    vertices: number[],
-    a: [number, number],
-    b: [number, number],
-    c: [number, number],
+    vertices: GeometryBatch,
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    cx: number,
+    cy: number,
     rgba: RGBA,
   ) {
-    this.vertex(vertices, a[0], a[1], rgba);
-    this.vertex(vertices, b[0], b[1], rgba);
-    this.vertex(vertices, c[0], c[1], rgba);
+    this.vertex(vertices, ax, ay, rgba);
+    this.vertex(vertices, bx, by, rgba);
+    this.vertex(vertices, cx, cy, rgba);
   }
 
-  private drawGeometry(mode: number, vertices: number[]) {
-    if (vertices.length === 0) return;
+  private drawGeometry(mode: number, vertices: GeometryBatch) {
+    if (vertices.vertexCount === 0) return;
     const gl = this.gl;
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
-    gl.drawArrays(mode, 0, vertices.length / 6);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices.values(), gl.STREAM_DRAW);
+    gl.drawArrays(mode, 0, vertices.vertexCount);
   }
 
   private draw() {
@@ -306,18 +431,20 @@ export class WebGlRenderer {
       this.camera.zoom * (window.devicePixelRatio || 1),
     );
 
-    const styles = getComputedStyle(document.body);
     const activeHighlight = this.activeHighlight();
-    const edgeColor = color(styles.getPropertyValue("--graph-edge") || "#536575", 0.78);
-    const lines: number[] = [];
-    const arrows: number[] = [];
+    const lines = this.lineBatch;
+    const arrows = this.arrowBatch;
+    lines.clear();
+    arrows.clear();
     for (const edge of this.renderEdges) {
       const source = this.positions.get(edge.source);
       const target = this.positions.get(edge.target);
       if (!source || !target) continue;
       const muted = activeHighlight.size > 0 &&
         !(activeHighlight.has(edge.source) && activeHighlight.has(edge.target));
-      const rgba = muted ? color("#777777", 0.08) : edgeColor;
+      const key = `${edge.source}->${edge.target}`;
+      const base = muted ? color("#777777") : this.edgeColor;
+      const rgba: RGBA = [base[0], base[1], base[2], this.edgeAlphas.get(key) ?? base[3]];
       if (edge.source === edge.target) {
         for (let step = 0; step < 12; step += 1) {
           const a = (step / 12) * Math.PI * 2;
@@ -340,31 +467,45 @@ export class WebGlRenderer {
           const radius = targetNode ? this.nodeRadius(targetNode) : 5;
           const ux = (dx / length) * direction;
           const uy = (dy / length) * direction;
-          const tip: [number, number] = [endpoint.x - ux * radius, endpoint.y - uy * radius];
+          const tipX = endpoint.x - ux * radius;
+          const tipY = endpoint.y - uy * radius;
           const size = 5 + Math.min(4, edge.weight / 2);
-          this.triangle(arrows, tip,
-            [tip[0] - ux * size - uy * size * 0.6, tip[1] - uy * size + ux * size * 0.6],
-            [tip[0] - ux * size + uy * size * 0.6, tip[1] - uy * size - ux * size * 0.6], rgba);
+          this.triangle(arrows,
+            tipX,
+            tipY,
+            tipX - ux * size - uy * size * 0.6,
+            tipY - uy * size + ux * size * 0.6,
+            tipX - ux * size + uy * size * 0.6,
+            tipY - uy * size - ux * size * 0.6,
+            rgba);
         }
       }
     }
     this.drawGeometry(gl.TRIANGLES, lines);
     this.drawGeometry(gl.TRIANGLES, arrows);
 
-    const triangles: number[] = [];
+    const triangles = this.nodeBatch;
+    triangles.clear();
     for (const node of this.scene.nodes) {
       const point = this.positions.get(node.id)!;
       const custom = this.settings ? colorForNode(node, this.settings.groups) : null;
       const base = custom ?? (node.kind === "journal" ? "#ff9800" : node.kind === "asset" ? "#4caf50" : node.kind === "virtual" ? "#777777" : "#9b59b6");
       const role = graphNodeRole(node.id, this.hovered, activeHighlight);
-      const rgba = color(role === "hovered" ? "#09bec8" : base, role === "muted" ? 0.25 : 1);
+      const alpha = this.nodeAlphas.get(node.id) ?? (role === "muted" ? 0.25 : 1);
+      const rgba = color(role === "hovered" ? "#09bec8" : base, alpha);
       const radius = this.nodeRadius(node);
-      for (let segment = 0; segment < 14; segment += 1) {
-        const a = (segment / 14) * Math.PI * 2;
-        const b = ((segment + 1) / 14) * Math.PI * 2;
-        this.triangle(triangles, [point.x, point.y],
-          [point.x + Math.cos(a) * radius, point.y + Math.sin(a) * radius],
-          [point.x + Math.cos(b) * radius, point.y + Math.sin(b) * radius], rgba);
+      const segments = radius * this.camera.zoom >= 12 ? 64 : 16;
+      for (let segment = 0; segment < segments; segment += 1) {
+        const a = (segment / segments) * Math.PI * 2;
+        const b = ((segment + 1) / segments) * Math.PI * 2;
+        this.triangle(triangles,
+          point.x,
+          point.y,
+          point.x + Math.cos(a) * radius,
+          point.y + Math.sin(a) * radius,
+          point.x + Math.cos(b) * radius,
+          point.y + Math.sin(b) * radius,
+          rgba);
       }
     }
     this.drawGeometry(gl.TRIANGLES, triangles);
@@ -380,14 +521,18 @@ export class WebGlRenderer {
     ctx.clearRect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    const styles = getComputedStyle(document.body);
-    const foreground = styles.getPropertyValue("--fg") || "#dddddd";
+    const foreground = this.foreground;
     const activeHighlight = this.activeHighlight();
     let count = 0;
     const drawLabel = (node: SceneNode) => {
       const role = graphNodeRole(node.id, this.hovered, activeHighlight);
       const priority = role !== "normal";
-      const opacity = graphNodeLabelOpacity(role, this.scene.nodes.length, this.camera.zoom, this.settings!.labelThreshold);
+      const opacity = graphNodeLabelOpacity(
+        role === "muted" ? "normal" : role,
+        this.scene.nodes.length,
+        this.camera.zoom,
+        this.settings!.labelThreshold,
+      ) * (this.nodeAlphas.get(node.id) ?? 1);
       if (opacity === 0 || (count >= 200 && !priority)) return;
       const point = this.positions.get(node.id)!;
       const screen = this.worldToScreen(point.x, point.y);
@@ -395,7 +540,7 @@ export class WebGlRenderer {
       const title = node.clusterMembers ? `${node.title} (${node.clusterMembers.length})` : node.title;
       ctx.globalAlpha = opacity;
       ctx.font = role === "hovered" ? "bold 12px sans-serif" : "11px sans-serif";
-      ctx.fillStyle = role === "hovered" ? "#000000" : role === "highlighted" ? "#777777" : foreground;
+      ctx.fillStyle = foreground;
       ctx.fillText(title.length > 42 ? `${title.slice(0, 41)}…` : title, screen.x, screen.y + this.nodeRadius(node) + 4);
       if (!priority) count += 1;
     };
@@ -409,6 +554,8 @@ export class WebGlRenderer {
 
   dispose() {
     cancelAnimationFrame(this.frame);
+    this.motionPreference.removeEventListener("change", this.onMotionPreference);
+    this.themeObserver.disconnect();
     this.resizeObserver.disconnect();
     this.gl.deleteBuffer(this.buffer);
     this.gl.deleteProgram(this.program);

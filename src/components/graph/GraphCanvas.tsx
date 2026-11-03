@@ -235,12 +235,16 @@ export function GraphCanvas(props: {
       props.onSelectNode?.(id);
     }
   };
-  const click = (id: string | null, modified: boolean) => {
+  const click = (id: string | null) => {
     const node = id ? props.scene.nodes.find((candidate) => candidate.id === id) : null;
-    if (node && modified) props.onSelectNode?.(node.id);
-    else if (node?.kind === "cluster") props.onToggleCluster?.(node.id);
-    else if (node && node.kind !== "asset") props.onOpenPage(node.title);
+    if (node?.kind === "cluster") props.onToggleCluster?.(node.id);
     else props.onSelectNode?.(id);
+  };
+  const doubleClick = (event: MouseEvent) => {
+    const node = renderer?.hitTest(event.clientX, event.clientY);
+    if (!node) return;
+    if (node.kind === "cluster") props.onToggleCluster?.(node.id);
+    else if (node.kind !== "asset") props.onOpenPage(node.title);
   };
   const pointers = new Map<number, { x: number; y: number }>();
   let pinchDistance = 0;
@@ -304,7 +308,7 @@ export function GraphCanvas(props: {
   const onPointerUp = (event: PointerEvent, cancelled = false) => {
     pointers.delete(event.pointerId);
     pinchDistance = 0;
-    if (drag && shouldClickPointer(drag.moved, cancelled)) click(drag.id, event.ctrlKey || event.metaKey);
+    if (drag && shouldClickPointer(drag.moved, cancelled)) click(drag.id);
     if (drag?.id && drag.moved) {
       worker?.drag(drag.id, drag.worldX, drag.worldY, drag.pinned);
       worker?.resume();
@@ -332,6 +336,7 @@ export function GraphCanvas(props: {
         onPointerUp={onPointerUp}
         onPointerCancel={(event) => onPointerUp(event, true)}
         onPointerLeave={() => setHovered(null)}
+        onDblClick={doubleClick}
         onContextMenu={(event) => {
           event.preventDefault();
           const node = renderer?.hitTest(event.clientX, event.clientY);

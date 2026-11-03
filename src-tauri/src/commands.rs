@@ -770,8 +770,7 @@ fn query_task_dtos(graph: &Graph, q: &crate::core::query::SavedQuery) -> Vec<Tas
         .enumerate()
         .map(|(index, (id, _))| (id.to_string(), index))
         .collect();
-    let matched: std::collections::HashSet<uuid::Uuid> =
-        sorted.iter().map(|(id, _)| *id).collect();
+    let matched: std::collections::HashSet<uuid::Uuid> = sorted.iter().map(|(id, _)| *id).collect();
     let mut included = matched.clone();
     for id in &matched {
         let mut parent = graph.blocks.get(id).and_then(|block| block.parent);

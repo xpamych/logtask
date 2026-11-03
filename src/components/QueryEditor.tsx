@@ -201,10 +201,10 @@ export function QueryEditor(props: {
           </label>
 
           <label class="settings-row">
-            <span class="settings-label">Скрыть страницу</span>
+            <span class="settings-label">Скрыть страницы</span>
             <input
               class="status-label-input"
-              placeholder="задачи этой страницы не попадут в подборку"
+              placeholder="названия страниц через запятую"
               value={draft().filter.excludePage ?? ""}
               onInput={(e) =>
                 setDraft((d) => ({

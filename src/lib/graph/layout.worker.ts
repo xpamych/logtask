@@ -2,7 +2,7 @@ import { forceCollide, forceLink, forceManyBody, forceSimulation } from "d3-forc
 import type { Force, SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
 import type { GraphViewSettings } from "~/lib/api";
 import type { LayoutRequest } from "./layout.ts";
-import { componentTargetsForComponents, connectedComponents, linkedSceneRadius, mergeLayout, normalizeMainComponentInPlace, packLayout, separateGraphNodes, stablePosition, unpackLayout } from "./layout.ts";
+import { applyHubGravity, compactComponentRadius, componentTargetsForComponents, connectedComponents, linkedSceneRadius, mergeLayout, normalizeMainComponentInPlace, packLayout, selectHubNodes, separateGraphNodes, stablePosition, unpackLayout } from "./layout.ts";
 
 interface WorkerNode extends SimulationNodeDatum {
   id: string;
@@ -26,6 +26,8 @@ let components: WorkerNode[][] = [];
 let targets = new Map<string, { x: number; y: number }>();
 let linkedNodeIds = new Set<string>();
 let centeredNodeIds = new Set<string>();
+let selfIsolatedIds = new Set<string>();
+let hubs: WorkerNode[] = [];
 let orphanRadius = 120;
 let nodeRadii = new Map<string, number>();
 
@@ -56,12 +58,26 @@ function forceMainCenter(strength: number): Force<WorkerNode, undefined> {
   return force;
 }
 
+function forceComponentsCharge(strength: number): Force<WorkerNode, undefined> {
+  const forces = components.map((component) => {
+    const charge = forceManyBody<WorkerNode>().strength(-strength);
+    (charge.initialize as (nodes: WorkerNode[], random: () => number) => void)(component, random);
+    return charge;
+  });
+  const force = (alpha: number) => {
+    for (const charge of forces) charge(alpha);
+  };
+  force.initialize = () => undefined;
+  return force;
+}
+
 function updateComponentTargets(smooth: boolean) {
-  const desiredRadius = linkedSceneRadius(components) + 120;
+  const desiredRadius = linkedSceneRadius(components) + 24 * ((settings?.repelForce ?? 45) / 45);
   orphanRadius = smooth ? orphanRadius + (desiredRadius - orphanRadius) * 0.15 : desiredRadius;
   targets = componentTargetsForComponents(
     components.map((component) => component.map((node) => node.id)),
     orphanRadius,
+    settings?.repelForce,
   );
 }
 
@@ -76,7 +92,7 @@ function applyComponentTargets() {
       .filter((node) => node.fx !== undefined && node.fx !== null)
       .map((node) => ({ node, x: node.x, y: node.y }));
     if (component.length > 1) {
-      normalizeMainComponentInPlace(component, Math.max(12, Math.sqrt(component.length) * 5));
+      normalizeMainComponentInPlace(component, compactComponentRadius(component.length, settings?.repelForce));
     }
     const centerX = component.reduce((sum, node) => sum + (node.x ?? 0), 0) / component.length;
     const centerY = component.reduce((sum, node) => sum + (node.y ?? 0), 0) / component.length;
@@ -114,9 +130,10 @@ function postPositions() {
 
 function tick() {
   if (!simulation || paused) return;
-  for (let index = 0; index < 8; index += 1) simulation.tick();
+  for (let index = 0; index < 2; index += 1) simulation.tick();
   updateComponentTargets(true);
   applyComponentTargets();
+  applyHubGravity(nodes, hubs, linkedNodeIds, settings?.centerForce);
   postPositions();
   if (simulation.alpha() < simulation.alphaMin()) {
     self.postMessage({ type: "settled", generation });
@@ -142,17 +159,12 @@ function applyForces() {
   if (!simulation || !settings) return;
   const currentSettings = settings;
   simulation
-    .force(
-      "charge",
-      forceManyBody<WorkerNode>().strength((node) =>
-        linkedNodeIds.has(node.id) ? -currentSettings.repelForce : 0
-      ),
-    )
+    .force("charge", forceComponentsCharge(currentSettings.repelForce))
     .force(
       "collide",
       forceCollide<WorkerNode>()
-        .radius((node) => linkedNodeIds.has(node.id) ? (nodeRadii.get(node.id) ?? 5) + 1 : 0)
-        .iterations(2),
+        .radius((node) => selfIsolatedIds.has(node.id) ? 0 : (nodeRadii.get(node.id) ?? 5) + 1)
+        .iterations(nodes.length > 2000 ? 1 : 2),
     )
     .force(
       "link",
@@ -227,6 +239,18 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
         .map((id) => byId.get(id))
         .filter((node): node is WorkerNode => Boolean(node)),
     );
+    const degrees = new Map(message.ids.map((id) => [id, 0]));
+    for (const edge of message.edges ?? []) {
+      degrees.set(edge.source, (degrees.get(edge.source) ?? 0) + 1);
+      degrees.set(edge.target, (degrees.get(edge.target) ?? 0) + 1);
+    }
+    selfIsolatedIds = new Set(
+      components
+        .filter((component) => component.length === 1)
+        .map((component) => component[0].id)
+        .filter((id) => (message.edges ?? []).some((edge) => edge.source === id && edge.target === id)),
+    );
+    hubs = selectHubNodes(nodes.filter((node) => !selfIsolatedIds.has(node.id)), degrees);
     linkedNodeIds = new Set(
       components
         .filter((component) => component.length > 1)
@@ -236,6 +260,7 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
       components[0]?.length > 1 ? components[0].map((node) => node.id) : [],
     );
     nodeRadii = new Map(message.ids.map((id, index) => [id, message.radii?.[index] ?? 5]));
+    for (const id of selfIsolatedIds) nodeRadii.set(id, 0);
     applyForces();
     updateComponentTargets(false);
     applyComponentTargets();

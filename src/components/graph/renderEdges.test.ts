@@ -94,3 +94,12 @@ test("несвязанные подписи скрыты, hovered и сосед�
   assert.equal(renderEdges.graphNodeLabelOpacity("highlighted", 454, 0.05, 0.35), 1);
   assert.equal(renderEdges.graphNodeLabelOpacity("normal", 20, 0.6, 0.35), 0.5);
 });
+
+test("радиус узла плавно растёт начиная с пяти связей", () => {
+  assert.equal(renderEdges.graphNodeRadius({ degree: 1 }), 3);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 2 }), 3);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 4 }), 3);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 5 }), 4.2);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 8 }), 5.4);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 2, clusterMembers: ["A", "B"] }), 7);
+});

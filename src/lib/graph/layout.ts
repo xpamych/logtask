@@ -65,13 +65,14 @@ export function linkedSceneRadius(
 export function componentTargetsForComponents(
   components: string[][],
   orphanRadius?: number,
+  repelForce = 45,
 ): Map<string, { x: number; y: number }> {
   const targets = new Map<string, { x: number; y: number }>();
   const linkedCount = components
     .filter((component) => component.length > 1)
     .reduce((sum, component) => sum + component.length, 0);
-  const innerRadius = Math.max(80, Math.sqrt(linkedCount) * 7);
-  const outerRadius = orphanRadius ?? innerRadius + 120;
+  const innerRadius = Math.max(60, Math.sqrt(linkedCount) * 5 * (repelForce / 45));
+  const outerRadius = orphanRadius ?? innerRadius + 80 * (repelForce / 45);
   const singleTotal = components.filter((component) => component.length === 1).length;
   let smallIndex = 0;
   let singleIndex = 0;
@@ -88,6 +89,56 @@ export function componentTargetsForComponents(
     });
   }
   return targets;
+}
+
+export function selectHubNodes<T extends { id: string }>(
+  nodes: T[],
+  degrees: ReadonlyMap<string, number>,
+  limit = 6,
+): T[] {
+  return nodes
+    .filter((node) => (degrees.get(node.id) ?? 0) > 0)
+    .sort((a, b) => (degrees.get(b.id) ?? 0) - (degrees.get(a.id) ?? 0) || a.id.localeCompare(b.id))
+    .slice(0, limit);
+}
+
+export function applyHubGravity<T extends {
+  id: string;
+  x?: number;
+  y?: number;
+  fx?: number | null;
+  fy?: number | null;
+}>(
+  nodes: T[],
+  hubs: T[],
+  linkedIds: ReadonlySet<string>,
+  centerForce = 0.12,
+): void {
+  const hubIds = new Set(hubs.map((node) => node.id));
+  for (const node of nodes) {
+    if (node.fx !== undefined && node.fx !== null || node.fy !== undefined && node.fy !== null) continue;
+    const hub = hubIds.has(node.id)
+      ? undefined
+      : hubs.reduce<T | undefined>((nearest, candidate) => {
+          const distance = Math.hypot((candidate.x ?? 0) - (node.x ?? 0), (candidate.y ?? 0) - (node.y ?? 0));
+          if (!nearest) return candidate;
+          const previous = Math.hypot((nearest.x ?? 0) - (node.x ?? 0), (nearest.y ?? 0) - (node.y ?? 0));
+          return distance < previous ? candidate : nearest;
+        }, undefined);
+    const targetX = hub?.x ?? 0;
+    const targetY = hub?.y ?? 0;
+    const strength = hubIds.has(node.id)
+      ? centerForce * 0.5
+      : linkedIds.has(node.id)
+        ? centerForce / 6
+        : centerForce / 48;
+    node.x = (node.x ?? 0) + (targetX - (node.x ?? 0)) * strength;
+    node.y = (node.y ?? 0) + (targetY - (node.y ?? 0)) * strength;
+  }
+}
+
+export function compactComponentRadius(nodeCount: number, repelForce = 45): number {
+  return Math.max(12, Math.sqrt(nodeCount) * 5 * (repelForce / 45));
 }
 
 export function normalizeMainComponent<T extends { x?: number; y?: number }>(

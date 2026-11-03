@@ -33,7 +33,7 @@ export function graphNodeRadius(
   node: Pick<SceneNode, "degree" | "clusterMembers">,
   nodeScale = 1,
 ): number {
-  return (3 + Math.sqrt(node.degree) * 1.2 + (node.clusterMembers ? 4 : 0)) * nodeScale;
+  return (3 + Math.sqrt(Math.max(0, node.degree - 4)) * 1.2 + (node.clusterMembers ? 4 : 0)) * nodeScale;
 }
 
 export function graphNodeLabelOpacity(

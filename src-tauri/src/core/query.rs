@@ -160,9 +160,12 @@ impl Graph {
             })
             .filter(|(id, _)| {
                 let page = self.page_of_block(id);
-                match &filter.exclude_page {
-                    Some(p) if page == *p => return false,
-                    _ => {}
+                if filter
+                    .exclude_page
+                    .as_deref()
+                    .is_some_and(|pages| pages.split(',').any(|excluded| page == excluded.trim()))
+                {
+                    return false;
                 }
                 match &filter.page {
                     Some(p) => page == *p,
@@ -280,6 +283,28 @@ mod tests {
             .into_iter()
             .map(|(_, b)| b.content.clone())
             .collect()
+    }
+
+    #[test]
+    fn query_excludes_multiple_pages_separated_by_commas() {
+        let mut g = Graph::default();
+        for (name, content) in [
+            ("Первая", "- TODO A\n"),
+            ("Вторая", "- TODO B\n"),
+            ("Третья", "- TODO C\n"),
+        ] {
+            let mut stats = IndexStats {
+                pages: 0,
+                journals: 0,
+                blocks: 0,
+                tasks: 0,
+                links: 0,
+            };
+            g.index_file_content(name, PageKind::Page, content, None, &mut stats, None);
+        }
+        let mut q = query_with(vec![]);
+        q.filter.exclude_page = Some(" Первая, Вторая, , ".into());
+        assert_eq!(contents(&g, &q), vec!["C"]);
     }
 
     #[test]
