@@ -132,15 +132,59 @@ pub async fn sync_source(
     report
 }
 
+#[derive(Debug, Clone)]
+pub struct GraphContext {
+    pub epoch: u64,
+    pub root: PathBuf,
+}
+
+pub fn current_context(state: &AppState) -> Option<GraphContext> {
+    let epoch = state.graph_epoch.load(std::sync::atomic::Ordering::Acquire);
+    let root = state.root.read().clone()?;
+    Some(GraphContext { epoch, root })
+}
+
+pub fn context_is_current(state: &AppState, context: &GraphContext) -> bool {
+    state.graph_epoch.load(std::sync::atomic::Ordering::Acquire) == context.epoch
+        && state.root.read().as_ref() == Some(&context.root)
+}
+
+fn merge_with_context(
+    state: &AppState,
+    context: &GraphContext,
+    cfg: &SourceConfig,
+    remote: &[RemoteTask],
+    src_state: &mut SourceState,
+    pushes: &mut Vec<(String, Status)>,
+    report: &mut SyncReport,
+) -> Option<MergeSummary> {
+    let mut guard = state.graph.write();
+    if !context_is_current(state, context) {
+        report.error = Some("граф сменился, синхронизация отменена".into());
+        return None;
+    }
+    let graph = guard.as_mut()?;
+    Some(apply_merge(
+        graph,
+        &context.root,
+        cfg,
+        remote,
+        src_state,
+        pushes,
+        report,
+    ))
+}
+
 async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig) -> SyncReport {
     let mut report = SyncReport {
         source: cfg.id.clone(),
         ..Default::default()
     };
-    let Some(root) = state.root.read().clone() else {
+    let Some(context) = current_context(state) else {
         report.error = Some("граф не загружен".into());
         return report;
     };
+    let root = context.root.clone();
     let gkey = secrets::graph_key(&root);
     let client = match http::client() {
         Ok(c) => c,
@@ -167,15 +211,10 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
     let mut sync_state = state::load(&root);
     let mut pushes: Vec<(String, Status)> = vec![];
     let summary = {
-        let mut guard = state.graph.write();
-        let Some(graph) = guard.as_mut() else {
-            report.error = Some("граф не загружен".into());
-            return report;
-        };
         let src_state = sync_state.sources.entry(cfg.id.clone()).or_default();
-        apply_merge(
-            graph,
-            &root,
+        merge_with_context(
+            state,
+            &context,
             cfg,
             &remote,
             src_state,
@@ -183,6 +222,13 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
             &mut report,
         )
     };
+    let Some(summary) = summary else {
+        return report;
+    };
+    if !context_is_current(state, &context) {
+        report.error = Some("граф сменился, синхронизация отменена".into());
+        return report;
+    }
 
     // 3. push локальных изменений на сервер (успешные — обновят state)
     let mut pushed_ok: HashSet<String> = HashSet::new();
@@ -200,7 +246,12 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
     let mut completed = summary.completed;
     completed.extend(pushed_ok);
     let source_state = sync_state.sources.remove(&cfg.id).unwrap_or_default();
+    let mut cancelled = false;
     let state_result = state::update(&root, &cfg.id, |src_state| {
+        if !context_is_current(state, &context) {
+            cancelled = true;
+            return;
+        }
         *src_state = source_state;
         if let Some(graph) = state.graph.read().as_ref() {
             refresh_task_states(graph, cfg, &remote, src_state, &completed);
@@ -210,13 +261,17 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
         }
         src_state.last_error = report.error.clone();
     });
+    if cancelled {
+        report.error = Some("граф сменился, синхронизация отменена".into());
+        return report;
+    }
     if let Err(e) = state_result {
         report.error = Some(format!("сохранение state: {e}"));
     }
 
-    // 5. переиндексация и событие для UI
+    // 5. переиндексация и событие для UI, только если граф не сменился
     crate::commands::mark_self_write(state);
-    crate::watcher::reindex_and_emit(app);
+    crate::watcher::reindex_and_emit_if_current(app, &context);
     report
 }
 
@@ -1058,6 +1113,86 @@ mod tests {
 
         assert!(report.error.is_some());
         assert!(st.tasks.contains_key("ppdb-1"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    fn state_with_graph(root: &Path) -> AppState {
+        let state = AppState::default();
+        *state.graph.write() = Some(load_graph(root));
+        *state.root.write() = Some(root.to_path_buf());
+        state
+    }
+
+    #[test]
+    fn changed_epoch_cancels_after_fetch() {
+        let root_a = temp_graph("epoch-a");
+        let root_b = temp_graph("epoch-b");
+        let state = state_with_graph(&root_a);
+        let context = current_context(&state).unwrap();
+        state
+            .graph_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        *state.graph.write() = Some(load_graph(&root_b));
+        *state.root.write() = Some(root_b.clone());
+        let cfg = test_cfg();
+        let mut src_state = SourceState::default();
+        let mut pushes = vec![];
+        let mut report = SyncReport::default();
+
+        let result = merge_with_context(
+            &state,
+            &context,
+            &cfg,
+            &[task("ppdb-1", "Не записать", Status::Todo)],
+            &mut src_state,
+            &mut pushes,
+            &mut report,
+        );
+
+        assert!(result.is_none());
+        assert!(report.error.is_some());
+        assert!(!root_b.join("pages/PPDB - TODO.md").exists());
+        std::fs::remove_dir_all(&root_a).unwrap();
+        std::fs::remove_dir_all(&root_b).unwrap();
+    }
+
+    #[test]
+    fn close_cancels_before_state_save() {
+        let root = temp_graph("epoch-close");
+        let state = state_with_graph(&root);
+        let context = current_context(&state).unwrap();
+        state
+            .graph_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        *state.graph.write() = None;
+        *state.root.write() = None;
+
+        assert!(!context_is_current(&state, &context));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn same_epoch_allows_merge() {
+        let root = temp_graph("epoch-same");
+        let state = state_with_graph(&root);
+        let context = current_context(&state).unwrap();
+        let cfg = test_cfg();
+        let mut src_state = SourceState::default();
+        let mut pushes = vec![];
+        let mut report = SyncReport::default();
+
+        let result = merge_with_context(
+            &state,
+            &context,
+            &cfg,
+            &[task("ppdb-1", "Записать", Status::Todo)],
+            &mut src_state,
+            &mut pushes,
+            &mut report,
+        );
+
+        assert!(result.is_some());
+        assert!(page_text(&root, "PPDB - TODO").contains("source-id:: ppdb-1"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

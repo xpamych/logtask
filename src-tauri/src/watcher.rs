@@ -92,20 +92,40 @@ pub fn spawn_for_current(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn reindex_and_emit(app: &AppHandle) {
-    let root: Option<PathBuf> = app.state::<AppState>().root.read().clone();
-    let Some(root) = root else {
-        return;
+    reindex_with_context(app, None);
+}
+
+pub fn reindex_and_emit_if_current(app: &AppHandle, context: &crate::sync::GraphContext) -> bool {
+    reindex_with_context(app, Some(context))
+}
+
+fn reindex_with_context(app: &AppHandle, context: Option<&crate::sync::GraphContext>) -> bool {
+    let state = app.state::<AppState>();
+    if context.is_some_and(|ctx| !crate::sync::context_is_current(&state, ctx)) {
+        return false;
+    }
+    let root = match context {
+        Some(ctx) => ctx.root.clone(),
+        None => {
+            let Some(root) = state.root.read().clone() else {
+                return false;
+            };
+            root
+        }
     };
 
     let mut graph = Graph::default();
     match graph.index_dir(&root) {
         Ok(mut stats) => {
+            if context.is_some_and(|ctx| !crate::sync::context_is_current(&state, ctx)) {
+                return false;
+            }
             if crate::commands::cleanup_empty_journals(&root, &graph) {
                 match graph.index_dir(&root) {
                     Ok(fresh) => stats = fresh,
                     Err(e) => {
                         log::warn!("ошибка переиндексации после очистки журналов: {e}");
-                        return;
+                        return false;
                     }
                 }
             }
@@ -116,14 +136,16 @@ pub fn reindex_and_emit(app: &AppHandle) {
                 stats.tasks
             );
             let summary = graph_summary_from(&root, &stats, graph.backlinks.len());
-            {
-                let state = app.state::<AppState>();
-                *state.graph.write() = Some(graph);
+            if context.is_some_and(|ctx| !crate::sync::context_is_current(&state, ctx)) {
+                return false;
             }
+            *state.graph.write() = Some(graph);
             let _ = app.emit("graph-changed", summary);
+            true
         }
         Err(e) => {
             log::warn!("ошибка переиндексации: {e}");
+            false
         }
     }
 }

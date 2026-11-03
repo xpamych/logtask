@@ -9,6 +9,8 @@ use parking_lot::{Mutex, RwLock};
 pub struct AppState {
     pub graph: RwLock<Option<Graph>>,
     pub root: RwLock<Option<PathBuf>>,
+    /// поколение графа: увеличивается до смены/закрытия root и graph
+    pub graph_epoch: std::sync::atomic::AtomicU64,
     /// watcher: пока жив — наблюдение активно
     pub watcher: RwLock<Option<notify::RecommendedWatcher>>,
     /// момент последней записи, сделанной самим приложением
@@ -30,6 +32,7 @@ impl Default for AppState {
         AppState {
             graph: RwLock::new(None),
             root: RwLock::new(None),
+            graph_epoch: std::sync::atomic::AtomicU64::new(0),
             watcher: RwLock::new(None),
             last_self_write: Mutex::new(None),
             layout_lock: Mutex::new(()),

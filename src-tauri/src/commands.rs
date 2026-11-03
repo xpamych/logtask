@@ -193,6 +193,9 @@ pub async fn graph_load(
         backlinks: graph.backlinks.len(),
         root: Some(root.clone()),
     };
+    state
+        .graph_epoch
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     *state.graph.write() = Some(graph);
     *state.root.write() = Some(std::path::PathBuf::from(root));
 
@@ -257,6 +260,9 @@ pub fn graph_summary(state: tauri::State<'_, AppState>) -> Result<GraphSummary, 
 /// Файлы графа не трогаем — только «закрыть» в приложении.
 #[tauri::command]
 pub fn graph_close(state: tauri::State<'_, AppState>) {
+    state
+        .graph_epoch
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     if let Some(handle) = state.journal_task.lock().take() {
         handle.abort();
     }
