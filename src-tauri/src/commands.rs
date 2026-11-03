@@ -1031,6 +1031,12 @@ pub fn import_logseq_queries(state: tauri::State<'_, AppState>) -> Result<usize,
     Ok(imported.len())
 }
 
+fn imported_push_info(block: &Block) -> Option<(String, String)> {
+    let source = block.props.get("source")?.clone();
+    let remote_id = block.props.get("source-id")?.clone();
+    Some((source, remote_id))
+}
+
 /// Меняет статус задачи (drag&drop в канбане). Перезаписывает .md файл.
 #[tauri::command]
 pub async fn task_set_status(
@@ -1043,6 +1049,13 @@ pub async fn task_set_status(
     let root = root.ok_or("граф не загружен")?;
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
     let status = Status::from_marker(&marker).ok_or(format!("неизвестный маркер: {marker}"))?;
+    let push_info = {
+        let graph = state.graph.read();
+        graph
+            .as_ref()
+            .and_then(|g| g.blocks.get(&id))
+            .and_then(imported_push_info)
+    };
 
     let (page, position) = {
         let mut graph = state.graph.write();
@@ -1063,19 +1076,6 @@ pub async fn task_set_status(
 
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
-    };
-
-    // импортированная задача? (source:: + source-id::) — тогда write-back
-    let push_info = {
-        let graph = state.graph.read();
-        graph
-            .as_ref()
-            .and_then(|g| g.blocks.get(&id))
-            .and_then(|b| {
-                let src = b.props.get("source")?.clone();
-                let rid = b.props.get("source-id")?.clone();
-                Some((src, rid))
-            })
     };
 
     // переиндексируем и оповестим UI
@@ -1115,6 +1115,10 @@ fn reindexed_block_uuid(state: &AppState, page: &str, position: usize) -> Result
         .and_then(|page| page.order.get(position))
         .map(|id| id.to_string())
         .ok_or_else(|| "блок не найден после переиндексации".into())
+}
+
+fn finish_created_block(state: &AppState, page: &str, position: usize) -> Result<String, String> {
+    reindexed_block_uuid(state, page, position)
 }
 
 /// Меняет текст блока (редактирование в UI)
@@ -1339,22 +1343,27 @@ pub async fn block_create(
     let root = root.ok_or("граф не загружен")?;
     let status = marker.as_deref().and_then(Status::from_marker);
 
-    let uuid = {
+    let position = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
-        graph
+        let position = graph
+            .pages
+            .get(&page)
+            .map(|page| page.order.len())
+            .ok_or("страница не найдена")?;
+        let created = graph
             .append_block(&page, &content, status, &root)
-            .map_err(|e| format!("ошибка записи: {e}"))?
-    };
-
-    let Some(_) = uuid else {
-        return Err("страница не найдена".into());
+            .map_err(|e| format!("ошибка записи: {e}"))?;
+        if created.is_none() {
+            return Err("страница не найдена".into());
+        }
+        position
     };
     mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
-    Ok(uuid.unwrap().to_string())
+    finish_created_block(&state, &page, position)
 }
 
 /// Создаёт файл сегодняшнего журнала (journals/YYYY_MM_DD.md), если его нет.
@@ -2569,5 +2578,47 @@ mod tests {
         let root = temp_graph("escape");
         assert!(super::resolve_asset_path(&root, "/etc/hostname").is_err());
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn push_info_is_captured_before_reindex() {
+        let dir = std::env::temp_dir().join("logtask_push_info_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::write(
+            dir.join("pages/Источник.md"),
+            "- TODO Задача\n  source:: ppdb\n  source-id:: ppdb-1\n",
+        )
+        .unwrap();
+        let mut graph = crate::core::model::Graph::default();
+        graph.index_dir(&dir).unwrap();
+        let id = *graph.pages["Источник"].order.first().unwrap();
+
+        let captured = super::imported_push_info(&graph.blocks[&id]);
+        graph
+            .set_block_status(&id, crate::core::model::Status::Done, &dir)
+            .unwrap();
+
+        assert_eq!(captured, Some(("ppdb".into(), "ppdb-1".into())));
+        assert!(!graph.blocks.contains_key(&id));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn created_uuid_is_resolved_after_reindex() {
+        let dir = std::env::temp_dir().join("logtask_created_uuid_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::write(dir.join("pages/Источник.md"), "- первый\n- второй\n").unwrap();
+        let mut graph = crate::core::model::Graph::default();
+        graph.index_dir(&dir).unwrap();
+        let state = crate::state::AppState::default();
+        let expected = graph.pages["Источник"].order[1].to_string();
+        *state.graph.write() = Some(graph);
+
+        let actual = super::finish_created_block(&state, "Источник", 1).unwrap();
+
+        assert_eq!(actual, expected);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
