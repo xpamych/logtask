@@ -326,18 +326,23 @@ mod tests {
     fn graph_view_settings_roundtrip_preserves_groups_and_physics() {
         let dir = std::env::temp_dir().join("logtask_settings_graph_roundtrip");
         let _ = std::fs::remove_dir_all(&dir);
-        let mut settings = Settings::default();
-        settings.home_view = "graph".into();
-        settings.graph_view.search = "проект".into();
-        settings.graph_view.local_depth = 3;
-        settings.graph_view.repel_force = 180.0;
-        settings.graph_view.groups.push(GraphColorGroup {
-            id: "active".into(),
-            query: "tag:active".into(),
-            color: "#09bec8".into(),
-            enabled: true,
-            clustered: true,
-        });
+        let settings = Settings {
+            home_view: "graph".into(),
+            graph_view: GraphViewSettings {
+                search: "проект".into(),
+                local_depth: 3,
+                repel_force: 180.0,
+                groups: vec![GraphColorGroup {
+                    id: "active".into(),
+                    query: "tag:active".into(),
+                    color: "#09bec8".into(),
+                    enabled: true,
+                    clustered: true,
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         save(&dir, &settings).unwrap();
         let loaded = load(&dir);
         assert_eq!(loaded.home_view, "graph");
