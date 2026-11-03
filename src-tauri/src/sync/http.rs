@@ -26,6 +26,27 @@ pub async fn get_json(
     url: &str,
     headers: &[(String, String)],
 ) -> Result<serde_json::Value, String> {
+    get_json_impl(client, url, headers, false)
+        .await?
+        .ok_or_else(|| "неожиданный пустой ответ".into())
+}
+
+/// Вариант GET, в котором только HTTP 404 превращается в `None`.
+/// Используется для первого запроса org → fallback user.
+pub async fn get_json_optional(
+    client: &reqwest::Client,
+    url: &str,
+    headers: &[(String, String)],
+) -> Result<Option<serde_json::Value>, String> {
+    get_json_impl(client, url, headers, true).await
+}
+
+async fn get_json_impl(
+    client: &reqwest::Client,
+    url: &str,
+    headers: &[(String, String)],
+    allow_not_found: bool,
+) -> Result<Option<serde_json::Value>, String> {
     let safe = safe_url(url);
     for attempt in 0..2 {
         if attempt > 0 {
@@ -39,12 +60,15 @@ pub async fn get_json(
             Ok(r) => r,
             Err(e) => {
                 if attempt == 0 {
-                    continue; // одна повторная попытка
+                    continue;
                 }
                 return Err(format!("GET {safe}: {e}"));
             }
         };
         let status = resp.status();
+        if allow_not_found && status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             let short: String = body.chars().take(200).collect();
@@ -53,6 +77,7 @@ pub async fn get_json(
         return resp
             .json()
             .await
+            .map(Some)
             .map_err(|e| format!("GET {safe}: невалидный JSON: {e}"));
     }
     unreachable!()

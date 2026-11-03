@@ -38,6 +38,50 @@ fn repo_names(json: &serde_json::Value, name_key: &str) -> Vec<String> {
         .collect()
 }
 
+async fn fetch_array_pages_from(
+    client: &reqwest::Client,
+    url: &str,
+    headers: &[(String, String)],
+    page_size: usize,
+    start_page: usize,
+    mut out: Vec<serde_json::Value>,
+) -> Result<Vec<serde_json::Value>, String> {
+    for page in start_page.. {
+        let paged_url = format!("{url}&page={page}");
+        let json = http::get_json(client, &paged_url, headers).await?;
+        let items = json
+            .as_array()
+            .ok_or_else(|| format!("ожидался JSON-массив на странице {page}"))?;
+        let len = items.len();
+        out.extend(items.iter().cloned());
+        if len < page_size {
+            return Ok(out);
+        }
+    }
+    Err("пагинация превысила допустимое число страниц".into())
+}
+
+async fn fetch_array_pages(
+    client: &reqwest::Client,
+    url: &str,
+    headers: &[(String, String)],
+    page_size: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    fetch_array_pages_from(client, url, headers, page_size, 1, Vec::new()).await
+}
+
+fn json_array(value: serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
+    value
+        .as_array()
+        .cloned()
+        .ok_or_else(|| "ожидался JSON-массив".into())
+}
+
+fn dedup_repos(repos: &mut Vec<String>) {
+    let mut seen = std::collections::HashSet::new();
+    repos.retain(|repo| seen.insert(repo.clone()));
+}
+
 fn token(cfg: &SourceConfig, graph_key: &str) -> Result<Option<String>, String> {
     cfg.token_ref
         .as_deref()
@@ -66,6 +110,29 @@ fn issue_status(state: &str) -> Status {
     }
 }
 
+async fn list_owner_repos(
+    client: &reqwest::Client,
+    org: &str,
+    user: &str,
+    headers: &[(String, String)],
+    page_size: usize,
+    name_key: &str,
+) -> Result<Vec<String>, String> {
+    let first_url = format!("{org}&page=1");
+    let items = match http::get_json_optional(client, &first_url, headers).await? {
+        Some(first) => {
+            let first = json_array(first)?;
+            if first.len() < page_size {
+                first
+            } else {
+                fetch_array_pages_from(client, org, headers, page_size, 2, first).await?
+            }
+        }
+        None => fetch_array_pages(client, user, headers, page_size).await?,
+    };
+    Ok(repo_names(&serde_json::Value::Array(items), name_key))
+}
+
 // ---------- Gitea / Forgejo ----------
 
 /// Все неархивные репозитории владельца: сначала пробуем как org, потом как user
@@ -77,13 +144,7 @@ async fn list_gitea_owner_repos(
 ) -> Result<Vec<String>, String> {
     let org = format!("{base}/api/v1/orgs/{owner}/repos?limit=50");
     let user = format!("{base}/api/v1/users/{owner}/repos?limit=50");
-    let json = match http::get_json(client, &org, headers).await {
-        Ok(j) => j,
-        Err(org_err) => http::get_json(client, &user, headers)
-            .await
-            .map_err(|user_err| format!("gitea: репозитории {owner:?}: {org_err}; {user_err}"))?,
-    };
-    Ok(repo_names(&json, "full_name"))
+    list_owner_repos(client, &org, &user, headers, 50, "full_name").await
 }
 
 pub async fn fetch_gitea(
@@ -105,12 +166,13 @@ pub async fn fetch_gitea(
     for owner in owners {
         repos.extend(list_gitea_owner_repos(client, base, &owner, &headers).await?);
     }
+    dedup_repos(&mut repos);
     let mut out = Vec::new();
     for repo in &repos {
         let url = format!("{base}/api/v1/repos/{repo}/issues?state={state}&limit=100&type=issues");
-        let json = http::get_json(client, &url, &headers).await?;
+        let items = fetch_array_pages(client, &url, &headers, 100).await?;
         let page = page_name(cfg, repo);
-        for item in json.as_array().into_iter().flatten() {
+        for item in &items {
             let number = item.get("number").and_then(|n| n.as_i64()).unwrap_or(0);
             let labels = item
                 .get("labels")
@@ -196,13 +258,7 @@ async fn list_github_owner_repos(
 ) -> Result<Vec<String>, String> {
     let org = format!("{base}/orgs/{owner}/repos?per_page=100");
     let user = format!("{base}/users/{owner}/repos?per_page=100");
-    let json = match http::get_json(client, &org, headers).await {
-        Ok(j) => j,
-        Err(org_err) => http::get_json(client, &user, headers)
-            .await
-            .map_err(|user_err| format!("github: репозитории {owner:?}: {org_err}; {user_err}"))?,
-    };
-    Ok(repo_names(&json, "full_name"))
+    list_owner_repos(client, &org, &user, headers, 100, "full_name").await
 }
 
 pub async fn fetch_github(
@@ -225,12 +281,13 @@ pub async fn fetch_github(
     for owner in owners {
         repos.extend(list_github_owner_repos(client, base, &owner, &headers).await?);
     }
+    dedup_repos(&mut repos);
     let mut out = Vec::new();
     for repo in &repos {
         let url = format!("{base}/repos/{repo}/issues?state={state}&per_page=100");
-        let json = http::get_json(client, &url, &headers).await?;
+        let items = fetch_array_pages(client, &url, &headers, 100).await?;
         let page = page_name(cfg, repo);
-        for item in json.as_array().into_iter().flatten() {
+        for item in &items {
             // GitHub отдаёт PR в этом же эндпоинте — пропускаем
             if item.get("pull_request").is_some() {
                 continue;
@@ -324,8 +381,11 @@ async fn list_gitlab_group_projects(
 ) -> Result<Vec<String>, String> {
     let enc = group.replace('/', "%2F");
     let url = format!("{base}/api/v4/groups/{enc}/projects?per_page=100");
-    let json = http::get_json(client, &url, headers).await?;
-    Ok(repo_names(&json, "path_with_namespace"))
+    let items = fetch_array_pages(client, &url, headers, 100).await?;
+    Ok(repo_names(
+        &serde_json::Value::Array(items),
+        "path_with_namespace",
+    ))
 }
 
 pub async fn fetch_gitlab(
@@ -351,13 +411,14 @@ pub async fn fetch_gitlab(
     for owner in owners {
         repos.extend(list_gitlab_group_projects(client, base, &owner, &headers).await?);
     }
+    dedup_repos(&mut repos);
     let mut out = Vec::new();
     for project in &repos {
         let enc = project.replace('/', "%2F");
         let url = format!("{base}/api/v4/projects/{enc}/issues?state={state}&per_page=100");
-        let json = http::get_json(client, &url, &headers).await?;
+        let items = fetch_array_pages(client, &url, &headers, 100).await?;
         let page = page_name(cfg, project);
-        for item in json.as_array().into_iter().flatten() {
+        for item in &items {
             let iid = item.get("iid").and_then(|n| n.as_i64()).unwrap_or(0);
             let labels = item
                 .get("labels")
@@ -630,5 +691,190 @@ mod tests {
         assert_eq!(tasks[0].id, "gr/pr#3");
         assert_eq!(tasks[0].priority, Some(Priority::B));
         std::env::remove_var("LOGTASK_SECRET_GL_TOK");
+    }
+
+    fn issue_page(start: i64, len: usize) -> Vec<serde_json::Value> {
+        (start..start + len as i64)
+            .map(|number| {
+                serde_json::json!({
+                    "number": number,
+                    "title": format!("Задача {number}"),
+                    "state": "open",
+                    "labels": []
+                })
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn issues_fetch_all_pages() {
+        let server = MockServer::start().await;
+        let issue_path = "/api/v1/repos/xpamych/logtask/issues";
+        Mock::given(method("GET"))
+            .and(path(issue_path))
+            .and(query_param("page", "1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(issue_page(1, 100)))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(issue_path))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(issue_page(101, 1)))
+            .mount(&server)
+            .await;
+        let mut cfg = gitea_config(&server.uri());
+        cfg.token_ref = None;
+
+        let tasks = fetch_gitea(&http::client().unwrap(), &cfg, "g")
+            .await
+            .unwrap();
+
+        assert_eq!(tasks.len(), 101);
+        assert_eq!(tasks[100].id, "xpamych/logtask#101");
+    }
+
+    #[tokio::test]
+    async fn owner_repos_fetch_all_pages() {
+        let server = MockServer::start().await;
+        let repos: Vec<_> = (1..=50)
+            .map(
+                |n| serde_json::json!({"full_name": format!("plemya/repo-{n}"), "archived": false}),
+            )
+            .collect();
+        Mock::given(method("GET"))
+            .and(path("/api/v1/orgs/plemya/repos"))
+            .and(query_param("page", "1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(repos))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/orgs/plemya/repos"))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"full_name": "plemya/last", "archived": false}
+            ])))
+            .mount(&server)
+            .await;
+        for repo in (1..=50).map(|n| format!("repo-{n}")).chain(["last".into()]) {
+            let body = if repo == "last" {
+                issue_page(1, 1)
+            } else {
+                vec![]
+            };
+            Mock::given(method("GET"))
+                .and(path(format!("/api/v1/repos/plemya/{repo}/issues")))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
+        }
+        let mut cfg = gitea_config(&server.uri());
+        cfg.token_ref = None;
+        cfg.repos = vec!["plemya".into()];
+
+        let tasks = fetch_gitea(&http::client().unwrap(), &cfg, "g")
+            .await
+            .unwrap();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "plemya/last#1");
+    }
+
+    #[tokio::test]
+    async fn second_page_error_aborts_fetch() {
+        let server = MockServer::start().await;
+        let issue_path = "/api/v1/repos/xpamych/logtask/issues";
+        Mock::given(method("GET"))
+            .and(path(issue_path))
+            .and(query_param("page", "1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(issue_page(1, 100)))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(issue_path))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("broken"))
+            .mount(&server)
+            .await;
+        let mut cfg = gitea_config(&server.uri());
+        cfg.token_ref = None;
+
+        let result = fetch_gitea(&http::client().unwrap(), &cfg, "g").await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn owner_fallback_only_on_initial_404() {
+        let server = MockServer::start().await;
+        let repos: Vec<_> = (1..=50)
+            .map(|n| serde_json::json!({"full_name": format!("plemya/repo-{n}")}))
+            .collect();
+        Mock::given(method("GET"))
+            .and(path("/api/v1/orgs/plemya/repos"))
+            .and(query_param("page", "1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(repos))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/orgs/plemya/repos"))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/users/plemya/repos"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .mount(&server)
+            .await;
+        for n in 1..=50 {
+            Mock::given(method("GET"))
+                .and(path(format!("/api/v1/repos/plemya/repo-{n}/issues")))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+                .mount(&server)
+                .await;
+        }
+        let mut cfg = gitea_config(&server.uri());
+        cfg.token_ref = None;
+        cfg.repos = vec!["plemya".into()];
+
+        let result = fetch_gitea(&http::client().unwrap(), &cfg, "g").await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn github_pagination_counts_raw_page_before_pr_filter() {
+        let server = MockServer::start().await;
+        let mut first = issue_page(1, 100);
+        for item in &mut first {
+            item["pull_request"] = serde_json::json!({"url": "pr"});
+        }
+        Mock::given(method("GET"))
+            .and(path("/repos/o/r/issues"))
+            .and(query_param("page", "1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(first))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/o/r/issues"))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(issue_page(101, 1)))
+            .mount(&server)
+            .await;
+        let cfg = SourceConfig {
+            id: "gh".into(),
+            kind: "github".into(),
+            name: "GH".into(),
+            base_url: server.uri(),
+            repos: vec!["o/r".into()],
+            ..Default::default()
+        };
+
+        let tasks = fetch_github(&http::client().unwrap(), &cfg, "g")
+            .await
+            .unwrap();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "o/r#101");
     }
 }
