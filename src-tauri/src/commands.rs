@@ -492,18 +492,18 @@ pub async fn page_rename(
 ) -> Result<(), String> {
     let root = state.root.read().clone();
     let root = root.ok_or("граф не загружен")?;
-    {
+    let result = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
         graph
             .rename_page(&old_name, &new_name, &root)
-            .map_err(|e| format!("{e}"))?;
-    }
+            .map_err(|e| format!("{e}"))
+    };
     mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
-    Ok(())
+    result
 }
 
 /// Абсолютный путь к .md файлу страницы (журнал или обычная страница)
@@ -538,11 +538,14 @@ pub async fn page_delete(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let abs = page_abs_path(&state, &name)?;
-    if !abs.exists() {
-        return Err(format!("файл не найден: {}", abs.display()));
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    {
+        let graph = state.graph.read();
+        let graph = graph.as_ref().ok_or("граф не загружен")?;
+        graph
+            .delete_page_file(&name, &root)
+            .map_err(|e| format!("удаление {name}: {e}"))?;
     }
-    std::fs::remove_file(&abs).map_err(|e| format!("удаление {}: {e}", abs.display()))?;
     mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(())

@@ -1091,9 +1091,28 @@ impl Graph {
     /// всех затронутых файлах графа (по индексу обратных ссылок).
     /// Индекс не перестраивает — это делает вызывающий (reindex_and_emit).
     pub fn rename_page(&mut self, old: &str, new: &str, root: &Path) -> std::io::Result<()> {
+        self.rename_page_with_writer(old, new, root, super::fswrite::atomic_write)
+    }
+
+    pub fn rename_page_with_writer<F>(
+        &mut self,
+        old: &str,
+        new: &str,
+        root: &Path,
+        mut write: F,
+    ) -> std::io::Result<()>
+    where
+        F: FnMut(&Path, &str) -> std::io::Result<()>,
+    {
+        struct RenameFile {
+            abs: PathBuf,
+            original: String,
+            updated: String,
+            mtime: std::time::SystemTime,
+        }
+
         let invalid =
             |msg: &str| std::io::Error::new(std::io::ErrorKind::InvalidInput, msg.to_string());
-
         let new = new.trim();
         if new.is_empty() {
             return Err(invalid("имя страницы не может быть пустым"));
@@ -1115,14 +1134,15 @@ impl Graph {
             .path
             .clone()
             .unwrap_or_else(|| default_rel_path(old, page.kind));
-        let new_rel = default_rel_path(new, PageKind::Page);
-        let old_abs = root.join(&old_rel);
-        let new_abs = root.join(&new_rel);
+        let old_abs = root.join(old_rel);
+        let new_abs = root.join(default_rel_path(new, PageKind::Page));
         if new_abs.exists() {
             return Err(invalid("файл с таким именем уже существует"));
         }
+        let old_mtime = page
+            .mtime
+            .ok_or_else(|| std::io::Error::other("нет mtime страницы в индексе"))?;
 
-        // затронутые страницы — из обратных ссылок (включая self-ссылки)
         let mut affected: Vec<String> = Vec::new();
         if let Some(ids) = self.backlinks.get(old) {
             for id in ids {
@@ -1132,15 +1152,15 @@ impl Graph {
                 }
             }
         }
+        affected.sort();
 
-        std::fs::rename(&old_abs, &new_abs)?;
-
+        let mut files = Vec::new();
         for name in affected {
             let Some(p) = self.pages.get(&name) else {
                 continue;
             };
-            let abs = if name == old {
-                new_abs.clone()
+            let read_abs = if name == old {
+                old_abs.clone()
             } else {
                 let rel = p
                     .path
@@ -1148,28 +1168,91 @@ impl Graph {
                     .unwrap_or_else(|| default_rel_path(&p.name, p.kind));
                 root.join(rel)
             };
-            let Ok(text) = std::fs::read_to_string(&abs) else {
+            let original = std::fs::read_to_string(&read_abs)?;
+            let updated = super::rename::replace_refs(&original, old, new);
+            let mtime = p
+                .mtime
+                .ok_or_else(|| std::io::Error::other(format!("нет mtime страницы {name}")))?;
+            check_mtime(&read_abs, Some(mtime))?;
+            if updated == original {
                 continue;
-            };
-            let updated = super::rename::replace_refs(&text, old, new);
-            if updated != text {
-                super::fswrite::atomic_write(&abs, &updated)?;
             }
+            files.push(RenameFile {
+                abs: if name == old {
+                    new_abs.clone()
+                } else {
+                    read_abs
+                },
+                original,
+                updated,
+                mtime,
+            });
         }
 
+        check_mtime(&old_abs, Some(old_mtime))?;
+        std::fs::rename(&old_abs, &new_abs)?;
+        let mut written: Vec<RenameFile> = Vec::new();
+        let mut failure = None;
+        for file in files {
+            if let Err(e) = check_mtime(&file.abs, Some(file.mtime)) {
+                failure = Some(e);
+                break;
+            }
+            if let Err(e) = write(&file.abs, &file.updated) {
+                failure = Some(e);
+                break;
+            }
+            written.push(file);
+        }
+        if let Some(e) = failure {
+            let mut inconsistent = Vec::new();
+            for file in written.iter().rev() {
+                match std::fs::read_to_string(&file.abs) {
+                    Ok(current) if current == file.updated => {
+                        if write(&file.abs, &file.original).is_err() {
+                            inconsistent.push(file.abs.display().to_string());
+                        }
+                    }
+                    _ => inconsistent.push(file.abs.display().to_string()),
+                }
+            }
+            if std::fs::rename(&new_abs, &old_abs).is_err() {
+                inconsistent.push(old_abs.display().to_string());
+            }
+            if inconsistent.is_empty() {
+                return Err(e);
+            }
+            return Err(std::io::Error::other(format!(
+                "{e}; не удалось откатить: {}",
+                inconsistent.join(", ")
+            )));
+        }
         Ok(())
+    }
+
+    pub fn delete_page_file(&self, name: &str, root: &Path) -> std::io::Result<()> {
+        let page = self
+            .pages
+            .get(name)
+            .ok_or_else(|| std::io::Error::other("страница не найдена"))?;
+        let rel = page
+            .path
+            .clone()
+            .unwrap_or_else(|| default_rel_path(&page.name, page.kind));
+        let abs = root.join(rel);
+        check_mtime(&abs, page.mtime)?;
+        std::fs::remove_file(abs)
     }
 }
 
 /// Err, если файл на диске новее прочитанного (внешняя правка)
 fn check_mtime(abs: &Path, known: Option<std::time::SystemTime>) -> std::io::Result<()> {
     if let Some(known) = known {
-        if let Ok(actual) = std::fs::metadata(abs).and_then(|m| m.modified()) {
-            if actual != known {
-                return Err(std::io::Error::other(
-                    "файл изменён другим приложением — обнови граф",
-                ));
-            }
+        let actual = std::fs::metadata(abs).and_then(|m| m.modified())?;
+        if actual != known {
+            return Err(std::io::Error::other(
+                "файл изменён другим приложением — обнови граф",
+            ));
         }
     }
     Ok(())

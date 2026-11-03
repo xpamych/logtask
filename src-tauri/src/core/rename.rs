@@ -5,6 +5,56 @@
 //! `[[old]]`, `[[old|псевдоним]]`, `#[[old]]`, `#old` — остальной текст
 //! не трогается.
 
+fn code_mask(text: &str) -> Vec<bool> {
+    let bytes = text.as_bytes();
+    let mut mask = vec![false; bytes.len()];
+    let mut line_start = 0;
+    let mut fenced = false;
+    for line in text.split_inclusive('\n') {
+        let line_end = line_start + line.len();
+        let is_fence = line.trim_start().starts_with("```");
+        if fenced || is_fence {
+            mask[line_start..line_end].fill(true);
+            if is_fence {
+                fenced = !fenced;
+            }
+            line_start = line_end;
+            continue;
+        }
+
+        let mut inline_open = None;
+        let mut delimiter = 0;
+        let mut i = line_start;
+        while i < line_end {
+            if bytes[i] != b'`' {
+                i += 1;
+                continue;
+            }
+            let run_start = i;
+            while i < line_end && bytes[i] == b'`' {
+                i += 1;
+            }
+            let run = i - run_start;
+            match inline_open {
+                Some(open) if run == delimiter => {
+                    mask[open..i].fill(true);
+                    inline_open = None;
+                }
+                None => {
+                    inline_open = Some(run_start);
+                    delimiter = run;
+                }
+                _ => {}
+            }
+        }
+        if let Some(open) = inline_open {
+            mask[open..line_end].fill(true);
+        }
+        line_start = line_end;
+    }
+    mask
+}
+
 /// Заменяет ссылки на страницу `old` на `new` в md-тексте.
 ///
 /// - `[[old]]` → `[[new]]`;
@@ -13,9 +63,16 @@
 /// - `#old` → `#new` — только когда `old` без пробелов; следующий символ
 ///   не должен быть буквой/цифрой/`-`/`_`, чтобы `#ALR` не зацепило `#ALR2`.
 pub fn replace_refs(text: &str, old: &str, new: &str) -> String {
+    let code = code_mask(text);
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(pos) = rest.find(['[', '#']) {
+        let absolute = text.len() - rest.len() + pos;
+        if code[absolute] {
+            out.push_str(&rest[..pos + 1]);
+            rest = &rest[pos + 1..];
+            continue;
+        }
         out.push_str(&rest[..pos]);
         rest = &rest[pos..];
         if rest.starts_with("[[") {
@@ -178,5 +235,12 @@ mod tests {
             replace_refs("[[Старое и [[ вложенное", "Старое", "Новое"),
             "[[Старое и [[ вложенное"
         );
+    }
+
+    #[test]
+    fn refs_in_inline_and_fenced_code_unchanged() {
+        let text = "- [[A]] `[[A]] #A` `` [[A]] ``\n  ```md\n  [[A]] #A\n  ```\n- #A\n";
+        let expected = "- [[B]] `[[A]] #A` `` [[A]] ``\n  ```md\n  [[A]] #A\n  ```\n- #B\n";
+        assert_eq!(replace_refs(text, "A", "B"), expected);
     }
 }
