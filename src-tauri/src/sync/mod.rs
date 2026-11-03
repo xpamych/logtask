@@ -208,7 +208,13 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
     };
 
     // 2. merge + запись страниц — под write-блокировкой, без сети
-    let mut sync_state = state::load(&root);
+    let mut sync_state = match state::load(&root) {
+        Ok(state) => state,
+        Err(e) => {
+            report.error = Some(e);
+            return report;
+        }
+    };
     let mut pushes: Vec<(String, Status)> = vec![];
     let summary = {
         let src_state = sync_state.sources.entry(cfg.id.clone()).or_default();
@@ -579,7 +585,16 @@ pub async fn sync_all(app: &tauri::AppHandle) -> Vec<SyncReport> {
     let Some(root) = state.root.read().clone() else {
         return vec![];
     };
-    let settings = crate::settings::load(&root);
+    let settings = match crate::settings::load(&root) {
+        Ok(settings) => settings,
+        Err(e) => {
+            return vec![SyncReport {
+                source: "settings".into(),
+                error: Some(e),
+                ..Default::default()
+            }];
+        }
+    };
     let mut reports = vec![];
     for cfg in settings.integrations.sources.iter().filter(|s| s.enabled) {
         reports.push(sync_source(app, &state, cfg).await);
@@ -597,8 +612,20 @@ pub async fn startup_and_ticker(app: tauri::AppHandle) {
         let Some(root) = state.root.read().clone() else {
             continue;
         };
-        let settings = crate::settings::load(&root);
-        let st = state::load(&root);
+        let settings = match crate::settings::load(&root) {
+            Ok(settings) => settings,
+            Err(e) => {
+                log::warn!("настройки интеграций не загружены: {e}");
+                continue;
+            }
+        };
+        let st = match state::load(&root) {
+            Ok(state) => state,
+            Err(e) => {
+                log::warn!("state интеграций не загружен: {e}");
+                continue;
+            }
+        };
         let now = chrono::Local::now();
         for cfg in settings
             .integrations

@@ -1084,7 +1084,13 @@ pub async fn task_set_status(
 
     if let Some((src, rid)) = push_info {
         tauri::async_runtime::spawn(async move {
-            let settings = crate::settings::load(std::path::Path::new(&root));
+            let settings = match crate::settings::load(std::path::Path::new(&root)) {
+                Ok(settings) => settings,
+                Err(e) => {
+                    log::warn!("настройки push не загружены: {e}");
+                    return;
+                }
+            };
             let Some(cfg) = settings
                 .integrations
                 .sources
@@ -1510,7 +1516,10 @@ pub fn settings_get(
     state: tauri::State<'_, AppState>,
 ) -> Result<crate::settings::Settings, String> {
     let root = state.root.read().clone();
-    Ok(root.map(|r| crate::settings::load(&r)).unwrap_or_default())
+    match root {
+        Some(root) => crate::settings::load(&root),
+        None => Ok(crate::settings::Settings::default()),
+    }
 }
 
 /// Сохраняет настройки графа
@@ -1544,8 +1553,8 @@ pub fn integrations_states(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<SourceStateDto>, String> {
     let root = state.root.read().clone().ok_or("граф не загружен")?;
-    let settings = crate::settings::load(&root);
-    let st = crate::sync::state::load(&root);
+    let settings = crate::settings::load(&root)?;
+    let st = crate::sync::state::load(&root)?;
     let gkey = crate::sync::secrets::graph_key(&root);
     Ok(settings
         .integrations
@@ -1605,7 +1614,7 @@ pub async fn integrations_sync(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<crate::sync::SyncReport>, String> {
     let root = state.root.read().clone().ok_or("граф не загружен")?;
-    let settings = crate::settings::load(&root);
+    let settings = crate::settings::load(&root)?;
     let mut reports = vec![];
     for cfg in settings
         .integrations

@@ -44,10 +44,13 @@ fn state_path(root: &Path) -> std::path::PathBuf {
     root.join(".logtask").join("integrations-state.json")
 }
 
-pub fn load(root: &Path) -> SyncState {
-    match std::fs::read_to_string(state_path(root)) {
-        Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
-        Err(_) => SyncState::default(),
+pub fn load(root: &Path) -> Result<SyncState, String> {
+    let path = state_path(root);
+    match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text)
+            .map_err(|e| format!("{}: невалидный JSON: {e}", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SyncState::default()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
     }
 }
 
@@ -72,7 +75,7 @@ pub fn update<R>(
     let _guard = state_lock()
         .lock()
         .map_err(|e| format!("блокировка state: {e}"))?;
-    let mut st = load(root);
+    let mut st = load(root)?;
     let result = f(st.sources.entry(source.to_string()).or_default());
     save(root, &st)?;
     Ok(result)
@@ -98,7 +101,7 @@ mod tests {
     #[test]
     fn missing_file_gives_empty_state() {
         let root = temp_root("missing");
-        let st = load(&root);
+        let st = load(&root).unwrap();
         assert!(st.sources.is_empty());
         std::fs::remove_dir_all(&root).unwrap();
     }
@@ -119,7 +122,7 @@ mod tests {
         );
         save(&root, &st).unwrap();
 
-        let loaded = load(&root);
+        let loaded = load(&root).unwrap();
         let src = loaded.sources.get("ppdb").unwrap();
         assert_eq!(src.last_sync.as_deref(), Some("2026-10-04T12:00:00+03:00"));
         assert!(src.last_error.is_none());
@@ -138,7 +141,7 @@ mod tests {
             r#"{"sources":{"ppdb":{"tasks":{"1":{"remoteStatus":"TODO","fingerprint":"f"}}}}}"#,
         )
         .unwrap();
-        let st = load(&root);
+        let st = load(&root).unwrap();
         assert_eq!(st.sources["ppdb"].tasks["1"].remote_hash, "");
         std::fs::remove_dir_all(&root).unwrap();
     }
@@ -158,13 +161,13 @@ mod tests {
         save(&root, &st).unwrap();
 
         record_error(&root, "gitea", Some("HTTP 401".into())).unwrap();
-        let loaded = load(&root);
+        let loaded = load(&root).unwrap();
         let src = loaded.sources.get("gitea").unwrap();
         assert_eq!(src.last_error.as_deref(), Some("HTTP 401"));
         assert!(src.tasks.contains_key("o/r#1"));
 
         record_error(&root, "gitea", None).unwrap();
-        assert!(load(&root).sources["gitea"].last_error.is_none());
+        assert!(load(&root).unwrap().sources["gitea"].last_error.is_none());
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -186,7 +189,7 @@ mod tests {
             handle.join().unwrap();
         }
 
-        let loaded = load(&root);
+        let loaded = load(&root).unwrap();
         assert!(loaded.sources.contains_key("gitea"));
         assert!(loaded.sources.contains_key("github"));
         std::fs::remove_dir_all(&root).unwrap();
@@ -204,6 +207,24 @@ mod tests {
             std::fs::read_to_string(root.join(".logtask")).unwrap(),
             "не каталог"
         );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn invalid_sync_state_aborts_load() {
+        let root = temp_root("invalid");
+        std::fs::create_dir_all(root.join(".logtask")).unwrap();
+        let path = root.join(".logtask/integrations-state.json");
+        std::fs::write(&path, "{повреждено").unwrap();
+
+        let error = load(&root).unwrap_err();
+        let update_result = update(&root, "gitea", |state| {
+            state.last_sync = Some("2026-11-03T12:00:00+03:00".into());
+        });
+
+        assert!(error.contains("integrations-state.json"), "{error}");
+        assert!(update_result.is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "{повреждено");
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

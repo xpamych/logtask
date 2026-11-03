@@ -231,11 +231,13 @@ impl Default for Settings {
 }
 
 /// Читает настройки графа. Если файла нет — дефолтные.
-pub fn load(root: &std::path::Path) -> Settings {
+pub fn load(root: &std::path::Path) -> Result<Settings, String> {
     let path = root.join(".logtask").join("settings.json");
     match std::fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
-        Err(_) => Settings::default(),
+        Ok(text) => serde_json::from_str(&text)
+            .map_err(|e| format!("{}: невалидный JSON: {e}", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Settings::default()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
     }
 }
 
@@ -287,7 +289,7 @@ mod tests {
         };
         save(&dir, &s).unwrap();
 
-        let loaded = load(&dir);
+        let loaded = load(&dir).unwrap();
         assert_eq!(loaded.theme, "light");
         assert_eq!(loaded.font_scale, 1.2);
         assert_eq!(loaded.sidebar_width, 300);
@@ -305,7 +307,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join(".logtask")).unwrap();
         std::fs::write(dir.join(".logtask/settings.json"), "{}").unwrap();
-        let loaded = load(&dir);
+        let loaded = load(&dir).unwrap();
         assert!(!loaded.graph_view.show_journals);
         assert!(!loaded.graph_view.show_tags);
         assert!(!loaded.graph_view.show_assets);
@@ -344,7 +346,7 @@ mod tests {
             ..Default::default()
         };
         save(&dir, &settings).unwrap();
-        let loaded = load(&dir);
+        let loaded = load(&dir).unwrap();
         assert_eq!(loaded.home_view, "graph");
         assert_eq!(loaded.graph_view.search, "проект");
         assert_eq!(loaded.graph_view.local_depth, 3);
@@ -376,8 +378,23 @@ mod tests {
     fn missing_file_gives_defaults() {
         let dir = std::env::temp_dir().join("logtask_settings_missing");
         let _ = std::fs::remove_dir_all(&dir);
-        let s = load(&dir);
+        let s = load(&dir).unwrap();
         assert_eq!(s.theme, "system");
         assert_eq!(s.sidebar_width, 240);
+    }
+
+    #[test]
+    fn invalid_settings_return_error_and_preserve_file() {
+        let dir = std::env::temp_dir().join("logtask_settings_invalid");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".logtask")).unwrap();
+        let path = dir.join(".logtask/settings.json");
+        std::fs::write(&path, "{повреждено").unwrap();
+
+        let error = load(&dir).unwrap_err();
+
+        assert!(error.contains("settings.json"), "{error}");
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "{повреждено");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
