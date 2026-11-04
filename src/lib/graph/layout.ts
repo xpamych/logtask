@@ -278,77 +278,109 @@ export function separateGraphNodes(
   separateGraphNodesOptimized(nodes, radii, padding);
 }
 
+export function createCollisionSeparator(
+  initialNodes: CollisionNode[],
+  radii: ReadonlyMap<string, number>,
+  padding = 1,
+): (nodes: CollisionNode[]) => void {
+  const colliding = initialNodes.filter((node) => (radii.get(node.id) ?? 0) > 0);
+  const radiusValues = colliding.map((node) => radii.get(node.id)!);
+  const indices = new Map(colliding.map((node, index) => [node, index]));
+  const maxRadius = radiusValues.length ? Math.max(...radiusValues) : 0;
+  const cellSize = maxRadius * 2 + padding;
+  const grid = new Map<number, Map<number, CollisionNode[]>>();
+  const empty: CollisionNode[] = [];
+
+  const separate = () => {
+    if (colliding.length < 2) return;
+    for (let iteration = 0; iteration < 12; iteration += 1) {
+      for (const column of grid.values()) {
+        for (const cell of column.values()) cell.length = 0;
+      }
+      for (const node of colliding) {
+        const cellX = Math.floor((node.x ?? 0) / cellSize);
+        const cellY = Math.floor((node.y ?? 0) / cellSize);
+        let column = grid.get(cellX);
+        if (!column) {
+          column = new Map<number, CollisionNode[]>();
+          grid.set(cellX, column);
+        }
+        let cell = column.get(cellY);
+        if (!cell) {
+          cell = [];
+          column.set(cellY, cell);
+        }
+        cell.push(node);
+      }
+      let changed = false;
+      for (let firstIndex = 0; firstIndex < colliding.length; firstIndex += 1) {
+        const first = colliding[firstIndex];
+        const cellX = Math.floor((first.x ?? 0) / cellSize);
+        const cellY = Math.floor((first.y ?? 0) / cellSize);
+        for (let dx = -1; dx <= 1; dx += 1) {
+          for (let dy = -1; dy <= 1; dy += 1) {
+            const cell = grid.get(cellX + dx)?.get(cellY + dy) ?? empty;
+            for (const second of cell) {
+              const secondIndex = indices.get(second)!;
+              if (firstIndex >= secondIndex) continue;
+              const minimum = radiusValues[firstIndex] + radiusValues[secondIndex] + padding;
+              let deltaX = (second.x ?? 0) - (first.x ?? 0);
+              let deltaY = (second.y ?? 0) - (first.y ?? 0);
+              let distance = Math.hypot(deltaX, deltaY);
+              if (distance >= minimum) continue;
+              if (distance < 1e-9) {
+                const stable = stablePosition(`${first.id}\0${second.id}`);
+                distance = Math.hypot(stable.x, stable.y);
+                deltaX = stable.x;
+                deltaY = stable.y;
+              }
+              const ux = deltaX / distance;
+              const uy = deltaY / distance;
+              const shift = minimum - distance + 0.0001;
+              const firstFixed = first.fx !== undefined && first.fx !== null;
+              const secondFixed = second.fx !== undefined && second.fx !== null;
+              const firstShift = firstFixed ? (secondFixed ? shift / 2 : 0) : shift / (secondFixed ? 1 : 2);
+              const secondShift = secondFixed ? (firstFixed ? shift / 2 : 0) : shift / (firstFixed ? 1 : 2);
+              first.x = (first.x ?? 0) - ux * firstShift;
+              first.y = (first.y ?? 0) - uy * firstShift;
+              second.x = (second.x ?? 0) + ux * secondShift;
+              second.y = (second.y ?? 0) + uy * secondShift;
+              if (firstFixed) {
+                first.fx = first.x;
+                first.fy = first.y;
+              }
+              if (secondFixed) {
+                second.fx = second.x;
+                second.fy = second.y;
+              }
+              first.vx = 0;
+              first.vy = 0;
+              second.vx = 0;
+              second.vy = 0;
+              changed = true;
+            }
+          }
+        }
+      }
+      if (!changed) return;
+    }
+  };
+
+  return (nodes) => {
+    if (nodes !== initialNodes) {
+      separateGraphNodesOptimized(nodes, radii, padding);
+      return;
+    }
+    separate();
+  };
+}
+
 export function separateGraphNodesOptimized(
   nodes: CollisionNode[],
   radii: ReadonlyMap<string, number>,
   padding = 1,
 ): void {
-  const colliding = nodes.filter((node) => (radii.get(node.id) ?? 0) > 0);
-  if (colliding.length < 2) return;
-  const maxRadius = Math.max(...colliding.map((node) => radii.get(node.id)!));
-  const cellSize = maxRadius * 2 + padding;
-  type IndexedNode = { node: CollisionNode; index: number };
-  for (let iteration = 0; iteration < 12; iteration += 1) {
-    const grid = new Map<string, IndexedNode[]>();
-    for (let index = 0; index < colliding.length; index += 1) {
-      const node = colliding[index];
-      const key = `${Math.floor((node.x ?? 0) / cellSize)},${Math.floor((node.y ?? 0) / cellSize)}`;
-      const cell = grid.get(key) ?? [];
-      cell.push({ node, index });
-      grid.set(key, cell);
-    }
-    let changed = false;
-    for (let firstIndex = 0; firstIndex < colliding.length; firstIndex += 1) {
-      const first = colliding[firstIndex];
-      const cellX = Math.floor((first.x ?? 0) / cellSize);
-      const cellY = Math.floor((first.y ?? 0) / cellSize);
-      for (let dx = -1; dx <= 1; dx += 1) {
-        for (let dy = -1; dy <= 1; dy += 1) {
-          for (const { node: second, index: secondIndex } of grid.get(`${cellX + dx},${cellY + dy}`) ?? []) {
-            if (firstIndex >= secondIndex) continue;
-            const firstRadius = radii.get(first.id)!;
-            const secondRadius = radii.get(second.id)!;
-            const minimum = firstRadius + secondRadius + padding;
-            let deltaX = (second.x ?? 0) - (first.x ?? 0);
-            let deltaY = (second.y ?? 0) - (first.y ?? 0);
-            let distance = Math.hypot(deltaX, deltaY);
-            if (distance >= minimum) continue;
-            if (distance < 1e-9) {
-              const stable = stablePosition(`${first.id}\0${second.id}`);
-              distance = Math.hypot(stable.x, stable.y);
-              deltaX = stable.x;
-              deltaY = stable.y;
-            }
-            const ux = deltaX / distance;
-            const uy = deltaY / distance;
-            const shift = minimum - distance + 0.0001;
-            const firstFixed = first.fx !== undefined && first.fx !== null;
-            const secondFixed = second.fx !== undefined && second.fx !== null;
-            const firstShift = firstFixed ? (secondFixed ? shift / 2 : 0) : shift / (secondFixed ? 1 : 2);
-            const secondShift = secondFixed ? (firstFixed ? shift / 2 : 0) : shift / (firstFixed ? 1 : 2);
-            first.x = (first.x ?? 0) - ux * firstShift;
-            first.y = (first.y ?? 0) - uy * firstShift;
-            second.x = (second.x ?? 0) + ux * secondShift;
-            second.y = (second.y ?? 0) + uy * secondShift;
-            if (firstFixed) {
-              first.fx = first.x;
-              first.fy = first.y;
-            }
-            if (secondFixed) {
-              second.fx = second.x;
-              second.fy = second.y;
-            }
-            first.vx = 0;
-            first.vy = 0;
-            second.vx = 0;
-            second.vy = 0;
-            changed = true;
-          }
-        }
-      }
-    }
-    if (!changed) return;
-  }
+  createCollisionSeparator(nodes, radii, padding)(nodes);
 }
 
 export interface LayoutRequest {

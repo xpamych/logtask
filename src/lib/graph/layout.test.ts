@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { CollisionNode } from "./layout.ts";
-import { applyHubGravityOptimized, componentTargets, componentTargetsForComponents, connectedComponents, createLayoutMigration, linkedSceneRadius, mergeLayout, normalizeMainComponent, normalizeMainComponentInPlace, packLayout, separateGraphNodesOptimized, stablePosition, unpackLayout } from "./layout.ts";
+import { applyHubGravityOptimized, componentTargets, componentTargetsForComponents, connectedComponents, createCollisionSeparator, createLayoutMigration, linkedSceneRadius, mergeLayout, normalizeMainComponent, normalizeMainComponentInPlace, packLayout, separateGraphNodesOptimized, stablePosition, unpackLayout } from "./layout.ts";
 
 test("стартовые координаты детерминированы и конечны", () => {
   const a = stablePosition("page:А");
@@ -363,4 +363,36 @@ test("optimized_collision_filter_preserves_boundary_behavior", () => {
   separateGraphNodesOptimized(actual, radii, 0.2);
 
   assert.deepEqual(actual, expected);
+});
+
+test("reusable_collision_separator_matches_reference_across_frames", () => {
+  let randomState = 17;
+  const random = () => {
+    randomState = Math.imul(randomState, 1664525) + 1013904223 >>> 0;
+    return randomState / 4294967296;
+  };
+  for (let scene = 0; scene < 8; scene += 1) {
+    const actual: CollisionNode[] = Array.from({ length: 30 }, (_, index) => ({
+      id: `s${scene}-n${index}`,
+      x: (random() - 0.5) * 40,
+      y: (random() - 0.5) * 40,
+      ...(index % 7 === 0 ? { fx: 0, fy: 0 } : {}),
+    }));
+    for (const node of actual) {
+      if (node.fx !== undefined) {
+        node.fx = node.x;
+        node.fy = node.y;
+      }
+    }
+    const radii = new Map(actual.map((node, index) => [node.id, 2 + index % 5]));
+    const separate = createCollisionSeparator(actual, radii);
+    for (let frame = 0; frame < 3; frame += 1) {
+      const expected = structuredClone(actual);
+      separate(actual);
+      referenceSeparateGraphNodes(expected, radii);
+      assert.deepEqual(actual, expected, `scene ${scene}, frame ${frame}`);
+      actual[0].x = (actual[0].x ?? 0) + 0.5;
+      actual[1].y = (actual[1].y ?? 0) - 0.25;
+    }
+  }
 });

@@ -3,7 +3,7 @@ import type { Force, SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
 import type { GraphViewSettings } from "~/lib/api";
 import { nextDragAlpha } from "./dragAlpha.ts";
 import type { LayoutRequest } from "./layout.ts";
-import { applyHubGravity, compactComponentRadius, componentTargetsForComponents, connectedComponents, linkedSceneRadius, mergeLayout, normalizeMainComponentInPlace, packLayout, selectHubNodes, separateGraphNodes, stablePosition, unpackLayout } from "./layout.ts";
+import { applyHubGravity, compactComponentRadius, componentTargetsForComponents, connectedComponents, createCollisionSeparator, linkedSceneRadius, mergeLayout, normalizeMainComponentInPlace, selectHubNodes, stablePosition, unpackLayout } from "./layout.ts";
 
 interface WorkerNode extends SimulationNodeDatum {
   id: string;
@@ -31,6 +31,8 @@ let selfIsolatedIds = new Set<string>();
 let hubs: WorkerNode[] = [];
 let orphanRadius = 120;
 let nodeRadii = new Map<string, number>();
+let nodeIds: string[] = [];
+let separateCollisions: ReturnType<typeof createCollisionSeparator> | null = null;
 
 function forceMainCenter(strength: number): Force<WorkerNode, undefined> {
   let initializedNodes: WorkerNode[] = [];
@@ -113,18 +115,21 @@ function applyComponentTargets() {
 }
 
 function postPositions() {
-  separateGraphNodes(nodes, nodeRadii);
-  const entries = nodes.map((node) => ({
-    id: node.id,
-    x: Number.isFinite(node.x) ? node.x! : stablePosition(node.id).x,
-    y: Number.isFinite(node.y) ? node.y! : stablePosition(node.id).y,
-    pinned: node.fx !== undefined && node.fx !== null,
-  }));
-  const positions = packLayout(entries);
+  separateCollisions?.(nodes);
+  const positions = {
+    xy: new Float32Array(nodes.length * 2),
+    pinned: new Uint8Array(nodes.length),
+  };
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index];
+    positions.xy[index * 2] = Number.isFinite(node.x) ? node.x! : stablePosition(node.id).x;
+    positions.xy[index * 2 + 1] = Number.isFinite(node.y) ? node.y! : stablePosition(node.id).y;
+    positions.pinned[index] = node.fx !== undefined && node.fx !== null ? 1 : 0;
+  }
   (self as unknown as {
     postMessage: (message: unknown, transfer: Transferable[]) => void;
   }).postMessage(
-    { type: "positions", generation, ids: nodes.map((node) => node.id), positions },
+    { type: "positions", generation, ids: nodeIds, positions },
     [positions.xy.buffer, positions.pinned.buffer],
   );
 }
@@ -265,6 +270,8 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     );
     nodeRadii = new Map(message.ids.map((id, index) => [id, message.radii?.[index] ?? 5]));
     for (const id of selfIsolatedIds) nodeRadii.set(id, 0);
+    nodeIds = [...message.ids];
+    separateCollisions = createCollisionSeparator(nodes, nodeRadii);
     applyForces();
     updateComponentTargets(false);
     applyComponentTargets();
