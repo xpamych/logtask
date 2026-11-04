@@ -16,13 +16,42 @@ pub fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
 }
 
 pub fn atomic_write_bytes(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    atomic_write_bytes_with_ops(
+        path,
+        data,
+        |tmp, original| {
+            if let Ok(meta) = std::fs::metadata(original) {
+                std::fs::set_permissions(tmp, meta.permissions())?;
+            }
+            Ok(())
+        },
+        |dir| {
+            #[cfg(unix)]
+            {
+                let d = File::open(dir)?;
+                d.sync_all()?;
+            }
+            Ok(())
+        },
+    )
+}
+
+pub(crate) fn atomic_write_bytes_with_ops<F, G>(
+    path: &Path,
+    data: &[u8],
+    mut set_permissions: F,
+    sync_dir: G,
+) -> std::io::Result<()>
+where
+    F: FnMut(&Path, &Path) -> std::io::Result<()>,
+    G: FnOnce(&Path) -> std::io::Result<()>,
+{
     let file_name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "graph".to_string());
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
 
-    // pid + счётчик — параллельные процессы и потоки не столкнутся на одном tmp
     let tmp_name = format!(
         ".{file_name}.{}-{}.logtask.tmp",
         std::process::id(),
@@ -36,21 +65,12 @@ pub fn atomic_write_bytes(path: &Path, data: &[u8]) -> std::io::Result<()> {
         f.sync_all()?;
         drop(f);
 
-        // сохраняем права исходного файла (rename сбрасывает на umask)
-        if let Ok(meta) = std::fs::metadata(path) {
-            let _ = std::fs::set_permissions(&tmp, meta.permissions());
-        }
-
+        set_permissions(&tmp, path)?;
         std::fs::rename(&tmp, path)?;
-
-        if let Ok(d) = File::open(dir) {
-            let _ = d.sync_all();
-        }
-        Ok(())
+        sync_dir(dir)
     })();
 
     if result.is_err() {
-        // не оставляем мусорный tmp (его увидит watcher/Syncthing)
         let _ = std::fs::remove_file(&tmp);
     }
     result

@@ -277,6 +277,45 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn permission_sync_and_dir_sync_errors_propagate_and_clean_tmp() {
+        let dir = std::env::temp_dir().join("logtask_atomic_write_failures");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("страница.md");
+        std::fs::write(&file, "старое\n").unwrap();
+
+        let permission_error = fswrite::atomic_write_bytes_with_ops(
+            &file,
+            b"new\n",
+            |_, _| Err(std::io::Error::other("permissions")),
+            |_| panic!("fsync не должен вызываться"),
+        );
+        assert!(permission_error.is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "старое\n");
+
+        let sync_error = fswrite::atomic_write_bytes_with_ops(
+            &file,
+            b"new\n",
+            |_, _| Ok(()),
+            |_| Err(std::io::Error::other("fsync")),
+        );
+        assert!(sync_error.is_err());
+        let tmps: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".logtask.tmp")
+            })
+            .collect();
+        assert!(tmps.is_empty(), "tmp-мусор: {tmps:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn asset_link_forms_are_normalized() {
         let links = parser::extract_links(

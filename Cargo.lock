@@ -2534,6 +2534,7 @@ dependencies = [
  "arboard",
  "chrono",
  "gtk",
+ "http",
  "image",
  "keyring",
  "log",

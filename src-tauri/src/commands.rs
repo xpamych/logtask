@@ -2093,6 +2093,8 @@ pub async fn asset_data_url(
 /// opener-плагина — JS-вызов на этой системе молча не срабатывает)
 #[tauri::command]
 pub fn open_external(url: String) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|e| format!("url: {e}"))?;
+    crate::sync::http::ensure_http_url(&parsed)?;
     tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|e| e.to_string())
 }
 
@@ -2147,8 +2149,7 @@ async fn fetch_favicon(host: &str) -> Result<String, String> {
         .next()
         .unwrap_or("image/x-icon")
         .to_string();
-    let data = resp
-        .bytes()
+    let data = crate::sync::http::read_body_limited(resp, crate::sync::http::MAX_FAVICON_BYTES)
         .await
         .map_err(|e| format!("favicon {host}: {e}"))?;
     if data.is_empty() {
@@ -2178,6 +2179,8 @@ pub async fn web_title(url: String, state: tauri::State<'_, AppState>) -> Result
 }
 
 async fn fetch_title(url: &str) -> Result<String, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("url: {e}"))?;
+    crate::sync::http::ensure_http_url(&parsed)?;
     let client = crate::sync::http::client()?;
     let resp = client
         .get(url)
@@ -2187,9 +2190,13 @@ async fn fetch_title(url: &str) -> Result<String, String> {
     if !resp.status().is_success() {
         return Err(format!("title {url}: HTTP {}", resp.status()));
     }
-    // читаем целиком и обрезаем: <title> живёт в начале документа
-    let body = resp.text().await.map_err(|e| format!("title {url}: {e}"))?;
-    let html = body.chars().take(256 * 1024).collect::<String>();
+    let body = crate::sync::http::read_body_limited(resp, crate::sync::http::MAX_TITLE_BYTES)
+        .await
+        .map_err(|e| format!("title {url}: {e}"))?;
+    let html = String::from_utf8_lossy(&body)
+        .chars()
+        .take(256 * 1024)
+        .collect::<String>();
     let lower = html.to_lowercase();
     let start = lower
         .find("<title")
