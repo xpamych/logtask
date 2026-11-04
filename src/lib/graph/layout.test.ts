@@ -332,3 +332,35 @@ test("optimized_collision_separation_matches_reference", () => {
 
   assert.deepEqual(actual, expected);
 });
+
+test("optimized_hub_gravity_preserves_rounded_tie", () => {
+  const makeNodes = () => [{ id: "near", x: 0, y: 0 }];
+  const makeHubs = () => [
+    { id: "hub-a", x: 1, y: 0 },
+    { id: "hub-b", x: 0.6084388609788626, y: 0.7936007512916959 },
+  ];
+  const expected = makeNodes();
+  const actual = makeNodes();
+  const expectedHubs = makeHubs();
+  const actualHubs = makeHubs();
+
+  referenceHubGravity(expected, expectedHubs, new Set(["near"]), 0.12);
+  applyHubGravityOptimized(actual, actualHubs, new Set(["near"]), 0.12);
+
+  assert.deepEqual(actual, expected);
+});
+
+test("optimized_collision_filter_preserves_boundary_behavior", () => {
+  const makeNodes = () => [
+    { id: "a", x: 0, y: 0 },
+    { id: "b", x: -0.7373688780783194, y: 0.6754902942615242 },
+  ];
+  const expected = makeNodes();
+  const actual = makeNodes();
+  const radii = new Map([["a", 0.4], ["b", 0.4]]);
+
+  referenceSeparateGraphNodes(expected, radii, 0.2);
+  separateGraphNodesOptimized(actual, radii, 0.2);
+
+  assert.deepEqual(actual, expected);
+});

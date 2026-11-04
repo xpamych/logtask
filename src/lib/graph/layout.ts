@@ -132,19 +132,14 @@ export function applyHubGravityOptimized<T extends {
   const hubIds = new Set(hubs.map((node) => node.id));
   for (const node of nodes) {
     if (node.fx !== undefined && node.fx !== null || node.fy !== undefined && node.fy !== null) continue;
-    let hub: T | undefined;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-    if (!hubIds.has(node.id)) {
-      for (const candidate of hubs) {
-        const dx = (candidate.x ?? 0) - (node.x ?? 0);
-        const dy = (candidate.y ?? 0) - (node.y ?? 0);
-        const distance = dx * dx + dy * dy;
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          hub = candidate;
-        }
-      }
-    }
+    const hub = hubIds.has(node.id)
+      ? undefined
+      : hubs.reduce<T | undefined>((nearest, candidate) => {
+          const distance = Math.hypot((candidate.x ?? 0) - (node.x ?? 0), (candidate.y ?? 0) - (node.y ?? 0));
+          if (!nearest) return candidate;
+          const previous = Math.hypot((nearest.x ?? 0) - (node.x ?? 0), (nearest.y ?? 0) - (node.y ?? 0));
+          return distance < previous ? candidate : nearest;
+        }, undefined);
     const targetX = hub?.x ?? 0;
     const targetY = hub?.y ?? 0;
     const strength = hubIds.has(node.id)
@@ -316,9 +311,8 @@ export function separateGraphNodesOptimized(
             const minimum = firstRadius + secondRadius + padding;
             let deltaX = (second.x ?? 0) - (first.x ?? 0);
             let deltaY = (second.y ?? 0) - (first.y ?? 0);
-            const distanceSquared = deltaX * deltaX + deltaY * deltaY;
-            if (distanceSquared >= minimum * minimum) continue;
             let distance = Math.hypot(deltaX, deltaY);
+            if (distance >= minimum) continue;
             if (distance < 1e-9) {
               const stable = stablePosition(`${first.id}\0${second.id}`);
               distance = Math.hypot(stable.x, stable.y);
