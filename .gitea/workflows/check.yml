@@ -7,10 +7,15 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       REPO: ${{ gitea.repository }}
-      REF: ${{ gitea.ref_name }}
+      REF: ${{ gitea.ref }}
     steps:
       - name: Исходники
-        run: git clone --depth 1 --branch "$REF" "https://git.alr-pkg.ru/${REPO}.git" src
+        run: |
+          git init src
+          cd src
+          git remote add origin "https://git.alr-pkg.ru/${REPO}.git"
+          git fetch --depth 1 origin "$REF"
+          git checkout --detach FETCH_HEAD
 
       - name: Системные зависимости Tauri
         run: |

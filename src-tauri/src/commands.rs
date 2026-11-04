@@ -1606,6 +1606,7 @@ pub async fn integrations_sync(
 ) -> Result<Vec<crate::sync::SyncReport>, String> {
     let root = state.root.read().clone().ok_or("граф не загружен")?;
     let settings = crate::settings::load(&root)?;
+    let context = crate::sync::current_context(&state).ok_or("граф не загружен")?;
     let mut reports = vec![];
     for cfg in settings
         .integrations
@@ -1613,7 +1614,8 @@ pub async fn integrations_sync(
         .iter()
         .filter(|s| s.enabled && source_id.as_ref().map(|id| &s.id == id).unwrap_or(true))
     {
-        reports.push(crate::sync::sync_source(&app, &state, cfg).await);
+        reports
+            .push(crate::sync::sync_source_with_context(&app, &state, cfg, context.clone()).await);
     }
     Ok(reports)
 }

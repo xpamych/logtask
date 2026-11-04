@@ -6,6 +6,7 @@ export class SettingsWriteQueue<T> {
   private running = false;
   private draining: Promise<void> | null = null;
   private sequence = 0;
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   private readonly save: (value: T, root: string) => Promise<void>;
   private readonly onSettled?: (sequence: number, error: unknown) => void;
@@ -20,18 +21,35 @@ export class SettingsWriteQueue<T> {
 
   setGraph(root: string): void {
     this.graph = root;
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = null;
     this.pending = null;
   }
 
   enqueue(root: string, value: T): number {
     const sequence = ++this.sequence;
     if (root !== this.graph) return sequence;
-    this.pending = { value, root, sequence };
+    this.enqueueSnapshot({ value, root, sequence });
+    return sequence;
+  }
+
+  schedule(root: string, value: T, delayMs: number): number {
+    const sequence = ++this.sequence;
+    if (root !== this.graph) return sequence;
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      this.enqueueSnapshot({ value, root, sequence });
+    }, delayMs);
+    return sequence;
+  }
+
+  private enqueueSnapshot(next: Snapshot<T>): void {
+    this.pending = next;
     if (!this.running) {
       this.running = true;
       this.draining = this.drain();
     }
-    return sequence;
   }
 
   pendingSnapshot(): T | null {
@@ -39,7 +57,9 @@ export class SettingsWriteQueue<T> {
   }
 
   async idle(): Promise<void> {
-    while (this.draining) await this.draining;
+    while (this.debounceTimer || this.draining) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
   }
 
   private async drain(): Promise<void> {

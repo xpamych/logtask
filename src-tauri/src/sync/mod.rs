@@ -109,10 +109,11 @@ pub async fn push_status_standalone(
 
 /// Синхронизирует один источник. Не паникует и не падает целиком:
 /// ошибки — в SyncReport.error и в state-файл.
-pub async fn sync_source(
+pub async fn sync_source_with_context(
     app: &tauri::AppHandle,
     state: &AppState,
     cfg: &SourceConfig,
+    context: GraphContext,
 ) -> SyncReport {
     {
         let mut r = running().lock().unwrap();
@@ -127,7 +128,7 @@ pub async fn sync_source(
     }
     let _guard = RunningGuard(cfg.id.clone());
     let _ = app.emit("sync-started", serde_json::json!({ "source": cfg.id }));
-    let report = sync_inner(app, state, cfg).await;
+    let report = sync_inner(app, state, cfg, context).await;
     let _ = app.emit("sync-finished", &report);
     report
 }
@@ -175,15 +176,28 @@ fn merge_with_context(
     ))
 }
 
-async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig) -> SyncReport {
+fn validate_source_context(state: &AppState, context: &GraphContext) -> Result<(), String> {
+    if context_is_current(state, context) {
+        Ok(())
+    } else {
+        Err("граф сменился, синхронизация отменена".into())
+    }
+}
+
+async fn sync_inner(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    cfg: &SourceConfig,
+    context: GraphContext,
+) -> SyncReport {
     let mut report = SyncReport {
         source: cfg.id.clone(),
         ..Default::default()
     };
-    let Some(context) = current_context(state) else {
-        report.error = Some("граф не загружен".into());
+    if let Err(e) = validate_source_context(state, &context) {
+        report.error = Some(e);
         return report;
-    };
+    }
     let root = context.root.clone();
     let gkey = secrets::graph_key(&root);
     let client = match http::client() {
@@ -581,9 +595,10 @@ fn refresh_task_states(
 /// Синк всех включённых источников текущего графа (при старте и по кнопке)
 pub async fn sync_all(app: &tauri::AppHandle) -> Vec<SyncReport> {
     let state = app.state::<AppState>();
-    let Some(root) = state.root.read().clone() else {
+    let Some(context) = current_context(&state) else {
         return vec![];
     };
+    let root = context.root.clone();
     let settings = match crate::settings::load(&root) {
         Ok(settings) => settings,
         Err(e) => {
@@ -596,7 +611,7 @@ pub async fn sync_all(app: &tauri::AppHandle) -> Vec<SyncReport> {
     };
     let mut reports = vec![];
     for cfg in settings.integrations.sources.iter().filter(|s| s.enabled) {
-        reports.push(sync_source(app, &state, cfg).await);
+        reports.push(sync_source_with_context(app, &state, cfg, context.clone()).await);
     }
     reports
 }
@@ -608,9 +623,10 @@ pub async fn startup_and_ticker(app: tauri::AppHandle) {
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
         let state = app.state::<AppState>();
-        let Some(root) = state.root.read().clone() else {
+        let Some(context) = current_context(&state) else {
             continue;
         };
+        let root = context.root.clone();
         let settings = match crate::settings::load(&root) {
             Ok(settings) => settings,
             Err(e) => {
@@ -644,7 +660,7 @@ pub async fn startup_and_ticker(app: tauri::AppHandle) {
                 })
                 .unwrap_or(true);
             if due {
-                sync_source(&app, &state, cfg).await;
+                sync_source_with_context(&app, &state, cfg, context.clone()).await;
             }
         }
     }
@@ -1219,6 +1235,22 @@ mod tests {
 
         assert!(result.is_some());
         assert!(page_text(&root, "PPDB - TODO").contains("source-id:: ppdb-1"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn stale_batch_source_cancels_without_network() {
+        let root = temp_graph("epoch-batch-stale");
+        let state = state_with_graph(&root);
+        let context = current_context(&state).unwrap();
+        state
+            .graph_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        *state.root.write() = Some(temp_graph("epoch-batch-other"));
+
+        let error = validate_source_context(&state, &context).unwrap_err();
+
+        assert!(error.contains("граф сменился"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

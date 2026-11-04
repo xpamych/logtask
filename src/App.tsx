@@ -135,7 +135,6 @@ const App: Component = () => {
   // автосохранение настроек: точка-индикатор в сайдбаре
   const [saveState, setSaveState] = createSignal<"saved" | "dirty" | "error">("saved");
   const [saveError, setSaveError] = createSignal<string | null>(null);
-  let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let latestSaveRequest = 0;
   const settingsWriter = new SettingsWriteQueue<Settings>(
     async (next, root) => settingsSave(next, root),
@@ -156,18 +155,15 @@ const App: Component = () => {
     setSettings(s);
     setSaveState("dirty");
     setSaveError(null);
-    clearTimeout(saveTimer);
-    const run = () => {
-      const root = summary()?.root;
-      if (!root) {
-        setSaveState("error");
-        setSaveError("граф не загружен");
-        return;
-      }
-      latestSaveRequest = settingsWriter.enqueue(root, s);
-    };
-    if (opts?.immediate) run();
-    else saveTimer = setTimeout(run, 400);
+    const root = summary()?.root;
+    if (!root) {
+      setSaveState("error");
+      setSaveError("граф не загружен");
+      return;
+    }
+    latestSaveRequest = opts?.immediate
+      ? settingsWriter.enqueue(root, s)
+      : settingsWriter.schedule(root, s, 400);
   };
 
   const showToast = (text: string) => {

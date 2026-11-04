@@ -65,3 +65,17 @@ test("old_graph_never_saves_into_new_graph", async () => {
   assert.deepEqual(roots, ["A", "B"]);
   assert.equal(queue.pendingSnapshot(), null);
 });
+
+test("debounced_old_graph_is_cancelled", async () => {
+  const saved: string[] = [];
+  const queue = new SettingsWriteQueue<string>(async (_value, root) => {
+    saved.push(root);
+  });
+  queue.setGraph("A");
+  queue.schedule("A", "old settings", 5);
+  queue.setGraph("B");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await queue.idle();
+
+  assert.deepEqual(saved, []);
+});
