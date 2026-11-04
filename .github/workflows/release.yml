@@ -83,12 +83,20 @@ jobs:
         run: |
           set -e
           BODY="$(git tag -l "$TAG" --format='%(contents)')"
+          ASSETS=(logtask-linux-x86_64.tar.gz)
+          for pattern in \
+            target/release/bundle/deb/*.deb \
+            target/release/bundle/rpm/*.rpm \
+            target/release/bundle/appimage/*.AppImage; do
+            if [[ -f "$pattern" ]]; then
+              ASSETS+=("$pattern")
+            fi
+          done
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --title "Logtask $TAG" --notes "$BODY"
-            gh release upload "$TAG" logtask-linux-x86_64.tar.gz --clobber
           else
             gh release create "$TAG" \
               --title "Logtask $TAG" \
-              --notes "$BODY" \
-              logtask-linux-x86_64.tar.gz
+              --notes "$BODY"
           fi
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber
