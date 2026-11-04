@@ -44,4 +44,8 @@ cargo test --workspace
 npm run build
 
 git add src-tauri/Cargo.toml src-tauri/tauri.conf.json Cargo.lock package.json package-lock.json
-git commit -m "Фаза 7: подготовлен релиз v${VERSION}"
+if git diff --cached --quiet; then
+    echo "Версия v${VERSION} уже синхронизирована, версионный коммит не требуется"
+else
+    git commit -m "Фаза 7: подготовлен релиз v${VERSION}"
+fi
