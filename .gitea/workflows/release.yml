@@ -42,6 +42,25 @@ jobs:
         working-directory: src
         run: npm ci
 
+      - name: Тесты frontend
+        working-directory: src
+        run: node --conditions=browser --test src/lib/graph/*.test.ts src/components/graph/*.test.ts src/lib/*.test.ts
+
+      - name: Сборка frontend
+        working-directory: src
+        run: npm run build
+
+      - name: Аудит production-зависимостей
+        working-directory: src
+        run: npm audit --omit=dev
+
+      - name: Проверка Rust
+        working-directory: src
+        run: |
+          cargo fmt --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+
       - name: Сборка приложения
         working-directory: src
         run: npm run app:build

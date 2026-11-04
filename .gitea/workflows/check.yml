@@ -1,0 +1,61 @@
+name: Проверки
+
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    env:
+      REPO: ${{ gitea.repository }}
+      REF: ${{ gitea.ref_name }}
+    steps:
+      - name: Исходники
+        run: git clone --depth 1 --branch "$REF" "https://git.alr-pkg.ru/${REPO}.git" src
+
+      - name: Системные зависимости Tauri
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends \
+            build-essential pkg-config curl jq file ca-certificates \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - name: Node 24
+        run: |
+          curl -fsSLO https://nodejs.org/dist/v24.11.0/node-v24.11.0-linux-x64.tar.xz
+          tar -xJf node-v24.11.0-linux-x64.tar.xz -C /opt
+          echo "/opt/node-v24.11.0-linux-x64/bin" >> "$GITHUB_PATH"
+
+      - name: Rust stable
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Зависимости npm
+        working-directory: src
+        run: npm ci
+
+      - name: Тесты frontend
+        working-directory: src
+        run: node --conditions=browser --test src/lib/graph/*.test.ts src/components/graph/*.test.ts src/lib/*.test.ts
+
+      - name: Сборка frontend
+        working-directory: src
+        run: npm run build
+
+      - name: Аудит production-зависимостей
+        working-directory: src
+        run: npm audit --omit=dev
+
+      - name: Форматирование Rust
+        working-directory: src
+        run: cargo fmt --check
+
+      - name: Статический анализ Rust
+        working-directory: src
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Тесты Rust
+        working-directory: src
+        run: cargo test --workspace
