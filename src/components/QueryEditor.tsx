@@ -15,7 +15,7 @@ export function QueryEditor(props: {
   query: SavedQuery | null;
   settings?: Settings | null;
   onClose: () => void;
-  onSave: (q: SavedQuery) => void;
+  onSave: (q: SavedQuery, originalTitle: string | null) => void;
   onDelete: (title: string) => void;
 }): JSX.Element {
   const isNew = () => props.query === null;
@@ -108,7 +108,7 @@ export function QueryEditor(props: {
         tags,
       },
     };
-    props.onSave(clean);
+    props.onSave(clean, props.query?.title ?? null);
     props.onClose();
   };
 

@@ -8,3 +8,7 @@ export function visibleJournalsAfterRefresh(
   const newBefore = Math.max(0, firstCurrent);
   return available.slice(0, Math.max(pageSize, current.length + newBefore));
 }
+
+export function backlinksRefreshToken(name: string, refreshKey: number): string {
+  return `${name}:${refreshKey}`;
+}

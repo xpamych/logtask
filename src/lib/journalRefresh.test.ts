@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { visibleJournalsAfterRefresh } from "./journalRefresh.ts";
+import { backlinksRefreshToken, visibleJournalsAfterRefresh } from "./journalRefresh.ts";
 
 test("обновление сохраняет число загруженных дней и добавляет новый день", () => {
   const current = ["2026_11_02", "2026_11_01", "2026_10_31", "2026_10_30", "2026_10_29", "2026_10_28", "2026_10_27"];
@@ -20,4 +20,9 @@ test("обновление сохраняет число загруженных 
 test("первая загрузка ограничена размером порции", () => {
   const available = ["2026_11_03", "2026_11_02", "2026_11_01", "2026_10_31", "2026_10_30", "2026_10_29"];
   assert.deepEqual(visibleJournalsAfterRefresh([], available, 5), available.slice(0, 5));
+});
+
+test("backlinks_refresh_key_reloads", () => {
+  assert.notEqual(backlinksRefreshToken("2026_11_03", 1), backlinksRefreshToken("2026_11_03", 2));
+  assert.equal(backlinksRefreshToken("2026_11_03", 1), backlinksRefreshToken("2026_11_03", 1));
 });

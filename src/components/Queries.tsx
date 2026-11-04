@@ -9,6 +9,7 @@ import {
   tasksByQuery,
 } from "~/lib/api";
 import { refreshGuarded } from "~/lib/editState";
+import { upsertQuery } from "~/lib/queryState";
 import { selectedTaskUuid, setSelectedTaskUuid } from "~/lib/taskNavigation";
 import { QueryEditor } from "./QueryEditor";
 import { TaskCard } from "./TaskCard";
@@ -149,14 +150,8 @@ export function Queries(props: {
     }
   };
 
-  const onSaveQuery = (q: SavedQuery) => {
-    const qs = queries();
-    const idx = qs.findIndex((x) => x.title === q.title);
-    const updated =
-      idx === -1
-        ? [...qs, q]
-        : qs.map((x, i) => (i === idx ? q : x));
-    void persist(updated);
+  const onSaveQuery = (q: SavedQuery, originalTitle: string | null) => {
+    void persist(upsertQuery(queries(), q, originalTitle));
   };
 
   const onDeleteQuery = (title: string) => {

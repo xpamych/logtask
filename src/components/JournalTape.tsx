@@ -13,7 +13,7 @@ import {
 import { formatJournalName, journalLogseqTitle, todayJournalName } from "~/lib/text";
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
-import { visibleJournalsAfterRefresh } from "~/lib/journalRefresh";
+import { backlinksRefreshToken, visibleJournalsAfterRefresh } from "~/lib/journalRefresh";
 import { composerMarker } from "~/lib/composer";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
@@ -305,7 +305,7 @@ export function JournalTape(props: {
                       />
                     </div>
                   </Show>
-                  <BacklinksPanel name={name} />
+                  <BacklinksPanel name={name} refreshKey={props.refreshKey} />
                 </>
               )}
             </Show>
@@ -319,12 +319,12 @@ export function JournalTape(props: {
   );
 }
 
-function BacklinksPanel(props: { name: string }): JSX.Element {
+function BacklinksPanel(props: { name: string; refreshKey: number }): JSX.Element {
   const [links, setLinks] = createSignal<BacklinkDto[]>([]);
   const [open, setOpen] = createSignal(false);
 
   createEffect(() => {
-    void props.name;
+    void backlinksRefreshToken(props.name, props.refreshKey);
     backlinksGet(props.name).then(setLinks).catch(() => setLinks([]));
   });
 

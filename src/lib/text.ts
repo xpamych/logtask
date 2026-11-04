@@ -164,10 +164,10 @@ export interface InlineSegment {
   end: number;
 }
 
-// порядок альтернатив важен: картинки и md-ссылки раньше [[ссылок]],
-// голый URL — последним (после md-ссылки)
+// порядок альтернатив важен: inline code раньше ссылок, картинки и
+// md-ссылки раньше [[ссылок]], голый URL — последним (после md-ссылки)
 const INLINE_RE =
-  /(!\[\[[^\]]+\]\])|(!\[[^\]]*\]\([^)]+\))|(\[[^\]]+\]\(https?:\/\/[^)]+\))|(\[\[[^\]|]+(?:\|[^\]]*)?\]\])|(#(?:\[\[[^\]]+\]\]|\[[^\]]+\]|[^\s#\[)\],.;:!?("«»]+))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(`[^`]+`)|(\^\^[^^]+\^\^)|(https?:\/\/[^\s)\]]+)/g;
+  /(`+)([\s\S]*?)\1|(!\[\[[^\]]+\]\])|(!\[[^\]]*\]\([^)]+\))|(\[[^\]]+\]\(https?:\/\/[^)]+\))|(\[\[[^\]|]+(?:\|[^\]]*)?\]\])|(#(?:\[\[[^\]]+\]\]|\[[^\]]+\]|[^\s#\[)\],.;:!?("«»]+))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(\^\^[^^]+\^\^)|(https?:\/\/[^\s)\]]+)/g;
 
 /** Хвостовую пунктуацию голого URL (точка/запятая в конце предложения)
  *  не включаем в ссылку */
@@ -191,8 +191,10 @@ export function parseInline(input: string): InlineSegment[] {
     }
     const start = m.index;
     const end = m.index + m[0].length;
-    const [, imgEmbed, imgMd, mdLink, link, tag, bold, italic, strike, code, highlight, bareUrl] = m;
-    if (imgEmbed !== undefined) {
+    const [, codeDelimiter, codeText, imgEmbed, imgMd, mdLink, link, tag, bold, italic, strike, highlight, bareUrl] = m;
+    if (codeDelimiter !== undefined) {
+      segments.push({ type: "code", text: codeText, start, end });
+    } else if (imgEmbed !== undefined) {
       // logseq-вставка: ![[../assets/x.png]]
       const path = imgEmbed.slice(3, -2).trim();
       segments.push({ type: "image", text: path, target: path, start, end });
@@ -261,8 +263,6 @@ export function parseInline(input: string): InlineSegment[] {
         start,
         end,
       });
-    } else if (code !== undefined) {
-      segments.push({ type: "code", text: code.slice(1, -1), start, end });
     } else if (highlight !== undefined) {
       segments.push({
         type: "highlight",
@@ -344,9 +344,11 @@ export function flatInline(input: string): FlatSegment[] {
         case "italic":
           walk(s.children ?? [], base + s.start + 1);
           break;
-        case "code":
-          out.push({ text: s.text, start: base + s.start + 1, end: base + s.end - 1 });
+        case "code": {
+          const delimiter = input.slice(base + s.start).match(/^`+/)?.[0].length ?? 1;
+          out.push({ text: s.text, start: base + s.start + delimiter, end: base + s.end - delimiter });
           break;
+        }
         case "image":
           break;
         default:
