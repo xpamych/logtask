@@ -38,7 +38,7 @@ if count != 1:
     raise SystemExit("Не удалось обновить version в src-tauri/tauri.conf.json")
 path.write_text(updated)
 PY
-npm version "$VERSION" --no-git-tag-version
+npm version "$VERSION" --no-git-tag-version --allow-same-version
 cargo check
 cargo test --workspace
 npm run build
