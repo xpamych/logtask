@@ -46,14 +46,15 @@ Logtask — десктоп-приложение: лёгкая замена Logse
    - `commands.rs` — все IPC-команды (`tauri::generate_handler!` в `lib.rs`).
    - `watcher.rs` — `notify`-watcher за `journals/` и `pages/`: внешние
      изменения → переиндексация → событие `graph-changed` во фронтенд.
-     События доступа фильтруются, коалесцируются окном тишины 350 мс.
+     События доступа фильтруются, пути `.md` коалесцируются окном тишины
+     350 мс, хэш содержимого сравнивается с индексом.
    - `settings.rs` — настройки графа в `.logtask/settings.json`.
    - `graph_layout.rs` — производный кэш координат визуального графа в
      `.logtask/graph-layout.json` (можно удалять без потери данных).
    - `config_edn.rs` — одноразовый импорт `:default-queries` из
      `logseq/config.edn`.
    - `recent.rs` — список недавних графов; `state.rs` — `AppState`
-     (`RwLock<Option<Graph>>`).
+     (`RwLock<Option<Graph>>`, `graph_epoch`).
    - `sync/` — интеграции: синхронизация задач из внешних API и git-форжей
      (docs/05-integrations.md). Токены — в системном keyring (крейт keyring),
      в settings.json только имена. Состояние — `.logtask/integrations-state.json`.
@@ -96,8 +97,9 @@ src-tauri/            — Rust-крейт logtask (lib: logtask_lib, bin: main.r
                         секреты (keyring), HTTP
   tests/              — интеграционные тесты + fixtures/graph (реальные файлы)
   examples/bench_graph.rs — бенчмарк индексации реального графа
-  capabilities/default.json — разрешения Tauri (без fs-плагина: core:default,
-                        окно main, dialog:allow-open)
+  capabilities/default.json — разрешения Tauri: core:default, окно main,
+                        управление окном, dialog:allow-open,
+                        opener:allow-open-url, window-state:default
   tauri.conf.json     — окно 1280x800, identifier ru.logtask.app,
                         бандлы: appimage/rpm/deb
 scripts/make_icons.py — генератор PNG-иконок из SVG-мастера
@@ -199,9 +201,11 @@ cargo test --workspace
 
 ## Безопасность
 
-- Разрешения Tauri — `src-tauri/capabilities/default.json`: только
-  `core:default`, `core:window:allow-show`, `core:window:allow-set-title`,
-  `dialog:allow-open`; окно одно (`main`). fs-плагин удалён: файловый
+- Разрешения Tauri — `src-tauri/capabilities/default.json`: `core:default`,
+  `core:window:allow-show`/`allow-set-title`/`allow-start-dragging`/
+  `allow-minimize`/`allow-toggle-maximize`/`allow-close`/`allow-set-decorations`,
+  `dialog:allow-open`, `opener:allow-open-url`, `window-state:default`;
+  окно одно (`main`). fs-плагин удалён: файловый
   доступ идёт только через Rust-ядро (sandbox-границ у fs нет), поэтому
   при добавлении команд/плагинов обновляй capabilities и не разрешай
   шире необходимого.

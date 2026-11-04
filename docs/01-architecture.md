@@ -10,7 +10,9 @@
   - `sync/` — синхронизация задач с внешними источниками (docs/05-integrations.md):
     адаптеры generic/gitea/github/gitlab, merge с защитой от конфликтов,
     состояние в `.logtask/integrations-state.json`, токены в системном keyring.
-    Запись в граф — только через Graph::mutate_block/append_block/delete_block.
+    `AppState.graph_epoch` отменяет устаревшие merge/save/reindex после смены
+    или закрытия графа. Запись в граф — только через
+    Graph::mutate_block/append_block/delete_block.
 - **Интерфейс (SolidJS + TypeScript, Vite, `src/`)**: лента журнала, канбан,
   матрица, настройки. SolidJS — мелкозернистая реактивность (без Virtual DOM),
   рендерит только то, что изменилось.
@@ -68,7 +70,7 @@ struct Page { name: String, kind: PageKind,      // Journal | Page
     roots: Vec<Uuid>, order: Vec<Uuid>,
     preamble: Vec<String>,                       // строки до первого блока
     trailing_blank: u16, ends_with_newline: bool,
-    mtime: Option<SystemTime>, path: Option<PathBuf> }
+    mtime: Option<SystemTime>, content_hash: u64, path: Option<PathBuf> }
 struct Block {
     id: Option<Uuid>,            // свойство `id::`, присваивается лениво
     indent: u8,
