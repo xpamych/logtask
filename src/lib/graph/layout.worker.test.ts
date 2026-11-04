@@ -245,3 +245,32 @@ test("узлы с разными радиусами не перекрывают�
     }
   }
 });
+
+test("последовательный drag сохраняет работу сил и последнюю точку", async (t) => {
+  const worker = await createWorker("continuous-drag");
+  t.after(() => worker.close());
+  worker.send({
+    type: "init",
+    ids: ["A", "B"],
+    edges: [{ source: "A", target: "B" }],
+    positions: {
+      xy: new Float32Array([-20, 0, 20, 0]),
+      pinned: new Uint8Array(2),
+    },
+    settings: {
+      ...DEFAULT_GRAPH_VIEW_SETTINGS,
+      alphaDecay: 0,
+      qualityTickMs: 5,
+    },
+  });
+  worker.send({ type: "drag", id: "A", x: 100, y: 100, pinned: true });
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  worker.send({ type: "drag", id: "A", x: 110, y: 105, pinned: true });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.deepEqual(position(worker.latest(), "A"), { x: 110, y: 105 });
+  const bPositions = worker.history()
+    .filter((response) => response.type === "positions")
+    .map((response) => position(response, "B"));
+  const first = bPositions[0];
+  assert(bPositions.some((point) => point.x !== first.x || point.y !== first.y));
+});

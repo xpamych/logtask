@@ -10,6 +10,7 @@ import { nextGraphFocusIndex } from "~/lib/graph/selection";
 import { GraphMenu } from "./GraphMenu";
 import type { GraphMenuState } from "./GraphMenu";
 import { WebGlRenderer } from "./WebGlRenderer";
+import { createLatestFrameScheduler } from "./dragScheduling";
 import { hasPointerDragged, shouldClickPointer } from "./pointerInteraction";
 import { graphNodeRadius } from "./renderEdges";
 
@@ -211,6 +212,7 @@ export function GraphCanvas(props: {
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
       document.removeEventListener("visibilitychange", onDocumentVisibility);
       observer?.disconnect();
+      dragFrames.dispose();
       worker?.stop();
       renderer?.dispose();
       initialized = false;
@@ -228,6 +230,13 @@ export function GraphCanvas(props: {
     pinned: boolean;
     moved: boolean;
   } | null = null;
+  const dragFrames = createLatestFrameScheduler({
+    request: (callback) => requestAnimationFrame(callback),
+    cancel: (id) => cancelAnimationFrame(id),
+    emit: (x, y) => {
+      if (drag?.id) worker?.drag(drag.id, x, y, true);
+    },
+  });
   const select = (id: string | null) => {
     if (id && props.scene.nodes.find((node) => node.id === id)?.kind === "cluster") {
       props.onToggleCluster?.(id);
@@ -257,6 +266,7 @@ export function GraphCanvas(props: {
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 2) {
       pinchDistance = pointerDistance();
+      dragFrames.flush();
       if (drag?.id && drag.moved) worker?.drag(drag.id, drag.worldX, drag.worldY, drag.pinned);
       if (drag?.id && drag.moved) worker?.resume();
       drag = null;
@@ -298,7 +308,7 @@ export function GraphCanvas(props: {
       const point = renderer.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
       drag.worldX = point.x;
       drag.worldY = point.y;
-      worker?.drag(drag.id, point.x, point.y, true);
+      dragFrames.schedule(point.x, point.y);
     } else {
       renderer.panBy(dx, dy);
     }
@@ -308,6 +318,7 @@ export function GraphCanvas(props: {
   const onPointerUp = (event: PointerEvent, cancelled = false) => {
     pointers.delete(event.pointerId);
     pinchDistance = 0;
+    dragFrames.flush();
     if (drag && shouldClickPointer(drag.moved, cancelled)) click(drag.id);
     if (drag?.id && drag.moved) {
       worker?.drag(drag.id, drag.worldX, drag.worldY, drag.pinned);

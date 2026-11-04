@@ -1,6 +1,7 @@
 import { forceCollide, forceLink, forceManyBody, forceSimulation } from "d3-force";
 import type { Force, SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
 import type { GraphViewSettings } from "~/lib/api";
+import { nextDragAlpha } from "./dragAlpha.ts";
 import type { LayoutRequest } from "./layout.ts";
 import { applyHubGravity, compactComponentRadius, componentTargetsForComponents, connectedComponents, linkedSceneRadius, mergeLayout, normalizeMainComponentInPlace, packLayout, selectHubNodes, separateGraphNodes, stablePosition, unpackLayout } from "./layout.ts";
 
@@ -142,8 +143,11 @@ function tick() {
   timer = setTimeout(tick, settings?.qualityTickMs ?? 16);
 }
 
-function restart(alpha = 0.7) {
+function restart(alpha = 0.7, preserveActiveAlpha = false) {
   clearTimeout(timer);
+  if (simulation && preserveActiveAlpha) {
+    alpha = nextDragAlpha(simulation.alpha(), simulation.alphaMin(), alpha);
+  }
   simulation?.alpha(alpha);
   if (alpha === 0) {
     if (!paused) self.postMessage({ type: "settled", generation });
@@ -213,7 +217,7 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
       node.fx = message.pinned ? message.x : undefined;
       node.fy = message.pinned ? message.y : undefined;
       postPositions();
-      restart();
+      restart(0.7, true);
     }
     return;
   }
