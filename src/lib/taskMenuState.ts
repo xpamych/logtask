@@ -4,7 +4,8 @@ export type TaskMenuChange =
   | { kind: "status"; value: string }
   | { kind: "priority"; value: string | null }
   | { kind: "urgency" | "importance"; value: string | null }
-  | { kind: "deadline"; value: string | null };
+  | { kind: "deadline"; value: string | null }
+  | { kind: "clockRunning"; value: boolean };
 
 /** Локальное изменение карточки после успешной записи из открытого меню. */
 export function applyTaskMenuChange(task: TaskDto, change: TaskMenuChange): TaskDto {

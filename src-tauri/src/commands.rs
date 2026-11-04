@@ -619,6 +619,7 @@ pub struct TaskDto {
     pub extra: Vec<String>,
     /// исходник блока для инлайн-редактора в карточке задачи
     pub source: String,
+    pub clock_running: bool,
     /// вложенные задачи (дочерние блоки-задачи, рекурсивно)
     pub children: Vec<TaskDto>,
 }
@@ -664,6 +665,7 @@ fn task_dto(graph: &Graph, id: uuid::Uuid, block: &Block) -> TaskDto {
         props,
         extra: block_extra(block),
         source: block.edit_source(),
+        clock_running: block.clock_running(),
         children: block
             .children
             .iter()
@@ -2321,6 +2323,26 @@ mod tests {
 
         let dto = task_dto(&graph, id, block);
         assert_eq!(dto.extra, ["продолжение", "![[../assets/image.png]]"]);
+    }
+
+    #[test]
+    fn task_dto_includes_clock_running() {
+        let dir = std::env::temp_dir().join("logtask_task_dto_clock_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::write(
+            dir.join("pages/Источник.md"),
+            "- DOING задача\n  :LOGBOOK:\n  CLOCK: [2026-10-28 Wed 21:30:21]\n  :END:\n",
+        )
+        .unwrap();
+        let mut graph = crate::core::model::Graph::default();
+        graph.index_dir(&dir).unwrap();
+        let (id, block) = graph.all_tasks().into_iter().next().unwrap();
+
+        let dto = task_dto(&graph, id, block);
+
+        assert!(dto.clock_running);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

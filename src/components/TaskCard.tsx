@@ -8,6 +8,8 @@ import {
   blockDelete,
   blockSetProp,
   blockUpdateText,
+  clockStart,
+  clockStop,
   openExternal,
   taskSetPriority,
   taskSetQuadrant,
@@ -236,6 +238,18 @@ export function TaskCard(props: {
       props.onChanged?.();
     } catch (e) {
       console.error("не удалось поставить дедлайн:", e);
+    }
+  };
+
+  const onClockToggle = async () => {
+    const running = !t.clockRunning;
+    try {
+      const freshUuid = running ? await clockStart(t.uuid) : await clockStop(t.uuid);
+      setT("uuid", freshUuid);
+      setT(applyTaskMenuChange(t, { kind: "clockRunning", value: running }));
+      props.onChanged?.();
+    } catch (e) {
+      console.error("не удалось переключить учёт времени:", e);
     }
   };
 
@@ -481,11 +495,13 @@ export function TaskCard(props: {
             urgency={t.urgency}
             importance={t.importance}
             task={true}
+            clockRunning={t.clockRunning}
             settings={props.settings}
             onStatus={(m) => void onStatus(m)}
             onPriority={(p) => void onPriority(p)}
             onLevel={(k, l) => void onLevel(k, l)}
             onDeadline={() => void onDeadline()}
+            onClockToggle={() => void onClockToggle()}
             onDelete={() => void onDelete()}
           />
         )}

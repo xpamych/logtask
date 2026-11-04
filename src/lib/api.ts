@@ -234,6 +234,7 @@ export interface TaskDto {
   extra: string[];
   /** исходник блока для инлайн-редактора в карточке */
   source: string;
+  clockRunning: boolean;
   /** вложенные задачи (дочерние блоки-задачи, рекурсивно) */
   children: TaskDto[];
 }

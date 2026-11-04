@@ -20,6 +20,7 @@ const task: TaskDto = {
   props: [],
   extra: [],
   source: "TODO Задача",
+  clockRunning: false,
   children: [],
 };
 
@@ -36,4 +37,11 @@ test("изменения меню сразу обновляют отобража
 
   const done = applyTaskMenuChange(prioritized, { kind: "status", value: "DONE" });
   assert.equal(done.done, true);
+});
+
+test("task_card_clock_toggle_updates_running_state", () => {
+  const running = applyTaskMenuChange(task, { kind: "clockRunning", value: true });
+  assert.equal(running.clockRunning, true);
+  const stopped = applyTaskMenuChange(running, { kind: "clockRunning", value: false });
+  assert.equal(stopped.clockRunning, false);
 });
