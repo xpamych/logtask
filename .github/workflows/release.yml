@@ -84,6 +84,11 @@ jobs:
       - name: Создание или обновление релиза
         run: |
           set -e
+          git fetch --force origin tag "$TAG"
+          if [[ "$(git cat-file -t "$TAG")" != tag ]]; then
+            echo "Тег $TAG не является аннотированным" >&2
+            exit 1
+          fi
           BODY="$(git tag -l "$TAG" --format='%(contents)')"
           if [[ -z "$BODY" ]]; then
             echo "Не найдено описание аннотированного тега $TAG" >&2
