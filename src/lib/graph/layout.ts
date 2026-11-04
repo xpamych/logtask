@@ -114,17 +114,37 @@ export function applyHubGravity<T extends {
   linkedIds: ReadonlySet<string>,
   centerForce = 0.12,
 ): void {
+  applyHubGravityOptimized(nodes, hubs, linkedIds, centerForce);
+}
+
+export function applyHubGravityOptimized<T extends {
+  id: string;
+  x?: number;
+  y?: number;
+  fx?: number | null;
+  fy?: number | null;
+}>(
+  nodes: T[],
+  hubs: T[],
+  linkedIds: ReadonlySet<string>,
+  centerForce = 0.12,
+): void {
   const hubIds = new Set(hubs.map((node) => node.id));
   for (const node of nodes) {
     if (node.fx !== undefined && node.fx !== null || node.fy !== undefined && node.fy !== null) continue;
-    const hub = hubIds.has(node.id)
-      ? undefined
-      : hubs.reduce<T | undefined>((nearest, candidate) => {
-          const distance = Math.hypot((candidate.x ?? 0) - (node.x ?? 0), (candidate.y ?? 0) - (node.y ?? 0));
-          if (!nearest) return candidate;
-          const previous = Math.hypot((nearest.x ?? 0) - (node.x ?? 0), (nearest.y ?? 0) - (node.y ?? 0));
-          return distance < previous ? candidate : nearest;
-        }, undefined);
+    let hub: T | undefined;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    if (!hubIds.has(node.id)) {
+      for (const candidate of hubs) {
+        const dx = (candidate.x ?? 0) - (node.x ?? 0);
+        const dy = (candidate.y ?? 0) - (node.y ?? 0);
+        const distance = dx * dx + dy * dy;
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          hub = candidate;
+        }
+      }
+    }
     const targetX = hub?.x ?? 0;
     const targetY = hub?.y ?? 0;
     const strength = hubIds.has(node.id)
@@ -260,17 +280,26 @@ export function separateGraphNodes(
   radii: ReadonlyMap<string, number>,
   padding = 1,
 ): void {
+  separateGraphNodesOptimized(nodes, radii, padding);
+}
+
+export function separateGraphNodesOptimized(
+  nodes: CollisionNode[],
+  radii: ReadonlyMap<string, number>,
+  padding = 1,
+): void {
   const colliding = nodes.filter((node) => (radii.get(node.id) ?? 0) > 0);
   if (colliding.length < 2) return;
   const maxRadius = Math.max(...colliding.map((node) => radii.get(node.id)!));
   const cellSize = maxRadius * 2 + padding;
-  const indices = new Map(colliding.map((node, index) => [node, index]));
+  type IndexedNode = { node: CollisionNode; index: number };
   for (let iteration = 0; iteration < 12; iteration += 1) {
-    const grid = new Map<string, CollisionNode[]>();
-    for (const node of colliding) {
+    const grid = new Map<string, IndexedNode[]>();
+    for (let index = 0; index < colliding.length; index += 1) {
+      const node = colliding[index];
       const key = `${Math.floor((node.x ?? 0) / cellSize)},${Math.floor((node.y ?? 0) / cellSize)}`;
       const cell = grid.get(key) ?? [];
-      cell.push(node);
+      cell.push({ node, index });
       grid.set(key, cell);
     }
     let changed = false;
@@ -280,15 +309,16 @@ export function separateGraphNodes(
       const cellY = Math.floor((first.y ?? 0) / cellSize);
       for (let dx = -1; dx <= 1; dx += 1) {
         for (let dy = -1; dy <= 1; dy += 1) {
-          for (const second of grid.get(`${cellX + dx},${cellY + dy}`) ?? []) {
-            if (firstIndex >= indices.get(second)!) continue;
+          for (const { node: second, index: secondIndex } of grid.get(`${cellX + dx},${cellY + dy}`) ?? []) {
+            if (firstIndex >= secondIndex) continue;
             const firstRadius = radii.get(first.id)!;
             const secondRadius = radii.get(second.id)!;
             const minimum = firstRadius + secondRadius + padding;
             let deltaX = (second.x ?? 0) - (first.x ?? 0);
             let deltaY = (second.y ?? 0) - (first.y ?? 0);
+            const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+            if (distanceSquared >= minimum * minimum) continue;
             let distance = Math.hypot(deltaX, deltaY);
-            if (distance >= minimum) continue;
             if (distance < 1e-9) {
               const stable = stablePosition(`${first.id}\0${second.id}`);
               distance = Math.hypot(stable.x, stable.y);

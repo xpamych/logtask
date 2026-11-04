@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { componentTargets, componentTargetsForComponents, connectedComponents, createLayoutMigration, linkedSceneRadius, mergeLayout, normalizeMainComponent, normalizeMainComponentInPlace, packLayout, stablePosition, unpackLayout } from "./layout.ts";
+import type { CollisionNode } from "./layout.ts";
+import { applyHubGravityOptimized, componentTargets, componentTargetsForComponents, connectedComponents, createLayoutMigration, linkedSceneRadius, mergeLayout, normalizeMainComponent, normalizeMainComponentInPlace, packLayout, separateGraphNodesOptimized, stablePosition, unpackLayout } from "./layout.ts";
 
 test("стартовые координаты детерминированы и конечны", () => {
   const a = stablePosition("page:А");
@@ -200,4 +201,134 @@ test("миграция не отмечает версию при отклонё�
     () => { marked = true; },
   ), /disk full/);
   assert.equal(marked, false);
+});
+
+function referenceHubGravity(nodes: CollisionNode[], hubs: CollisionNode[], linkedIds: ReadonlySet<string>, centerForce = 0.12) {
+  const hubIds = new Set(hubs.map((node) => node.id));
+  for (const node of nodes) {
+    if (node.fx !== undefined && node.fx !== null || node.fy !== undefined && node.fy !== null) continue;
+    const hub = hubIds.has(node.id)
+      ? undefined
+      : hubs.reduce((nearest: CollisionNode | undefined, candidate) => {
+          const distance = Math.hypot((candidate.x ?? 0) - (node.x ?? 0), (candidate.y ?? 0) - (node.y ?? 0));
+          if (!nearest) return candidate;
+          const previous = Math.hypot((nearest.x ?? 0) - (node.x ?? 0), (nearest.y ?? 0) - (node.y ?? 0));
+          return distance < previous ? candidate : nearest;
+        }, undefined);
+    const targetX = hub?.x ?? 0;
+    const targetY = hub?.y ?? 0;
+    const strength = hubIds.has(node.id)
+      ? centerForce * 0.5
+      : linkedIds.has(node.id)
+        ? centerForce / 6
+        : centerForce / 48;
+    node.x = (node.x ?? 0) + (targetX - (node.x ?? 0)) * strength;
+    node.y = (node.y ?? 0) + (targetY - (node.y ?? 0)) * strength;
+  }
+}
+
+function referenceSeparateGraphNodes(nodes: CollisionNode[], radii: ReadonlyMap<string, number>, padding = 1) {
+  const colliding = nodes.filter((node) => (radii.get(node.id) ?? 0) > 0);
+  if (colliding.length < 2) return;
+  const maxRadius = Math.max(...colliding.map((node) => radii.get(node.id)!));
+  const cellSize = maxRadius * 2 + padding;
+  const indices = new Map(colliding.map((node, index) => [node, index]));
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    const grid = new Map<string, CollisionNode[]>();
+    for (const node of colliding) {
+      const key = `${Math.floor((node.x ?? 0) / cellSize)},${Math.floor((node.y ?? 0) / cellSize)}`;
+      const cell = grid.get(key) ?? [];
+      cell.push(node);
+      grid.set(key, cell);
+    }
+    let changed = false;
+    for (let firstIndex = 0; firstIndex < colliding.length; firstIndex += 1) {
+      const first = colliding[firstIndex];
+      const cellX = Math.floor((first.x ?? 0) / cellSize);
+      const cellY = Math.floor((first.y ?? 0) / cellSize);
+      for (let dx = -1; dx <= 1; dx += 1) {
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (const second of grid.get(`${cellX + dx},${cellY + dy}`) ?? []) {
+            if (firstIndex >= indices.get(second)!) continue;
+            const firstRadius = radii.get(first.id)!;
+            const secondRadius = radii.get(second.id)!;
+            const minimum = firstRadius + secondRadius + padding;
+            let deltaX = (second.x ?? 0) - (first.x ?? 0);
+            let deltaY = (second.y ?? 0) - (first.y ?? 0);
+            let distance = Math.hypot(deltaX, deltaY);
+            if (distance >= minimum) continue;
+            if (distance < 1e-9) {
+              const stable = stablePosition(`${first.id}\0${second.id}`);
+              distance = Math.hypot(stable.x, stable.y);
+              deltaX = stable.x;
+              deltaY = stable.y;
+            }
+            const ux = deltaX / distance;
+            const uy = deltaY / distance;
+            const shift = minimum - distance + 0.0001;
+            const firstFixed = first.fx !== undefined && first.fx !== null;
+            const secondFixed = second.fx !== undefined && second.fx !== null;
+            const firstShift = firstFixed ? (secondFixed ? shift / 2 : 0) : shift / (secondFixed ? 1 : 2);
+            const secondShift = secondFixed ? (firstFixed ? shift / 2 : 0) : shift / (firstFixed ? 1 : 2);
+            first.x = (first.x ?? 0) - ux * firstShift;
+            first.y = (first.y ?? 0) - uy * firstShift;
+            second.x = (second.x ?? 0) + ux * secondShift;
+            second.y = (second.y ?? 0) + uy * secondShift;
+            if (firstFixed) {
+              first.fx = first.x;
+              first.fy = first.y;
+            }
+            if (secondFixed) {
+              second.fx = second.x;
+              second.fy = second.y;
+            }
+            first.vx = 0;
+            first.vy = 0;
+            second.vx = 0;
+            second.vy = 0;
+            changed = true;
+          }
+        }
+      }
+    }
+    if (!changed) return;
+  }
+}
+
+test("optimized_hub_gravity_matches_reference", () => {
+  const makeNodes = () => [
+    { id: "hub-a", x: 0, y: 0 },
+    { id: "hub-b", x: 100, y: 0 },
+    { id: "near-a", x: 10, y: 0 },
+    { id: "near-b", x: 90, y: 0 },
+    { id: "isolated", x: 50, y: 0 },
+    { id: "pinned", x: 10, y: 20, fx: 10, fy: 20 },
+  ];
+  const expected = makeNodes();
+  const actual = makeNodes();
+  const hubs = expected.slice(0, 2);
+  const linked = new Set(["near-a", "near-b"]);
+
+  referenceHubGravity(expected, hubs, linked, 0.12);
+  applyHubGravityOptimized(actual, hubs, linked, 0.12);
+
+  assert.deepEqual(actual, expected);
+});
+
+test("optimized_collision_separation_matches_reference", () => {
+  const makeNodes = () => [
+    { id: "a", x: 0, y: 0 },
+    { id: "b", x: 4, y: 0 },
+    { id: "same", x: 4, y: 0 },
+    { id: "wide", x: 7, y: 1 },
+    { id: "pinned", x: 1, y: 2, fx: 1, fy: 2 },
+  ];
+  const expected = makeNodes();
+  const actual = makeNodes();
+  const radii = new Map([["a", 5], ["b", 5], ["same", 5], ["wide", 2], ["pinned", 3]]);
+
+  referenceSeparateGraphNodes(expected, radii);
+  separateGraphNodesOptimized(actual, radii);
+
+  assert.deepEqual(actual, expected);
 });
