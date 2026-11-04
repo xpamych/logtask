@@ -1,7 +1,6 @@
 //! Глобальное состояние приложения: загруженный граф и файловый watcher
 
 use std::path::PathBuf;
-use std::time::Instant;
 
 use crate::core::model::Graph;
 use parking_lot::{Mutex, RwLock};
@@ -13,8 +12,6 @@ pub struct AppState {
     pub graph_epoch: std::sync::atomic::AtomicU64,
     /// watcher: пока жив — наблюдение активно
     pub watcher: RwLock<Option<notify::RecommendedWatcher>>,
-    /// момент последней записи, сделанной самим приложением
-    pub last_self_write: Mutex<Option<Instant>>,
     /// сериализация read-modify-write layout визуального графа
     pub layout_lock: Mutex<()>,
     /// фоновая задача синхронизации интеграций (abort при смене/закрытии графа)
@@ -34,7 +31,6 @@ impl Default for AppState {
             root: RwLock::new(None),
             graph_epoch: std::sync::atomic::AtomicU64::new(0),
             watcher: RwLock::new(None),
-            last_self_write: Mutex::new(None),
             layout_lock: Mutex::new(()),
             sync_task: Mutex::new(None),
             journal_task: Mutex::new(None),

@@ -276,7 +276,6 @@ async fn sync_inner(app: &tauri::AppHandle, state: &AppState, cfg: &SourceConfig
     }
 
     // 5. переиндексация и событие для UI, только если граф не сменился
-    crate::commands::mark_self_write(state);
     crate::watcher::reindex_and_emit_if_current(app, &context);
     report
 }

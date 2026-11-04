@@ -1,8 +1,15 @@
 //! Модель данных Logtask (см. docs/01-architecture.md).
 
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
+
+pub fn content_hash(text: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
+}
 
 /// Уровень срочности/важности задачи
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -896,6 +903,8 @@ pub struct Page {
     #[serde(default = "default_true", skip)]
     pub ends_with_newline: bool,
     pub mtime: Option<std::time::SystemTime>,
+    #[serde(default, skip)]
+    pub content_hash: u64,
     /// путь к файлу относительно корня графа
     #[serde(default)]
     pub path: Option<std::path::PathBuf>,

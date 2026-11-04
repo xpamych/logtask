@@ -130,6 +130,7 @@ pub fn roundtrip(text: &str) -> String {
         trailing_blank: parsed.trailing_blank,
         ends_with_newline: parsed.ends_with_newline,
         mtime: None,
+        content_hash: super::model::content_hash(text),
         path: None,
     };
     serialize_page(&page, &blocks)

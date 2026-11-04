@@ -603,6 +603,7 @@ pub fn parse_file(name: &str, kind: PageKind, text: &str) -> Page {
         trailing_blank: parsed.trailing_blank,
         ends_with_newline: parsed.ends_with_newline,
         mtime: None,
+        content_hash: super::model::content_hash(text),
         path: None,
     }
 }

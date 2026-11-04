@@ -5,11 +5,6 @@ use crate::core::index::IndexStats;
 use crate::core::model::{Block, Graph, PageKind, Status};
 use crate::state::AppState;
 
-/// Отмечает, что запись в файлы сделана нами — watcher пропустит эхо
-pub(crate) fn mark_self_write(state: &AppState) {
-    *state.last_self_write.lock() = Some(std::time::Instant::now());
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphSummary {
     pub pages: usize,
@@ -501,7 +496,6 @@ pub async fn page_rename(
             .rename_page(&old_name, &new_name, &root)
             .map_err(|e| format!("{e}"))
     };
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     result
 }
@@ -546,7 +540,6 @@ pub async fn page_delete(
             .delete_page_file(&name, &root)
             .map_err(|e| format!("удаление {name}: {e}"))?;
     }
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(())
 }
@@ -575,7 +568,6 @@ pub async fn page_create(
     }
     let root = state.root.read().clone().ok_or("граф не загружен")?;
     Graph::create_page_file(&name, &root).map_err(|e| e.to_string())?;
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
@@ -969,7 +961,6 @@ pub async fn task_set_quadrant(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     reindexed_block_uuid(&state, &page, position)
 }
@@ -1079,7 +1070,6 @@ pub async fn task_set_status(
     };
 
     // переиндексируем и оповестим UI
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
 
     if let Some((src, rid)) = push_info {
@@ -1152,7 +1142,6 @@ pub async fn block_update_text(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -1181,7 +1170,6 @@ pub async fn block_delete(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -1225,7 +1213,6 @@ async fn merge_cmd(
     let Some((page, pos)) = res else {
         return Ok(None);
     };
-    mark_self_write(&state);
     // полная переиндексация пересоздаёт uuid — находим финальный uuid
     // выжившего блока по его позиции уже в новом графе
     crate::watcher::reindex_and_emit(&app);
@@ -1320,7 +1307,6 @@ pub async fn block_split(
     let Some((page, pos)) = res else {
         return Ok(None);
     };
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     let fresh_uuid = {
         let graph = state.graph.read();
@@ -1367,7 +1353,6 @@ pub async fn block_create(
         }
         position
     };
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     finish_created_block(&state, &page, position)
 }
@@ -1423,7 +1408,6 @@ fn ensure_journal_after_rollover(app: &tauri::AppHandle) {
     match Graph::ensure_journal_file(&root, &name) {
         Ok(true) => {
             log::info!("создана страница журнала после смены суток: {name}");
-            mark_self_write(&state);
             crate::watcher::reindex_and_emit(app);
         }
         Ok(false) => {}
@@ -1505,7 +1489,6 @@ async fn clock_toggle(
     let Some(page) = result else {
         return Err("блок не найден в графе".into());
     };
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     reindexed_block_uuid(&state, &page, position)
 }
@@ -1672,7 +1655,6 @@ pub async fn task_set_priority(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     reindexed_block_uuid(&state, &page, position)
 }
@@ -1710,7 +1692,6 @@ pub async fn block_set_prop(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
-    mark_self_write(&state);
     crate::watcher::reindex_and_emit(&app);
     reindexed_block_uuid(&state, &page, position)
 }
