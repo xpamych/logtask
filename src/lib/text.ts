@@ -19,6 +19,21 @@ export function persistedSource(source: string): string {
   return [first, ...rest.map((line) => line.replace(/^-(?=\s)/, "\\-"))].join("\n");
 }
 
+export function completeWikiLink(
+  text: string,
+  name: string,
+  query: string,
+): { text: string; caret: number } {
+  const open = text.lastIndexOf("[[");
+  if (open === -1) return { text, caret: text.length };
+  const queryEnd = open + 2 + query.length;
+  const caret = open + 2 + name.length + 2;
+  return {
+    text: text.slice(0, open + 2) + name + "]]" + text.slice(queryEnd),
+    caret,
+  };
+}
+
 const LINK_RE = /\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g;
 // простые теги обрываются по той же пунктуации, что и в ядре
 // (src-tauri/src/core/parser.rs, extract_links)

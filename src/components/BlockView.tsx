@@ -2,7 +2,7 @@ import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid
 import type { JSX } from "solid-js";
 import { createStore } from "solid-js/store";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
-import { clickCaretPosition, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
+import { clickCaretPosition, completeWikiLink, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
 import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { RichText } from "./RichText";
@@ -118,9 +118,9 @@ export function BlockView(props: {
 
   const acceptAutocomplete = (name: string) => {
     const text = draft();
-    const lastOpen = text.lastIndexOf("[[");
-    if (lastOpen === -1) return;
-    const replaced = text.slice(0, lastOpen + 2) + name + "]]";
+    const query = autocompleteQuery(text);
+    if (query === null) return;
+    const { text: replaced, caret } = completeWikiLink(text, name, query);
     setDraft(replaced);
     setAcOpen(false);
     queueMicrotask(() => {
@@ -128,7 +128,7 @@ export function BlockView(props: {
       if (el) {
         el.focus();
         setTextareaValue(el, replaced);
-        el.setSelectionRange(el.value.length, el.value.length);
+        el.setSelectionRange(caret, caret);
       }
     });
   };

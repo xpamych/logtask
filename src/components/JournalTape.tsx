@@ -14,6 +14,7 @@ import { formatJournalName, journalLogseqTitle, todayJournalName } from "~/lib/t
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { visibleJournalsAfterRefresh } from "~/lib/journalRefresh";
+import { composerMarker } from "~/lib/composer";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
 
@@ -156,10 +157,12 @@ export function JournalTape(props: {
   // инлайн-редактор новой записи в пустом дне: открывается по клику
   // на «В этот день записей нет», Enter/blur сохраняет, Escape отменяет
   const [composerDay, setComposerDay] = createSignal<string | null>(null);
+  const [composerKind, setComposerKind] = createSignal<"TODO" | null>(null);
   let composerEl: HTMLTextAreaElement | undefined;
 
-  const openComposer = (day: string) => {
+  const openComposer = (day: string, kind: "command" | "plain" = "plain") => {
     setComposerDay(day);
+    setComposerKind(composerMarker(kind));
     queueMicrotask(() => {
       if (!composerEl) return;
       composerEl.focus();
@@ -175,16 +178,18 @@ export function JournalTape(props: {
     const text = (composerEl?.value ?? "").trim();
     if (!text) {
       setComposerDay(null);
+      setComposerKind(null);
       return;
     }
     try {
-      await blockCreate(day, text, null);
+      await blockCreate(day, text, composerKind());
       await reload();
       if (keepOpen && composerEl) {
         setTextareaValue(composerEl, "");
         composerEl.focus();
       } else {
         setComposerDay(null);
+        setComposerKind(null);
       }
     } catch (e) {
       setError(String(e));
@@ -199,13 +204,14 @@ export function JournalTape(props: {
     } else if (e.key === "Escape") {
       e.preventDefault();
       setComposerDay(null);
+      setComposerKind(null);
     }
   };
 
   onMount(reload);
 
   onMount(() => {
-    const openToday = () => openComposer(todayJournalName());
+    const openToday = () => openComposer(todayJournalName(), "command");
     window.addEventListener("logtask:new-task", openToday);
     onCleanup(() => window.removeEventListener("logtask:new-task", openToday));
   });
