@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Исходники
+        uses: actions/checkout@v4
+
+      - name: Системные зависимости Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config curl jq file ca-certificates \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Зависимости npm
+        run: npm ci
+
+      - name: Тесты frontend
+        run: node --conditions=browser --test src/lib/graph/*.test.ts src/components/graph/*.test.ts src/lib/*.test.ts
+
+      - name: Сборка frontend
+        run: npm run build
+
+      - name: Аудит production-зависимостей
+        run: npm audit --omit=dev
+
+      - name: Проверка Rust
+        run: |
+          cargo fmt --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+
+      - name: Сборка приложения
+        run: npm run app:build
+
+      - name: Формирование архива
+        run: |
+          mkdir -p pkg/logtask-linux-x86_64
+          cp target/release/logtask pkg/logtask-linux-x86_64/
+          cp public/icon.png pkg/logtask-linux-x86_64/logtask.png
+          printf '%s\n' \
+            '[Desktop Entry]' \
+            'Name=Logtask' \
+            'Comment=Журнал по дням и задачи над md-файлами Logseq' \
+            'Exec=logtask' \
+            'Icon=logtask' \
+            'Terminal=false' \
+            'Type=Application' \
+            'Categories=Utility;Office;' \
+            > pkg/logtask-linux-x86_64/logtask.desktop
+          tar -czf logtask-linux-x86_64.tar.gz -C pkg logtask-linux-x86_64
+          tar -tzf logtask-linux-x86_64.tar.gz
+
+      - name: Артефакт сборки
+        uses: actions/upload-artifact@v4
+        with:
+          name: logtask-linux-x86_64
+          path: logtask-linux-x86_64.tar.gz
+
+      - name: Создание или обновление релиза
+        run: |
+          set -e
+          BODY="$(git tag -l "$TAG" --format='%(contents)')"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "Logtask $TAG" --notes "$BODY"
+            gh release upload "$TAG" logtask-linux-x86_64.tar.gz --clobber
+          else
+            gh release create "$TAG" \
+              --title "Logtask $TAG" \
+              --notes "$BODY" \
+              logtask-linux-x86_64.tar.gz
+          fi
