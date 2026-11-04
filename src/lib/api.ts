@@ -405,8 +405,8 @@ export async function settingsGet(): Promise<Settings> {
   return invoke<Settings>("settings_get");
 }
 
-export async function settingsSave(settings: Settings): Promise<void> {
-  await invoke<void>("settings_save", { settings });
+export async function settingsSave(settings: Settings, expectedRoot: string): Promise<void> {
+  await invoke<void>("settings_save", { settings, expectedRoot });
 }
 
 // ---------- Интеграции ----------

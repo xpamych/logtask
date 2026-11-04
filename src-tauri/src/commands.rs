@@ -1506,15 +1506,21 @@ pub fn settings_get(
 }
 
 /// Сохраняет настройки графа
+fn ensure_settings_graph_root(current: &std::path::Path, expected: &str) -> Result<(), String> {
+    ensure_expected_graph_root(current, expected)
+}
+
 #[tauri::command]
 pub fn settings_save(
     settings: crate::settings::Settings,
+    expected_root: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let root = state.root.read().clone();
     let Some(root) = root else {
         return Err("граф не загружен".into());
     };
+    ensure_settings_graph_root(&root, &expected_root)?;
     crate::settings::save(&root, &settings).map_err(|e| format!("ошибка: {e}"))
 }
 
@@ -2610,5 +2616,12 @@ mod tests {
 
         assert_eq!(actual, expected);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn settings_save_rejects_wrong_root() {
+        let current = std::path::PathBuf::from("/graph-b");
+        assert!(super::ensure_settings_graph_root(&current, "/graph-a").is_err());
+        assert!(super::ensure_settings_graph_root(&current, "/graph-b").is_ok());
     }
 }

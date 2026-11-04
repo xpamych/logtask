@@ -17,6 +17,7 @@ import { splitBacklinks } from "~/lib/backlinks";
 import { focusMatchesPage } from "~/lib/focus";
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
+import { PageLoadGuard } from "~/lib/pageLoad";
 import { IconStar } from "~/components/icons";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
@@ -143,27 +144,35 @@ export function PageView(props: {
     }
   };
 
+  const loadGuard = new PageLoadGuard();
   const load = async () => {
+    const epoch = loadGuard.begin();
     setError(null);
     setVirtual(false);
     try {
       const isJournal = /^\d{4}_\d{2}_\d{2}$/.test(props.name);
       let p = isJournal ? await pageGet(props.name) : null;
+      if (!loadGuard.isCurrent(epoch)) return;
       if (p === null) {
         p = (await followLink(props.name)) ?? null;
       }
+      if (!loadGuard.isCurrent(epoch)) return;
       if (p === null) {
         // страница-ссылка без файла: открываем виртуальную страницу
         // с обратными ссылками, а не ошибку
+        const links = await backlinksGet(props.name);
+        if (!loadGuard.isCurrent(epoch)) return;
         setVirtual(true);
         setPage({ name: props.name, kind: "page", blocks: [], preamble: [] });
-        setBacklinks(await backlinksGet(props.name));
+        setBacklinks(links);
         return;
       }
       setPage(p);
-      setBacklinks(await backlinksGet(props.name));
+      const links = await backlinksGet(props.name);
+      if (!loadGuard.isCurrent(epoch)) return;
+      setBacklinks(links);
     } catch (e) {
-      setError(String(e));
+      if (loadGuard.isCurrent(epoch)) setError(String(e));
     }
   };
 

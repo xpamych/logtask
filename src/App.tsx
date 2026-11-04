@@ -39,6 +39,7 @@ import { commandForContext, effectiveShortcuts, formatShortcut, normalizeShortcu
 import { homeViewFromSetting } from "~/lib/homeView";
 import { loadGraphBootstrap } from "~/lib/startup";
 import { selectedTaskUuid } from "~/lib/taskNavigation";
+import { SettingsWriteQueue } from "~/lib/settingsQueue";
 
 const RECENT_PAGES_KEY = "logtask:recentPages";
 
@@ -135,6 +136,19 @@ const App: Component = () => {
   const [saveState, setSaveState] = createSignal<"saved" | "dirty" | "error">("saved");
   const [saveError, setSaveError] = createSignal<string | null>(null);
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  let latestSaveRequest = 0;
+  const settingsWriter = new SettingsWriteQueue<Settings>(
+    async (next, root) => settingsSave(next, root),
+    (sequence, error) => {
+      if (sequence !== latestSaveRequest) return;
+      if (error) {
+        setSaveState("error");
+        setSaveError(String(error));
+      } else {
+        setSaveState("saved");
+      }
+    },
+  );
 
   // изменения со страницы настроек: мгновенно в сигнал (тема/шрифт
   // применяются сразу), на диск — сразу или с дебаунсом 400 мс
@@ -144,12 +158,13 @@ const App: Component = () => {
     setSaveError(null);
     clearTimeout(saveTimer);
     const run = () => {
-      void settingsSave(s)
-        .then(() => setSaveState("saved"))
-        .catch((e) => {
-          setSaveState("error");
-          setSaveError(String(e));
-        });
+      const root = summary()?.root;
+      if (!root) {
+        setSaveState("error");
+        setSaveError("граф не загружен");
+        return;
+      }
+      latestSaveRequest = settingsWriter.enqueue(root, s);
     };
     if (opts?.immediate) run();
     else saveTimer = setTimeout(run, 400);
@@ -193,8 +208,7 @@ const App: Component = () => {
   // сохраняем ширины панелей после отпускания ручки
   const commitWidths = () => {
     const s = { ...settings(), sidebarWidth: sidebarW(), taskpanelWidth: panelW() };
-    setSettings(s);
-    void settingsSave(s).catch((e) => console.error("settings save:", e));
+    saveSettingsAuto(s, { immediate: true });
   };
 
   // история навигации для кнопок назад/вперёд/домой
@@ -411,7 +425,7 @@ const App: Component = () => {
       : [...s.favorites, name];
     const next = { ...s, favorites };
     setSettings(next);
-    void settingsSave(next).catch((e) => console.error("settings save:", e));
+    saveSettingsAuto(next, { immediate: true });
   };
 
   // страница переименована: подменяем имя в избранном и недавних,
@@ -424,7 +438,7 @@ const App: Component = () => {
       const favorites = s.favorites.map((f) => (f === old ? newName : f));
       const next = { ...s, favorites };
       setSettings(next);
-      void settingsSave(next).catch((e) => console.error("settings save:", e));
+      saveSettingsAuto(next, { immediate: true });
     }
     if (recentPages().includes(old)) {
       const rec = recentPages().map((r) => (r === old ? newName : r));
@@ -442,7 +456,7 @@ const App: Component = () => {
     if (s.favorites.includes(old)) {
       const next = { ...s, favorites: s.favorites.filter((f) => f !== old) };
       setSettings(next);
-      void settingsSave(next).catch((e) => console.error("settings save:", e));
+      saveSettingsAuto(next, { immediate: true });
     }
     if (recentPages().includes(old)) {
       const rec = recentPages().filter((r) => r !== old);
@@ -470,6 +484,7 @@ const App: Component = () => {
     try {
       const { summary, pages, settings } = await loadGraphBootstrap(graphLoad, pageList, settingsGet);
       setSummary(summary);
+      settingsWriter.setGraph(summary.root ?? "");
       setPages(pages);
       applySettings(settings);
       // стартовый вид — домашняя страница из настроек
@@ -588,6 +603,7 @@ const App: Component = () => {
       }
       const { summary, pages, settings } = await loadGraphBootstrap(() => graphLoad(path), pageList, settingsGet);
       setSummary(summary);
+      settingsWriter.setGraph(summary.root ?? "");
       setGraphClosed(false);
       setBackStack([]);
       setFwdStack([]);
@@ -610,6 +626,7 @@ const App: Component = () => {
     } catch (e) {
       console.error("graph close:", e);
     }
+    settingsWriter.setGraph("");
     setSummary(null);
     setPages([]);
     setCurrent(null);
