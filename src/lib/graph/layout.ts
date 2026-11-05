@@ -438,7 +438,7 @@ export function startLayoutWorker(callbacks: LayoutCallbacks) {
     resume: () => send({ type: "resume" }),
     stop: () => {
       send({ type: "stop" });
-      worker.terminate();
+      setTimeout(() => worker.terminate(), 0);
     },
   };
 }

@@ -51,8 +51,21 @@ export function labelOutsideCanvas(x: number, y: number, width: number, height: 
   return x < -100 || y < -30 || x > width + 100 || y > height + 30;
 }
 
+export function labelSpriteCssSize(size: number, pixelRatio: number): number {
+  return size / pixelRatio;
+}
+
 export function labelCacheKey(descriptor: LabelDescriptor, pixelRatio: number): string {
   return `${descriptor.text}\0${descriptor.bold}\0${descriptor.color}\0${pixelRatio}`;
+}
+
+class LabelAtlasOverflow extends Error {
+  readonly size: number;
+
+  constructor(size: number) {
+    super("Недостаточно места в atlas подписей");
+    this.size = size;
+  }
 }
 
 export class LabelAtlasLayout {
@@ -73,41 +86,47 @@ export class LabelAtlasLayout {
     measure: (descriptor: LabelDescriptor) => LabelSize,
     rendered: string[],
   ): LabelSprite[] {
-    this.pending.length = 0;
-    const sprites: LabelSprite[] = [];
-    for (const descriptor of descriptors) {
-      const key = labelCacheKey(descriptor, pixelRatio);
-      let rect = this.placements.get(key);
-      if (!rect) {
-        const size = measure(descriptor);
-        rect = this.allocate(size);
-        this.placements.set(key, rect);
-        this.pending.push({ descriptor, rect });
-        rendered.push(key);
+    try {
+      this.pending.length = 0;
+      const sprites: LabelSprite[] = [];
+      for (const descriptor of descriptors) {
+        const key = labelCacheKey(descriptor, pixelRatio);
+        let rect = this.placements.get(key);
+        if (!rect) {
+          const size = measure(descriptor);
+          rect = this.allocate(size);
+          this.placements.set(key, rect);
+          this.pending.push({ descriptor, rect });
+          rendered.push(key);
+        }
+        sprites.push({
+          key: descriptor.key,
+          opacity: descriptor.opacity,
+          x: descriptor.x,
+          y: descriptor.y,
+          width: rect.width,
+          height: rect.height,
+          u0: rect.x / this.atlasSize,
+          v0: rect.y / this.atlasSize,
+          u1: (rect.x + rect.width) / this.atlasSize,
+          v1: (rect.y + rect.height) / this.atlasSize,
+        });
       }
-      sprites.push({
-        key: descriptor.key,
-        opacity: descriptor.opacity,
-        x: descriptor.x,
-        y: descriptor.y,
-        width: rect.width,
-        height: rect.height,
-        u0: rect.x / this.atlasSize,
-        v0: rect.y / this.atlasSize,
-        u1: (rect.x + rect.width) / this.atlasSize,
-        v1: (rect.y + rect.height) / this.atlasSize,
-      });
-    }
-    return sprites;
-  }
-
-  private allocate(size: LabelSize): LabelRect {
-    if (size.width > this.atlasSize || size.height > this.atlasSize) {
-      this.atlasSize = Math.max(size.width, size.height);
+      return sprites;
+    } catch (error) {
+      if (!(error instanceof LabelAtlasOverflow)) throw error;
+      this.atlasSize = error.size;
       this.placements.clear();
       this.x = 0;
       this.y = 0;
       this.rowHeight = 0;
+      return this.sync(descriptors, pixelRatio, measure, rendered);
+    }
+  }
+
+  private allocate(size: LabelSize): LabelRect {
+    if (size.width > this.atlasSize || size.height > this.atlasSize) {
+      throw new LabelAtlasOverflow(Math.max(size.width, size.height));
     }
     if (this.x + size.width > this.atlasSize) {
       this.x = 0;
@@ -115,12 +134,7 @@ export class LabelAtlasLayout {
       this.rowHeight = 0;
     }
     if (this.y + size.height > this.atlasSize) {
-      this.atlasSize *= 2;
-      this.placements.clear();
-      this.x = 0;
-      this.y = 0;
-      this.rowHeight = 0;
-      return this.allocate(size);
+      throw new LabelAtlasOverflow(this.atlasSize * 2);
     }
     const rect = { x: this.x, y: this.y, ...size };
     this.x += size.width;
@@ -220,8 +234,8 @@ class LabelSpriteProgram {
       this.batch.push(
         sprite.x,
         sprite.y,
-        sprite.width,
-        sprite.height,
+        labelSpriteCssSize(sprite.width, pixelRatio),
+        labelSpriteCssSize(sprite.height, pixelRatio),
         sprite.u0,
         sprite.v0,
         sprite.u1,

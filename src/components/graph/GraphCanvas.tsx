@@ -212,6 +212,7 @@ export function GraphCanvas(props: {
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
       document.removeEventListener("visibilitychange", onDocumentVisibility);
       observer?.disconnect();
+      dragFrames.flush();
       dragFrames.dispose();
       worker?.stop();
       renderer?.dispose();

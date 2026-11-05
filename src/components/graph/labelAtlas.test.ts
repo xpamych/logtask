@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LabelAtlasLayout, allowLabel, labelCacheKey, labelOutsideCanvas, labelText } from "./labelAtlas.ts";
+import { LabelAtlasLayout, allowLabel, labelCacheKey, labelOutsideCanvas, labelSpriteCssSize, labelText } from "./labelAtlas.ts";
 import type { LabelDescriptor } from "./labelAtlas.ts";
 
 function descriptor(key: string, overrides: Partial<LabelDescriptor> = {}): LabelDescriptor {
@@ -67,4 +67,31 @@ test("overflow детерминированно пересобирает atlas �
   assert.equal(a.length, labels.length);
   assert(a.some((sprite) => sprite.key === "P"));
   assert(first.atlasSize >= 128);
+});
+
+test("overflow пересобирает UV и растеризацию всех подписей на следующем кадре", () => {
+  const layout = new LabelAtlasLayout(64);
+  const measure = () => ({ width: 20, height: 10 });
+  const initial = Array.from({ length: 3 }, (_, index) => descriptor(`N${index}`));
+  layout.sync(initial, 1, measure, []);
+  const labels = [
+    ...Array.from({ length: 30 }, (_, index) => descriptor(`N${index}`)),
+    descriptor("P", { priority: true, bold: true }),
+  ];
+  const rendered: string[] = [];
+  const sprites = layout.sync(labels, 1, measure, rendered);
+  assert(layout.atlasSize >= 128);
+  for (const sprite of sprites) {
+    assert(Math.abs((sprite.u1 - sprite.u0) - 20 / layout.atlasSize) < 1e-9);
+    assert(sprite.u0 >= 0 && sprite.u1 <= 1);
+  }
+  assert.equal(layout.pending.length, labels.length);
+  assert(rendered.some((key) => key.startsWith("N0")));
+  assert(sprites.some((sprite) => sprite.key === "P"));
+});
+
+test("размер sprite остаётся CSS-величиной при разных DPR", () => {
+  assert.equal(labelSpriteCssSize(20, 1), 20);
+  assert.equal(labelSpriteCssSize(20, 1.5), 13.333333333333334);
+  assert.equal(labelSpriteCssSize(20, 2), 10);
 });
