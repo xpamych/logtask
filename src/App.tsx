@@ -8,6 +8,7 @@ import {
   graphNeedsScaffold,
   graphSummary,
   integrationsSync,
+  logFrontend,
   pageList,
   pickGraphDir,
   settingsGet,
@@ -37,7 +38,7 @@ import { COMMAND_DEFINITIONS } from "~/lib/commands";
 import { activeModalContext, pushModalContext } from "~/lib/modalState";
 import { commandForContext, effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { homeViewFromSetting } from "~/lib/homeView";
-import { loadGraphBootstrap } from "~/lib/startup";
+import { isGraphNotChosen, loadGraphBootstrap } from "~/lib/startup";
 import { selectedTaskUuid } from "~/lib/taskNavigation";
 import { SettingsWriteQueue } from "~/lib/settingsQueue";
 
@@ -489,6 +490,7 @@ const App: Component = () => {
       void listenSyncEvents();
     } catch (e) {
       setError(String(e));
+      void logFrontend(`bootstrap: ${String(e)}`);
     } finally {
       setStarting(false);
     }
@@ -635,8 +637,7 @@ const App: Component = () => {
   };
 
   // первый запуск: граф не выбран — показываем приветственный экран
-  const graphNotChosen = () =>
-    !summary() && (graphClosed() || (error() ?? "").includes("граф не выбран"));
+  const graphNotChosen = () => isGraphNotChosen(summary(), graphClosed(), error());
 
   const pickGraph = async () => {
     const path = await pickGraphDir();

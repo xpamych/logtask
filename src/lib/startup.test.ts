@@ -47,3 +47,11 @@ test("ошибка загрузки графа пробрасывается бе
   );
   assert.equal(secondaryCalled, false);
 });
+
+test("недоступный путь графа включает экран выбора, а не пустой центр", async () => {
+  const { isGraphNotChosen } = await import("./startup.ts");
+  assert.equal(isGraphNotChosen(null, false, "граф не найден: /временная-копия"), true);
+  assert.equal(isGraphNotChosen(null, false, "граф не выбран — откройте диалог"), true);
+  assert.equal(isGraphNotChosen(null, true, null), true);
+  assert.equal(isGraphNotChosen({ root: "/граф" }, false, null), false);
+});
