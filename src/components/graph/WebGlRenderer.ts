@@ -221,6 +221,9 @@ export class WebGlRenderer {
   private node16Colors = new InstanceBatch();
   private node64Colors = new InstanceBatch();
   private edgeColor: RGBA = [0.35, 0.75, 0.8, 0.78];
+  private mutedEdgeColor: RGBA = color("#777777");
+  private hoverColor: RGBA = color("#09bec8");
+  private nodeBaseColors = new Map<string, RGBA>();
   private foreground = "#dddddd";
   private settings: GraphViewSettings | null = null;
   private positions = new Map<string, { x: number; y: number }>();
@@ -319,6 +322,10 @@ export class WebGlRenderer {
     this.renderEdges = this.cachedRenderEdges(scene.edges);
     this.edgeAlphas.clear();
     this.settings = settings;
+    this.nodeBaseColors = new Map(scene.nodes.map((node) => [
+      node.id,
+      color(colorForNode(node, settings.groups) ?? (node.kind === "journal" ? "#ff9800" : node.kind === "asset" ? "#4caf50" : node.kind === "virtual" ? "#777777" : "#9b59b6")),
+    ]));
     this.refreshStyles();
     const ids = new Set(scene.nodes.map((node) => node.id));
     this.positions.forEach((_, id) => {
@@ -494,6 +501,10 @@ export class WebGlRenderer {
     let moving = false;
     for (const [id, target] of this.targetPositions) {
       const current = this.positions.get(id) ?? target;
+      if (current.x === target.x && current.y === target.y) {
+        this.positions.set(id, target);
+        continue;
+      }
       const x = interpolateValue(current.x, target.x, elapsed, 0.12);
       const y = interpolateValue(current.y, target.y, elapsed, 0.12);
       if (Math.abs(target.x - x) > 0.02 || Math.abs(target.y - y) > 0.02) {
@@ -532,6 +543,7 @@ export class WebGlRenderer {
     for (const node of this.scene.nodes) {
       const target = graphNodeRole(node.id, this.hovered, active) === "muted" ? 0.25 : 1;
       const current = this.nodeAlphas.get(node.id) ?? target;
+      if (current === target) continue;
       const next = transitionAlpha(current, target, elapsed, 0.12, this.motionPreference.matches);
       this.nodeAlphas.set(node.id, next.value);
       moving ||= next.moving;
@@ -541,6 +553,7 @@ export class WebGlRenderer {
       const muted = active.size > 0 && !(active.has(edge.source) && active.has(edge.target));
       const target = muted ? 0.08 : this.edgeColor[3];
       const current = this.edgeAlphas.get(key) ?? target;
+      if (current === target) continue;
       const next = transitionAlpha(current, target, elapsed, 0.12, this.motionPreference.matches);
       this.edgeAlphas.set(key, next.value);
       moving ||= next.moving;
@@ -587,7 +600,7 @@ export class WebGlRenderer {
       const muted = activeHighlight.size > 0 &&
         !(activeHighlight.has(edge.source) && activeHighlight.has(edge.target));
       const key = `${edge.source}->${edge.target}`;
-      const base = muted ? color("#777777") : this.edgeColor;
+      const base = muted ? this.mutedEdgeColor : this.edgeColor;
       const rgba: RGBA = [base[0], base[1], base[2], this.edgeAlphas.get(key) ?? base[3]];
       if (edge.source === edge.target) {
         selfLinks.push(source.x, source.y, ...rgba, edgeWidth);
@@ -631,11 +644,11 @@ export class WebGlRenderer {
     colors64.clear();
     for (const node of this.scene.nodes) {
       const point = this.positions.get(node.id)!;
-      const custom = this.settings ? colorForNode(node, this.settings.groups) : null;
-      const base = custom ?? (node.kind === "journal" ? "#ff9800" : node.kind === "asset" ? "#4caf50" : node.kind === "virtual" ? "#777777" : "#9b59b6");
+      const base = this.nodeBaseColors.get(node.id)!;
       const role = graphNodeRole(node.id, this.hovered, activeHighlight);
       const alpha = this.nodeAlphas.get(node.id) ?? (role === "muted" ? 0.25 : 1);
-      const rgba = color(role === "hovered" ? "#09bec8" : base, alpha);
+      const tint = role === "hovered" ? this.hoverColor : base;
+      const rgba: RGBA = [tint[0], tint[1], tint[2], alpha];
       const radius = this.nodeRadius(node);
       const batch = nodeSegments(radius, this.camera.zoom) === 64 ? nodes64 : nodes16;
       const colors = batch === nodes64 ? colors64 : colors16;
@@ -650,8 +663,9 @@ export class WebGlRenderer {
 
   private labelDescriptors(): LabelDescriptor[] {
     if (!this.settings) return [];
-    const descriptors: LabelDescriptor[] = [];
     const activeHighlight = this.activeHighlight();
+    if (this.scene.nodes.length > 100 && this.camera.zoom < 1.5 && activeHighlight.size === 0) return [];
+    const descriptors: LabelDescriptor[] = [];
     let count = 0;
     const addLabel = (node: SceneNode) => {
       const role = graphNodeRole(node.id, this.hovered, activeHighlight);
