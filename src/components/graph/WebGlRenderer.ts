@@ -7,7 +7,7 @@ import { allowLabel, LabelAtlas, labelOutsideCanvas, labelText } from "./labelAt
 import type { LabelDescriptor } from "./labelAtlas";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
-import { createRenderEdgeCache, graphNodeLabelOpacity, graphNodeRadius, graphNodeRole, indexSceneNodes } from "./renderEdges";
+import { createRenderEdgeCache, graphNodeLabelOpacity, graphNodeRadius, graphNodeRole, indexSceneNodes, isEdgeHighlighted } from "./renderEdges";
 import type { RenderEdge } from "./renderEdges";
 
 interface Camera {
@@ -222,6 +222,7 @@ export class WebGlRenderer {
   private node64Colors = new InstanceBatch();
   private edgeColor: RGBA = [0.35, 0.75, 0.8, 0.78];
   private mutedEdgeColor: RGBA = color("#777777");
+  private highlightEdgeColor: RGBA = color("#09bec8");
   private hoverColor: RGBA = color("#09bec8");
   private nodeBaseColors = new Map<string, RGBA>();
   private foreground = "#dddddd";
@@ -313,6 +314,7 @@ export class WebGlRenderer {
   private refreshStyles() {
     const styles = getComputedStyle(document.body);
     this.edgeColor = color(styles.getPropertyValue("--graph-edge") || "#536575", 0.78);
+    this.highlightEdgeColor = color(styles.getPropertyValue("--accent") || "#09bec8");
     this.foreground = styles.getPropertyValue("--fg") || "#dddddd";
   }
 
@@ -600,7 +602,9 @@ export class WebGlRenderer {
       const muted = activeHighlight.size > 0 &&
         !(activeHighlight.has(edge.source) && activeHighlight.has(edge.target));
       const key = `${edge.source}->${edge.target}`;
-      const base = muted ? this.mutedEdgeColor : this.edgeColor;
+      const base = isEdgeHighlighted(edge.source, edge.target, activeHighlight)
+        ? this.highlightEdgeColor
+        : muted ? this.mutedEdgeColor : this.edgeColor;
       const rgba: RGBA = [base[0], base[1], base[2], this.edgeAlphas.get(key) ?? base[3]];
       if (edge.source === edge.target) {
         selfLinks.push(source.x, source.y, ...rgba, edgeWidth);

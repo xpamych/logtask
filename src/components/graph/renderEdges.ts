@@ -29,6 +29,10 @@ export function graphNodeRole(
   return "normal";
 }
 
+export function isEdgeHighlighted(source: string, target: string, highlighted: ReadonlySet<string>): boolean {
+  return highlighted.size > 0 && highlighted.has(source) && highlighted.has(target);
+}
+
 export function graphNodeRadius(
   node: Pick<SceneNode, "degree" | "clusterMembers">,
   nodeScale = 1,

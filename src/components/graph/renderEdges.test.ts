@@ -103,3 +103,11 @@ test("радиус узла плавно растёт начиная с пяти
   assert.equal(renderEdges.graphNodeRadius({ degree: 8 }), 5.4);
   assert.equal(renderEdges.graphNodeRadius({ degree: 2, clusterMembers: ["A", "B"] }), 7);
 });
+
+test("ребро пути подсвечивается только при активных обеих вершинах", () => {
+  const active = new Set(["A", "B"]);
+  assert.equal(renderEdges.isEdgeHighlighted("A", "B", active), true);
+  assert.equal(renderEdges.isEdgeHighlighted("B", "A", active), true);
+  assert.equal(renderEdges.isEdgeHighlighted("A", "C", active), false);
+  assert.equal(renderEdges.isEdgeHighlighted("A", "B", new Set()), false);
+});
