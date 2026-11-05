@@ -58,26 +58,30 @@ test("узлы индексируются по id без линейного по
   assert.equal(index.size, 2);
 });
 
-test("обычные подписи плавно проявляются после порога", () => {
-  assert.equal(nodeLabelOpacity(20, 0.2, 0.35, false), 0);
-  assert.equal(nodeLabelOpacity(20, 0.35, 0.35, false), 0);
-  assert.equal(nodeLabelOpacity(20, 0.6, 0.35, false), 0.5);
-  assert.equal(nodeLabelOpacity(20, 0.85, 0.35, false), 1);
+test("прозрачность подписей следует логарифмической шкале Obsidian", () => {
+  assert.equal(nodeLabelOpacity(20, 0.5, 0, false), 0);
+  assert.equal(nodeLabelOpacity(20, 1, 0, false), 1);
+  assert.equal(nodeLabelOpacity(20, 1, 0.5, false), 0.5);
+  assert.equal(nodeLabelOpacity(454, 0.5, 0, false), 0);
+  assert.equal(nodeLabelOpacity(20, 0, 0, false), 0);
+});
+
+test("экранный масштаб hovered-подписи постоянен при отдалении и растёт при приближении", () => {
+  assert.equal(renderEdges.graphLabelScale(0.25, true), 1);
+  assert.equal(renderEdges.graphLabelScale(0.25, false), 0.5);
+  assert.equal(renderEdges.graphLabelScale(4, true), 2);
+  assert.equal(renderEdges.graphLabelScale(4, false), 2);
+});
+
+test("экранный отступ подписи уменьшается при отдалении вместе со сценой", () => {
+  assert.equal(renderEdges.graphLabelYOffset(20, 0.25, true), 27.5);
+  assert.equal(renderEdges.graphLabelYOffset(20, 4, true), 65);
+  assert.equal(renderEdges.graphLabelYOffset(20, 0.25, false), 12.5);
+  assert.equal(renderEdges.graphLabelYOffset(20, 4, false), 50);
 });
 
 test("приоритетные подписи всегда полностью видимы", () => {
   assert.equal(nodeLabelOpacity(454, 0.05, 0.35, true), 1);
-});
-
-test("обычные подписи большого графа скрыты на обзорном масштабе", () => {
-  assert.equal(nodeLabelOpacity(454, 0.5, 0.35, false), 0);
-  assert.equal(nodeLabelOpacity(454, 2, 0.35, false), 1);
-});
-
-test("прозрачность подписей ограничена диапазоном от нуля до единицы", () => {
-  assert.equal(nodeLabelOpacity(20, -1, 0.35, false), 0);
-  assert.equal(nodeLabelOpacity(20, 10, 0.35, false), 1);
-  assert.equal(nodeLabelOpacity(20, 0.6, -1, false), 1);
 });
 
 test("hovered отделён от подсвеченных соседей и приглушённых узлов", () => {
@@ -88,20 +92,20 @@ test("hovered отделён от подсвеченных соседей и п�
   assert.equal(renderEdges.graphNodeRole("ordinary", null, new Set()), "normal");
 });
 
-test("несвязанные подписи скрыты, hovered и соседи остаются приоритетными", () => {
-  assert.equal(renderEdges.graphNodeLabelOpacity("muted", 454, 2, 0.35), 0);
-  assert.equal(renderEdges.graphNodeLabelOpacity("hovered", 454, 0.05, 0.35), 1);
+test("muted-подписи не рендерятся при активном выделении", () => {
+  assert.equal(renderEdges.graphNodeLabelOpacity("muted", 454, 2, 0.35), 1);
+  assert.equal(renderEdges.graphNodeFinalLabelOpacity("muted", 454, 2, 0.35, 0.2), 0);
+  assert.equal(renderEdges.graphNodeFinalLabelOpacity("hovered", 454, 0.05, 0.35, 1), 1);
   assert.equal(renderEdges.graphNodeLabelOpacity("highlighted", 454, 0.05, 0.35), 1);
-  assert.equal(renderEdges.graphNodeLabelOpacity("normal", 20, 0.6, 0.35), 0.5);
 });
 
-test("радиус узла плавно растёт начиная с пяти связей", () => {
-  assert.equal(renderEdges.graphNodeRadius({ degree: 1 }), 3);
-  assert.equal(renderEdges.graphNodeRadius({ degree: 2 }), 3);
-  assert.equal(renderEdges.graphNodeRadius({ degree: 4 }), 3);
-  assert.equal(renderEdges.graphNodeRadius({ degree: 5 }), 4.2);
-  assert.equal(renderEdges.graphNodeRadius({ degree: 8 }), 5.4);
-  assert.equal(renderEdges.graphNodeRadius({ degree: 2, clusterMembers: ["A", "B"] }), 7);
+test("радиус узла повторяет формулу Obsidian и сохраняет надбавку кластера", () => {
+  assert.equal(renderEdges.graphNodeRadius({ degree: 0 }), 8);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 3 }), 8);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 8 }), 9);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 99 }), 30);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 8 }, 2), 18);
+  assert.equal(renderEdges.graphNodeRadius({ degree: 8, clusterMembers: ["A", "B"] }), 13);
 });
 
 test("ребро пути подсвечивается только при активных обеих вершинах", () => {

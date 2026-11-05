@@ -58,6 +58,9 @@ pub struct GraphViewSettings {
     pub link_distance: f64,
     pub alpha_decay: f64,
     pub local_depth: u8,
+    pub local_backlinks: bool,
+    pub local_forelinks: bool,
+    pub local_interlinks: bool,
     pub journal_aggregation: String,
     pub cluster_threshold: usize,
 }
@@ -83,6 +86,9 @@ impl Default for GraphViewSettings {
             link_distance: 35.0,
             alpha_decay: 0.025,
             local_depth: 1,
+            local_backlinks: true,
+            local_forelinks: true,
+            local_interlinks: true,
             journal_aggregation: "month".into(),
             cluster_threshold: 20,
         }
@@ -315,6 +321,9 @@ mod tests {
         assert!(!loaded.graph_view.hide_orphans);
         assert!(!loaded.graph_view.arrows);
         assert_eq!(loaded.graph_view.local_depth, 1);
+        assert!(loaded.graph_view.local_backlinks);
+        assert!(loaded.graph_view.local_forelinks);
+        assert!(loaded.graph_view.local_interlinks);
         assert_eq!(loaded.graph_view.journal_aggregation, "month");
         assert_eq!(loaded.graph_view.cluster_threshold, 20);
         assert_eq!(loaded.graph_view.center_force, 0.12);

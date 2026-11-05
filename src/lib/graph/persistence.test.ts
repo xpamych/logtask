@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cameraKey, loadCamera, markLayoutVersion, needsLayoutMigration, saveCamera } from "./persistence.ts";
+import { cameraKey, GRAPH_LAYOUT_VERSION, loadCamera, markLayoutVersion, needsLayoutMigration, saveCamera } from "./persistence.ts";
+
+test("новая физика требует однократной миграции layout версии 2", () => {
+  assert.equal(GRAPH_LAYOUT_VERSION, 2);
+});
 
 class MemoryStorage {
   data = new Map<string, string>();

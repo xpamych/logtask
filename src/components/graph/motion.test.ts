@@ -19,8 +19,23 @@ test("новая цель zoom сохраняет мировую точку по
   const afterY = (50 - 300) / target.zoom + target.y;
   assert(Math.abs(beforeX - afterX) < 1e-9);
   assert(Math.abs(beforeY - afterY) < 1e-9);
-  assert.equal(zoomCameraTarget(camera, 1000, 400, 300, 800, 600).zoom, 5);
-  assert.equal(zoomCameraTarget(camera, 0.0001, 400, 300, 800, 600).zoom, 0.05);
+  assert.equal(zoomCameraTarget(camera, 1000, 400, 300, 800, 600).zoom, 8);
+  assert.equal(zoomCameraTarget(camera, 0.0001, 400, 300, 800, 600).zoom, 1 / 128);
+});
+
+test("wheel использует экспоненциальный коэффициент Obsidian", async () => {
+  const { wheelZoomFactor } = await import("./motion.ts");
+  assert.equal(wheelZoomFactor(-120, 0), 1.5);
+  assert.equal(wheelZoomFactor(120, 0), 1 / 1.5);
+  assert.equal(wheelZoomFactor(-3, 1), Math.pow(1.5, 1));
+  assert.equal(wheelZoomFactor(-1, 2), Math.pow(1.5, 800 / 120));
+});
+
+test("инерция pan затухает и останавливается", async () => {
+  const { advancePanVelocity } = await import("./motion.ts");
+  assert.deepEqual(advancePanVelocity(10, 16, false), { velocity: 9, offset: 0.16 });
+  assert.deepEqual(advancePanVelocity(0.00001, 16, false), { velocity: 0, offset: 0 });
+  assert.deepEqual(advancePanVelocity(10, 16, true), { velocity: 0, offset: 0 });
 });
 
 test("fade начинается с текущей прозрачности и завершается на цели", () => {

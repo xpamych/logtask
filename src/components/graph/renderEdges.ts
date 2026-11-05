@@ -5,15 +5,24 @@ export function indexSceneNodes(nodes: SceneNode[]): Map<string, SceneNode> {
   return new Map(nodes.map((node) => [node.id, node]));
 }
 
+export function graphLabelScale(zoom: number, hovered: boolean): number {
+  if (hovered && zoom < 1) return 1;
+  return Math.sqrt(zoom);
+}
+
+export function graphLabelYOffset(radius: number, zoom: number, hovered: boolean): number {
+  return (radius + 5) * Math.sqrt(zoom) + (hovered ? 15 : 0);
+}
+
 export function nodeLabelOpacity(
-  nodeCount: number,
+  _nodeCount: number,
   zoom: number,
   threshold: number,
   priority: boolean,
 ): number {
   if (priority) return 1;
-  if (nodeCount > 100 && zoom < 1.5) return 0;
-  return Math.max(0, Math.min(1, (zoom - threshold) / 0.5));
+  if (zoom <= 0) return 0;
+  return Math.max(0, Math.min(1, Math.log2(zoom) + 1 - threshold));
 }
 
 export type GraphNodeRole = "hovered" | "highlighted" | "muted" | "normal";
@@ -37,7 +46,8 @@ export function graphNodeRadius(
   node: Pick<SceneNode, "degree" | "clusterMembers">,
   nodeScale = 1,
 ): number {
-  return (3 + Math.sqrt(Math.max(0, node.degree - 4)) * 1.2 + (node.clusterMembers ? 4 : 0)) * nodeScale;
+  const radius = Math.max(8, Math.min(3 * Math.sqrt(Math.max(0, node.degree) + 1), 30));
+  return (radius + (node.clusterMembers ? 4 : 0)) * nodeScale;
 }
 
 export function graphNodeLabelOpacity(
@@ -46,8 +56,18 @@ export function graphNodeLabelOpacity(
   zoom: number,
   threshold: number,
 ): number {
-  if (role === "muted") return 0;
   return nodeLabelOpacity(nodeCount, zoom, threshold, role !== "normal");
+}
+
+export function graphNodeFinalLabelOpacity(
+  role: GraphNodeRole,
+  nodeCount: number,
+  zoom: number,
+  threshold: number,
+  nodeAlpha: number,
+): number {
+  if (role === "muted") return 0;
+  return graphNodeLabelOpacity(role, nodeCount, zoom, threshold) * nodeAlpha;
 }
 
 export interface RenderEdge {

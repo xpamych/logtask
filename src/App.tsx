@@ -30,6 +30,7 @@ import { TasksPage } from "~/components/TasksPage";
 import { Topbar } from "~/components/Topbar";
 import Welcome from "~/components/Welcome";
 import { DEFAULT_GRAPH_VIEW_SETTINGS } from "~/lib/graph/defaults";
+import { migrateGraphSettings } from "~/lib/graph/graphSettings";
 import { GraphView } from "~/components/graph/GraphView";
 import { GraphSettings } from "~/components/graph/GraphSettings";
 import { LocalGraph } from "~/components/graph/LocalGraph";
@@ -197,7 +198,7 @@ const App: Component = () => {
   };
 
   const applySettings = (s: Settings) => {
-    setSettings(s);
+    setSettings({ ...s, graphView: migrateGraphSettings(s.graphView) });
     setSidebarW(s.sidebarWidth);
     setPanelW(s.taskpanelWidth);
   };

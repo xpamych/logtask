@@ -1776,10 +1776,10 @@ fn default_queries() -> Vec<crate::core::query::SavedQuery> {
 }
 
 fn validate_visual_depth(depth: u8) -> Result<(), String> {
-    if (1..=3).contains(&depth) {
+    if (1..=5).contains(&depth) {
         Ok(())
     } else {
-        Err("глубина локального графа должна быть от 1 до 3".into())
+        Err("глубина локального графа должна быть от 1 до 5".into())
     }
 }
 
@@ -1821,13 +1821,16 @@ pub fn visual_graph_local(
     root: String,
     depth: u8,
     visible_ids: Vec<String>,
+    backlinks: bool,
+    forelinks: bool,
+    interlinks: bool,
     state: tauri::State<'_, AppState>,
 ) -> Result<crate::core::visual_graph::GraphSnapshotDto, String> {
     validate_visual_depth(depth)?;
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
     let visible = visible_ids.into_iter().collect();
-    Ok(graph.local_snapshot(&root, depth, &visible))
+    Ok(graph.local_snapshot(&root, depth, &visible, backlinks, forelinks, interlinks))
 }
 
 #[tauri::command]
@@ -2579,9 +2582,9 @@ mod tests {
     #[test]
     fn visual_graph_command_validates_depth_and_endpoints() {
         assert!(super::validate_visual_depth(1).is_ok());
-        assert!(super::validate_visual_depth(3).is_ok());
+        assert!(super::validate_visual_depth(5).is_ok());
         assert!(super::validate_visual_depth(0).is_err());
-        assert!(super::validate_visual_depth(4).is_err());
+        assert!(super::validate_visual_depth(6).is_err());
         assert!(super::validate_visual_endpoints("", "page:B").is_err());
         assert!(super::validate_visual_endpoints("page:A", "").is_err());
         assert!(super::validate_visual_endpoints("page:A", "page:B").is_ok());

@@ -200,28 +200,32 @@ impl Graph {
         root: &str,
         depth: u8,
         visible_ids: &HashSet<String>,
+        backlinks: bool,
+        forelinks: bool,
+        interlinks: bool,
     ) -> GraphSnapshotDto {
         let full = self.visual_snapshot();
-        let mut adjacency: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-        for edge in &full.edges {
-            adjacency
-                .entry(&edge.source)
-                .or_default()
-                .insert(&edge.target);
-            adjacency
-                .entry(&edge.target)
-                .or_default()
-                .insert(&edge.source);
-        }
         let mut allowed = HashSet::from([root.to_string()]);
+        let mut traversal_edges = HashSet::new();
         let mut frontier = BTreeSet::from([root.to_string()]);
-        for _ in 0..depth.min(3) {
+        for _ in 0..depth.min(5) {
             let mut next = BTreeSet::new();
-            for current in &frontier {
-                for neighbor in adjacency.get(current.as_str()).into_iter().flatten() {
-                    if visible_ids.contains(*neighbor) && !allowed.contains(*neighbor) {
-                        next.insert((*neighbor).to_string());
-                    }
+            for edge in &full.edges {
+                if forelinks
+                    && frontier.contains(edge.source.as_str())
+                    && visible_ids.contains(&edge.target)
+                    && !allowed.contains(&edge.target)
+                {
+                    next.insert(edge.target.clone());
+                    traversal_edges.insert((edge.source.clone(), edge.target.clone()));
+                }
+                if backlinks
+                    && frontier.contains(edge.target.as_str())
+                    && visible_ids.contains(&edge.source)
+                    && !allowed.contains(&edge.source)
+                {
+                    next.insert(edge.source.clone());
+                    traversal_edges.insert((edge.source.clone(), edge.target.clone()));
                 }
             }
             allowed.extend(next.iter().cloned());
@@ -236,7 +240,14 @@ impl Graph {
         let edges = full
             .edges
             .into_iter()
-            .filter(|edge| allowed.contains(&edge.source) && allowed.contains(&edge.target))
+            .filter(|edge| {
+                allowed.contains(&edge.source)
+                    && allowed.contains(&edge.target)
+                    && (interlinks
+                        || edge.source == root
+                        || edge.target == root
+                        || traversal_edges.contains(&(edge.source.clone(), edge.target.clone())))
+            })
             .map(|edge| ((edge.source, edge.target), edge.weight))
             .collect();
         snapshot_from_parts(nodes, edges)
@@ -384,11 +395,45 @@ mod tests {
         let graph = fixture();
         let snapshot = graph.visual_snapshot();
         let visible: HashSet<String> = snapshot.nodes.iter().map(|n| n.id.clone()).collect();
-        let depth1 = graph.local_snapshot("page:A", 1, &visible);
+        let depth1 = graph.local_snapshot("page:A", 1, &visible, true, true, true);
         assert!(depth1.nodes.iter().any(|n| n.id == "page:A"));
         assert!(depth1.nodes.iter().any(|n| n.id == "page:B"));
         assert!(!depth1.nodes.iter().any(|n| n.id == "page:C"));
-        let depth2 = graph.local_snapshot("page:A", 2, &visible);
+        let depth2 = graph.local_snapshot("page:A", 2, &visible, true, true, true);
         assert!(depth2.nodes.iter().any(|n| n.id == "page:C"));
+        let mut chained = fixture();
+        add_page(&mut chained, "D", PageKind::Page, "- [[C]]\n");
+        add_page(&mut chained, "E", PageKind::Page, "- [[D]]\n");
+        add_page(&mut chained, "F", PageKind::Page, "- [[E]]\n");
+        add_page(&mut chained, "G", PageKind::Page, "- [[F]]\n");
+        let visible = chained
+            .visual_snapshot()
+            .nodes
+            .iter()
+            .map(|n| n.id.clone())
+            .collect();
+        let depth5 = chained.local_snapshot("page:A", 5, &visible, true, true, true);
+        assert!(depth5.nodes.iter().any(|n| n.id == "page:F"));
+    }
+
+    #[test]
+    fn visual_graph_local_filters_directions() {
+        let graph = fixture();
+        let visible = graph
+            .visual_snapshot()
+            .nodes
+            .iter()
+            .map(|n| n.id.clone())
+            .collect();
+        let forelinks = graph.local_snapshot("page:A", 1, &visible, false, true, false);
+        assert!(forelinks.nodes.iter().any(|n| n.id == "page:B"));
+        assert!(!forelinks.nodes.iter().any(|n| n.id == "journal:2026_10_26"));
+        let backlinks = graph.local_snapshot("page:A", 1, &visible, true, false, false);
+        assert!(backlinks.nodes.iter().any(|n| n.id == "journal:2026_10_26"));
+        let chain = graph.local_snapshot("page:A", 2, &visible, true, false, false);
+        assert!(chain
+            .edges
+            .iter()
+            .any(|edge| edge.source == "page:C" && edge.target == "page:B"));
     }
 }

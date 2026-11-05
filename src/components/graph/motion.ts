@@ -42,10 +42,25 @@ export function zoomCameraTarget(
 ): CameraMotionState {
   const beforeX = (x - width / 2) / camera.zoom + camera.x;
   const beforeY = (y - height / 2) / camera.zoom + camera.y;
-  const zoom = Math.max(0.05, Math.min(5, camera.zoom * factor));
+  const zoom = Math.max(1 / 128, Math.min(8, camera.zoom * factor));
   return {
     x: beforeX - (x - width / 2) / zoom,
     y: beforeY - (y - height / 2) / zoom,
     zoom,
   };
+}
+
+
+export function wheelZoomFactor(deltaY: number, deltaMode: number): number {
+  const pixels = deltaY * (deltaMode === 1 ? 40 : deltaMode === 2 ? 800 : 1);
+  return Math.pow(1.5, -pixels / 120);
+}
+
+export function advancePanVelocity(
+  velocity: number,
+  milliseconds: number,
+  reducedMotion: boolean,
+): { velocity: number; offset: number } {
+  if (reducedMotion || Math.abs(velocity) < 0.001) return { velocity: 0, offset: 0 };
+  return { velocity: velocity * Math.pow(0.9, milliseconds / 16), offset: velocity * milliseconds / 1000 };
 }

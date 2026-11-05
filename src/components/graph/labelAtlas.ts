@@ -9,6 +9,8 @@ export interface LabelDescriptor {
   bold: boolean;
   priority: boolean;
   color: string;
+  fontSize?: number;
+  scale?: number;
 }
 
 interface LabelSize {
@@ -40,23 +42,96 @@ interface PendingRaster {
 }
 
 export function labelText(title: string): string {
-  return title.length > 42 ? `${title.slice(0, 41)}…` : title;
+  return title;
 }
 
-export function allowLabel(opacity: number, priority: boolean, normalCount: number): boolean {
-  return opacity !== 0 && (priority || normalCount < 200);
+export function wrapLabelLines(
+  text: string,
+  maxWidth: number,
+  measure: (text: string) => number,
+): string[] {
+  if (text.length === 0) return [""];
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/)) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && measure(candidate) <= maxWidth) {
+      line = candidate;
+      continue;
+    }
+    if (line) lines.push(line);
+    line = "";
+    if (measure(word) <= maxWidth) {
+      line = word;
+      continue;
+    }
+    for (const character of word) {
+      const next = line + character;
+      if (line && measure(next) > maxWidth) {
+        lines.push(line);
+        line = character;
+      } else {
+        line = next;
+      }
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+export function allowLabel(opacity: number, _priority: boolean, _normalCount: number): boolean {
+  return opacity !== 0;
+}
+
+export function labelRasterToSpriteSize(size: number): number {
+  return size / 2;
+}
+
+export function labelRasterToSpriteGeometry(x: number, width: number): { x: number; width: number } {
+  return { x: x + width / 4, width: labelRasterToSpriteSize(width) };
+}
+
+export function atlasSizeSupported(size: number, maximum: number): boolean {
+  return size <= maximum;
 }
 
 export function labelOutsideCanvas(x: number, y: number, width: number, height: number): boolean {
   return x < -100 || y < -30 || x > width + 100 || y > height + 30;
 }
 
+export interface LabelBox {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export function labelBox(descriptor: Pick<LabelDescriptor, "text" | "x" | "y" | "bold" | "fontSize" | "scale">): LabelBox {
+  const size = (descriptor.fontSize ?? (descriptor.bold ? 12 : 11)) * (descriptor.scale ?? 1);
+  const width = Math.min(42, descriptor.text.length) * size * 0.55;
+  const height = size * 1.35;
+  return {
+    left: descriptor.x - width / 2,
+    top: descriptor.y,
+    right: descriptor.x + width / 2,
+    bottom: descriptor.y + height,
+  };
+}
+
+export function labelBoxesOverlap(first: LabelBox, second: LabelBox): boolean {
+  return first.left < second.right && first.right > second.left && first.top < second.bottom && first.bottom > second.top;
+}
+
 export function labelSpriteCssSize(size: number, pixelRatio: number): number {
   return size / pixelRatio;
 }
 
+export function labelLineHeight(descriptor: Pick<LabelDescriptor, "bold" | "fontSize">): number {
+  return (descriptor.fontSize ?? (descriptor.bold ? 12 : 11)) * 1.35 + 4;
+}
+
 export function labelCacheKey(descriptor: LabelDescriptor, pixelRatio: number): string {
-  return `${descriptor.text}\0${descriptor.bold}\0${descriptor.color}\0${pixelRatio}`;
+  return `${descriptor.text}\0${descriptor.bold}\0${descriptor.color}\0${descriptor.fontSize ?? ""}\0${pixelRatio}`;
 }
 
 class LabelAtlasOverflow extends Error {
@@ -99,13 +174,14 @@ export class LabelAtlasLayout {
           this.pending.push({ descriptor, rect });
           rendered.push(key);
         }
+        const width = rect.width * (descriptor.scale ?? 1);
         sprites.push({
           key: descriptor.key,
           opacity: descriptor.opacity,
-          x: descriptor.x,
+          x: descriptor.x - width / 2,
           y: descriptor.y,
-          width: rect.width,
-          height: rect.height,
+          width: rect.width * (descriptor.scale ?? 1),
+          height: rect.height * (descriptor.scale ?? 1),
           u0: rect.x / this.atlasSize,
           v0: rect.y / this.atlasSize,
           u1: (rect.x + rect.width) / this.atlasSize,
@@ -292,23 +368,34 @@ export class LabelAtlas {
 
   sync(descriptors: LabelDescriptor[], pixelRatio: number): LabelSprite[] {
     const gl = this.gl;
+    const rasterRatio = pixelRatio * 2;
     const rendered: string[] = [];
-    const sprites = this.layout.sync(descriptors, pixelRatio, (descriptor) => {
+    const sprites = this.layout.sync(descriptors, rasterRatio, (descriptor) => {
       const context = this.measureCanvas.getContext("2d")!;
-      const size = descriptor.bold ? 12 : 11;
-      context.font = `${descriptor.bold ? "bold " : ""}${size * pixelRatio}px sans-serif`;
+      const size = descriptor.fontSize ?? (descriptor.bold ? 12 : 11);
+      context.font = `${descriptor.bold ? "bold " : ""}${size * rasterRatio}px sans-serif`;
+      const lines = wrapLabelLines(descriptor.text, 300 * rasterRatio, (text) => context.measureText(text).width);
       return {
-        width: Math.max(1, Math.ceil(context.measureText(descriptor.text).width + 2 * pixelRatio)),
-        height: Math.max(1, Math.ceil((descriptor.bold ? 16 : 15) * pixelRatio)),
+        width: Math.max(1, Math.ceil(Math.max(...lines.map((line) => context.measureText(line).width)) + 2 * rasterRatio)),
+        height: Math.max(1, Math.ceil(labelLineHeight(descriptor) * lines.length * rasterRatio)),
       };
     }, rendered);
+    if (!atlasSizeSupported(this.layout.atlasSize, gl.getParameter(gl.MAX_TEXTURE_SIZE))) {
+      throw new Error("Превышен MAX_TEXTURE_SIZE для atlas подписей");
+    }
     if (this.textureSize !== this.layout.atlasSize) {
       this.textureSize = this.layout.atlasSize;
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.texture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.textureSize, this.textureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     }
-    for (const pending of this.layout.pending) this.upload(pending.descriptor, pending.rect, pixelRatio);
+    for (const pending of this.layout.pending) this.upload(pending.descriptor, pending.rect, rasterRatio);
+    for (const sprite of sprites) {
+      const geometry = labelRasterToSpriteGeometry(sprite.x, sprite.width);
+      sprite.x = geometry.x;
+      sprite.width = geometry.width;
+      sprite.height = labelRasterToSpriteSize(sprite.height);
+    }
     this.program.draw(sprites, pixelRatio);
     return sprites;
   }
@@ -319,13 +406,15 @@ export class LabelAtlas {
     canvas.width = rect.width;
     canvas.height = rect.height;
     const context = canvas.getContext("2d")!;
-    const size = descriptor.bold ? 12 : 11;
+    const size = descriptor.fontSize ?? (descriptor.bold ? 12 : 11);
     context.font = `${descriptor.bold ? "bold " : ""}${size * pixelRatio}px sans-serif`;
     context.textAlign = "center";
     context.textBaseline = "top";
     context.fillStyle = descriptor.color;
     context.globalAlpha = 1;
-    context.fillText(descriptor.text, rect.width / 2, 0);
+    const lines = wrapLabelLines(descriptor.text, 300 * pixelRatio, (text) => context.measureText(text).width);
+    const lineHeight = labelLineHeight(descriptor) * pixelRatio;
+    lines.forEach((line, index) => context.fillText(line, rect.width / 2, index * lineHeight));
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, rect.x, rect.y, gl.RGBA, gl.UNSIGNED_BYTE, canvas);

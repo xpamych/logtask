@@ -27,7 +27,7 @@ export function LocalGraph(props: {
     const filtered = filterGraph(full, props.settings);
     const visible = new Set(filtered.nodes.map((node) => node.id));
     visible.add(root());
-    return visualGraphLocal(root(), props.settings.localDepth, [...visible]);
+    return visualGraphLocal(root(), props.settings.localDepth, [...visible], props.settings);
   }, (result) => {
     setError(null);
     setScene(result);
@@ -38,6 +38,9 @@ export function LocalGraph(props: {
     const currentRoot = root();
     void props.refreshKey;
     void props.settings.localDepth;
+    void props.settings.localBacklinks;
+    void props.settings.localForelinks;
+    void props.settings.localInterlinks;
     void props.settings.search;
     void props.settings.showJournals;
     void props.settings.showTags;
@@ -58,6 +61,12 @@ export function LocalGraph(props: {
     loader.invalidate();
     saver?.dispose();
   });
+  const toggle = (key: "localBacklinks" | "localForelinks" | "localInterlinks", label: string) => (
+    <label>
+      <input type="checkbox" checked={props.settings[key]} onChange={(event) => props.onSettingsChange({ ...props.settings, [key]: event.currentTarget.checked })} />
+      {label}
+    </label>
+  );
 
   return (
     <section class="local-graph" aria-label={`Связи страницы ${props.page}`}>
@@ -67,8 +76,13 @@ export function LocalGraph(props: {
             <option value={1}>1</option>
             <option value={2}>2</option>
             <option value={3}>3</option>
+            <option value={4}>4</option>
+            <option value={5}>5</option>
           </select>
         </label>
+        {toggle("localBacklinks", "Обратные")}
+        {toggle("localForelinks", "Исходящие")}
+        {toggle("localInterlinks", "Между соседями")}
         <button type="button" onClick={() => props.onOpenGlobal(root())}>В глобальном</button>
       </header>
       <Show when={!error()} fallback={<div class="placeholder error">{error()}</div>}>

@@ -1,13 +1,13 @@
 import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { stablePosition } from "~/lib/graph/layout";
-import { interpolateValue, smoothStepAmount, transitionAlpha, zoomCameraTarget } from "./motion";
+import { advancePanVelocity, interpolateValue, transitionAlpha, zoomCameraTarget } from "./motion";
 import { InstanceBatch } from "./geometry";
 import { arrowTriangle, circleTriangleFan, LINE_INSTANCE_STRIDE, lineQuad, nodeSegments, pushLineInstance, selfLinkTriangles } from "./instancing";
-import { allowLabel, LabelAtlas, labelOutsideCanvas, labelText } from "./labelAtlas";
+import { allowLabel, LabelAtlas, labelOutsideCanvas, labelText, wrapLabelLines } from "./labelAtlas";
 import type { LabelDescriptor } from "./labelAtlas";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
-import { createRenderEdgeCache, graphNodeLabelOpacity, graphNodeRadius, graphNodeRole, indexSceneNodes, isEdgeHighlighted } from "./renderEdges";
+import { createRenderEdgeCache, graphLabelScale, graphLabelYOffset, graphNodeFinalLabelOpacity, graphNodeRadius, graphNodeRole, indexSceneNodes, isEdgeHighlighted } from "./renderEdges";
 import type { RenderEdge } from "./renderEdges";
 
 interface Camera {
@@ -232,6 +232,7 @@ export class WebGlRenderer {
   private positionsInitialized = false;
   private camera: Camera = { x: 0, y: 0, zoom: 1 };
   private cameraTarget: Camera | null = null;
+  private panVelocity = { x: 0, y: 0 };
   private frame = 0;
   private lastFrameTime = 0;
   private motionPreference: MediaQueryList;
@@ -381,7 +382,8 @@ export class WebGlRenderer {
 
   setCamera(camera: Camera) {
     this.cameraTarget = null;
-    this.camera = { ...camera, zoom: Math.max(0.05, Math.min(5, camera.zoom)) };
+    this.panVelocity = { x: 0, y: 0 };
+    this.camera = { ...camera, zoom: Math.max(1 / 128, Math.min(8, camera.zoom)) };
     this.onCameraChange?.({ ...this.camera });
     this.request();
   }
@@ -403,13 +405,17 @@ export class WebGlRenderer {
     return graphNodeRadius(node, this.settings?.nodeScale ?? 1);
   }
 
+  private visibleNodeRadius(node: SceneNode) {
+    return this.nodeRadius(node) / Math.sqrt(this.camera.zoom);
+  }
+
   hitTest(clientX: number, clientY: number): SceneNode | null {
     const rect = this.canvas.getBoundingClientRect();
     const point = this.screenToWorld(clientX - rect.left, clientY - rect.top);
     for (let index = this.scene.nodes.length - 1; index >= 0; index -= 1) {
       const node = this.scene.nodes[index];
       const position = this.positions.get(node.id)!;
-      const radius = this.nodeRadius(node) + 3 / this.camera.zoom;
+      const radius = this.visibleNodeRadius(node) + 2 / this.camera.zoom;
       if (Math.hypot(point.x - position.x, point.y - position.y) <= radius) return node;
     }
     return null;
@@ -430,6 +436,7 @@ export class WebGlRenderer {
   }
 
   zoomBy(factor: number, x = this.canvas.clientWidth / 2, y = this.canvas.clientHeight / 2) {
+    this.panVelocity = { x: 0, y: 0 };
     this.transitionCamera(zoomCameraTarget(
       this.cameraTarget ?? this.camera,
       factor,
@@ -444,6 +451,9 @@ export class WebGlRenderer {
     this.cameraTarget = null;
     this.camera.x -= dx / this.camera.zoom;
     this.camera.y -= dy / this.camera.zoom;
+    this.panVelocity = this.motionPreference.matches
+      ? { x: 0, y: 0 }
+      : { x: -dx * 60 / this.camera.zoom, y: -dy * 60 / this.camera.zoom };
     this.onCameraChange?.({ ...this.camera });
     this.request();
   }
@@ -456,8 +466,8 @@ export class WebGlRenderer {
     const minY = Math.min(...points.map((p) => p.y));
     const maxY = Math.max(...points.map((p) => p.y));
     const zoom = Math.min(
-      2,
-      Math.max(0.05, Math.min(
+      8,
+      Math.max(1 / 128, Math.min(
         (this.canvas.clientWidth - 80) / Math.max(100, maxX - minX),
         (this.canvas.clientHeight - 80) / Math.max(100, maxY - minY),
       )),
@@ -516,9 +526,18 @@ export class WebGlRenderer {
         this.positions.set(id, target);
       }
     }
+    if (!this.cameraTarget && (this.panVelocity.x !== 0 || this.panVelocity.y !== 0)) {
+      const x = advancePanVelocity(this.panVelocity.x, elapsed, this.motionPreference.matches);
+      const y = advancePanVelocity(this.panVelocity.y, elapsed, this.motionPreference.matches);
+      this.panVelocity = { x: x.velocity, y: y.velocity };
+      this.camera.x += x.offset;
+      this.camera.y += y.offset;
+      if (x.velocity !== 0 || y.velocity !== 0 || x.offset !== 0 || y.offset !== 0) moving = true;
+      this.onCameraChange?.({ ...this.camera });
+    }
     if (this.cameraTarget) {
       const target = this.cameraTarget;
-      const amount = smoothStepAmount(elapsed, 0.18);
+      const amount = 0.15;
       this.camera = {
         x: this.camera.x + (target.x - this.camera.x) * amount,
         y: this.camera.y + (target.y - this.camera.y) * amount,
@@ -543,8 +562,8 @@ export class WebGlRenderer {
     const active = this.activeHighlight();
     let moving = false;
     for (const node of this.scene.nodes) {
-      const target = graphNodeRole(node.id, this.hovered, active) === "muted" ? 0.25 : 1;
-      const current = this.nodeAlphas.get(node.id) ?? target;
+      const target = graphNodeRole(node.id, this.hovered, active) === "muted" ? 0.2 : 1;
+      const current = this.nodeAlphas.get(node.id) ?? 1;
       if (current === target) continue;
       const next = transitionAlpha(current, target, elapsed, 0.12, this.motionPreference.matches);
       this.nodeAlphas.set(node.id, next.value);
@@ -553,8 +572,8 @@ export class WebGlRenderer {
     for (const edge of this.renderEdges) {
       const key = `${edge.source}->${edge.target}`;
       const muted = active.size > 0 && !(active.has(edge.source) && active.has(edge.target));
-      const target = muted ? 0.08 : this.edgeColor[3];
-      const current = this.edgeAlphas.get(key) ?? target;
+      const target = this.edgeColor[3] * (muted ? 0.2 : 1);
+      const current = this.edgeAlphas.get(key) ?? this.edgeColor[3];
       if (current === target) continue;
       const next = transitionAlpha(current, target, elapsed, 0.12, this.motionPreference.matches);
       this.edgeAlphas.set(key, next.value);
@@ -594,7 +613,7 @@ export class WebGlRenderer {
     lineColors.clear();
     arrowColors.clear();
     selfColors.clear();
-    const edgeWidth = 0.35 * (this.settings?.edgeScale ?? 1);
+    const edgeWidth = (this.settings?.edgeScale ?? 1) / this.camera.zoom;
     for (const edge of this.renderEdges) {
       const source = this.positions.get(edge.source);
       const target = this.positions.get(edge.target);
@@ -605,7 +624,7 @@ export class WebGlRenderer {
       const base = isEdgeHighlighted(edge.source, edge.target, activeHighlight)
         ? this.highlightEdgeColor
         : muted ? this.mutedEdgeColor : this.edgeColor;
-      const rgba: RGBA = [base[0], base[1], base[2], this.edgeAlphas.get(key) ?? base[3]];
+      const rgba: RGBA = [base[0], base[1], base[2], this.edgeAlphas.get(key) ?? this.edgeColor[3] * (muted ? 0.2 : 1)];
       if (edge.source === edge.target) {
         selfLinks.push(source.x, source.y, ...rgba, edgeWidth);
         selfColors.push(...rgba);
@@ -613,23 +632,36 @@ export class WebGlRenderer {
       }
       const dx = target.x - source.x;
       const dy = target.y - source.y;
-      const length = Math.max(0.001, Math.hypot(dx, dy));
-      if (pushLineInstance(lines, source.x, source.y, target.x, target.y, rgba, edgeWidth)) {
+      const length = Math.hypot(dx, dy);
+      if (length === 0) continue;
+      const sourceNode = this.nodeById.get(edge.source);
+      const targetNode = this.nodeById.get(edge.target);
+      const sourceRadius = sourceNode ? this.visibleNodeRadius(sourceNode) : 0;
+      const targetRadius = targetNode ? this.visibleNodeRadius(targetNode) : 0;
+      const ux = dx / length;
+      const uy = dy / length;
+      if (pushLineInstance(
+        lines,
+        source.x + ux * sourceRadius,
+        source.y + uy * sourceRadius,
+        target.x - ux * targetRadius,
+        target.y - uy * targetRadius,
+        rgba,
+        edgeWidth,
+      )) {
         lineColors.push(...rgba);
       }
       if (this.settings?.arrows) {
         for (const direction of [1, -1]) {
           if ((direction === 1 && !edge.forward) || (direction === -1 && !edge.backward)) continue;
           const endpoint = direction === 1 ? target : source;
-          const endpointId = direction === 1 ? edge.target : edge.source;
-          const targetNode = this.nodeById.get(endpointId);
-          const radius = targetNode ? this.nodeRadius(targetNode) : 5;
-          const ux = (dx / length) * direction;
-          const uy = (dy / length) * direction;
-          const tipX = endpoint.x - ux * radius;
-          const tipY = endpoint.y - uy * radius;
-          const size = 5 + Math.min(4, edge.weight / 2);
-          arrows.push(tipX, tipY, ux, uy, size, ...rgba);
+          const radius = direction === 1 ? targetRadius : sourceRadius;
+          const arrowX = ux * direction;
+          const arrowY = uy * direction;
+          const tipX = endpoint.x - arrowX * radius;
+          const tipY = endpoint.y - arrowY * radius;
+          const size = 2 * Math.sqrt(this.settings.edgeScale) / this.camera.zoom;
+          arrows.push(tipX, tipY, arrowX, arrowY, size, ...rgba);
           arrowColors.push(...rgba);
         }
       }
@@ -650,12 +682,16 @@ export class WebGlRenderer {
       const point = this.positions.get(node.id)!;
       const base = this.nodeBaseColors.get(node.id)!;
       const role = graphNodeRole(node.id, this.hovered, activeHighlight);
-      const alpha = this.nodeAlphas.get(node.id) ?? (role === "muted" ? 0.25 : 1);
+      const alpha = this.nodeAlphas.get(node.id) ?? (role === "muted" ? 0.2 : 1);
       const tint = role === "hovered" ? this.hoverColor : base;
       const rgba: RGBA = [tint[0], tint[1], tint[2], alpha];
-      const radius = this.nodeRadius(node);
+      const radius = this.visibleNodeRadius(node);
       const batch = nodeSegments(radius, this.camera.zoom) === 64 ? nodes64 : nodes16;
       const colors = batch === nodes64 ? colors64 : colors16;
+      if (role === "hovered") {
+        batch.push(point.x, point.y, radius + 1 / this.camera.zoom, ...rgba);
+        colors.push(...rgba);
+      }
       batch.push(point.x, point.y, radius, ...rgba);
       colors.push(...rgba);
     }
@@ -668,33 +704,37 @@ export class WebGlRenderer {
   private labelDescriptors(): LabelDescriptor[] {
     if (!this.settings) return [];
     const activeHighlight = this.activeHighlight();
-    if (this.scene.nodes.length > 100 && this.camera.zoom < 1.5 && activeHighlight.size === 0) return [];
     const descriptors: LabelDescriptor[] = [];
     let count = 0;
     const addLabel = (node: SceneNode) => {
       const role = graphNodeRole(node.id, this.hovered, activeHighlight);
-      const priority = role !== "normal";
-      const opacity = graphNodeLabelOpacity(
-        role === "muted" ? "normal" : role,
+      const priority = role !== "normal" && role !== "muted";
+      const opacity = graphNodeFinalLabelOpacity(
+        role,
         this.scene.nodes.length,
         this.camera.zoom,
         this.settings!.labelThreshold,
-      ) * (this.nodeAlphas.get(node.id) ?? 1);
+        this.nodeAlphas.get(node.id) ?? (role === "muted" ? 0.2 : 1),
+      );
       if (!allowLabel(opacity, priority, count)) return;
       const point = this.positions.get(node.id)!;
       const screen = this.worldToScreen(point.x, point.y);
       if (labelOutsideCanvas(screen.x, screen.y, this.canvas.clientWidth, this.canvas.clientHeight)) return;
       const title = node.clusterMembers ? `${node.title} (${node.clusterMembers.length})` : node.title;
-      descriptors.push({
+      const scale = graphLabelScale(this.camera.zoom, role === "hovered");
+      const descriptor: LabelDescriptor = {
         key: node.id,
         text: labelText(title),
         x: screen.x,
-        y: screen.y + this.nodeRadius(node) + 4,
+        y: screen.y + graphLabelYOffset(this.nodeRadius(node), this.camera.zoom, role === "hovered"),
         opacity,
         bold: role === "hovered",
         priority,
         color: this.foreground,
-      });
+        fontSize: 14 + this.nodeRadius(node) / 4,
+        scale,
+      };
+      descriptors.push(descriptor);
       if (!priority) count += 1;
     };
     for (const node of this.scene.nodes) {
@@ -714,9 +754,11 @@ export class WebGlRenderer {
     ctx.textBaseline = "top";
     for (const descriptor of descriptors) {
       ctx.globalAlpha = descriptor.opacity;
-      ctx.font = descriptor.bold ? "bold 12px sans-serif" : "11px sans-serif";
+      const size = (descriptor.fontSize ?? (descriptor.bold ? 12 : 11)) * (descriptor.scale ?? 1);
+      ctx.font = `${descriptor.bold ? "bold " : ""}${size}px sans-serif`;
       ctx.fillStyle = descriptor.color;
-      ctx.fillText(descriptor.text, descriptor.x, descriptor.y);
+      const lines = wrapLabelLines(descriptor.text, 300 * (descriptor.scale ?? 1), (text) => ctx.measureText(text).width);
+      lines.forEach((line, index) => ctx.fillText(line, descriptor.x, descriptor.y + index * size * 1.35));
     }
     ctx.globalAlpha = 1;
   }

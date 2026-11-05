@@ -1,7 +1,7 @@
 import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { assetOpen, assetReveal, visualGraphLayoutGet } from "~/lib/api";
-import { createLayoutMigration, mergeLayout, startLayoutWorker } from "~/lib/graph/layout";
+import { createLayoutMigration, initialNodePositions, startLayoutWorker } from "~/lib/graph/layout";
 import type { SceneGraph } from "~/lib/graph/model";
 import type { CameraState } from "~/lib/graph/persistence";
 import { markLayoutVersion, needsLayoutMigration } from "~/lib/graph/persistence";
@@ -11,8 +11,8 @@ import { GraphMenu } from "./GraphMenu";
 import type { GraphMenuState } from "./GraphMenu";
 import { WebGlRenderer } from "./WebGlRenderer";
 import { createLatestFrameScheduler } from "./dragScheduling";
-import { hasPointerDragged, shouldClickPointer } from "./pointerInteraction";
-import { graphNodeRadius } from "./renderEdges";
+import { graphClickAction, hasPointerDragged, shouldClickPointer } from "./pointerInteraction";
+import { wheelZoomFactor } from "./motion";
 
 export function GraphCanvas(props: {
   scene: SceneGraph;
@@ -60,17 +60,11 @@ export function GraphCanvas(props: {
     if (!initialized || !worker) return;
     const ids = props.scene.nodes.map((node) => node.id);
     const base = positions.length > 0 ? positions : saved;
-    const entries = mergeLayout(ids, base);
+    const edges = props.scene.edges.map((edge) => ({ source: edge.source, target: edge.target }));
+    const entries = initialNodePositions(ids, edges, base);
     positions = entries;
     renderer?.setPositions(entries);
-    worker.update(
-      ids,
-      props.scene.edges.map((edge) => ({ source: edge.source, target: edge.target })),
-      entries,
-      props.settings,
-      alpha,
-      props.scene.nodes.map((node) => graphNodeRadius(node, props.settings.nodeScale)),
-    );
+    worker.update(ids, edges, entries, props.settings, alpha);
   };
 
   createEffect(() => {
@@ -138,8 +132,11 @@ export function GraphCanvas(props: {
             firstPositions = false;
             performance.mark("logtask:graph-interactive");
           }
-          const fitMigration = migration.consumeFit();
           props.onPositions?.(entries);
+        },
+        onSettled: () => {
+          props.onPositions?.(positions);
+          const fitMigration = migration.consumeFit();
           if (fitMigration) renderer?.fit();
           if (fitMigration && props.onPositions) {
             void migration.complete(
@@ -148,7 +145,6 @@ export function GraphCanvas(props: {
             ).catch((error) => console.error("завершение миграции layout:", error));
           }
         },
-        onSettled: () => props.onPositions?.(positions),
       });
       initialized = true;
       void visualGraphLayoutGet(props.scope)
@@ -235,26 +231,15 @@ export function GraphCanvas(props: {
     request: (callback) => requestAnimationFrame(callback),
     cancel: (id) => cancelAnimationFrame(id),
     emit: (x, y) => {
-      if (drag?.id) worker?.drag(drag.id, x, y, true);
+      if (drag?.id) worker?.drag(drag.id, x, y, true, 0.3);
     },
   });
-  const select = (id: string | null) => {
-    if (id && props.scene.nodes.find((node) => node.id === id)?.kind === "cluster") {
-      props.onToggleCluster?.(id);
-    } else {
-      props.onSelectNode?.(id);
-    }
-  };
-  const click = (id: string | null) => {
+  const click = (id: string | null, ctrlKey = false, metaKey = false) => {
     const node = id ? props.scene.nodes.find((candidate) => candidate.id === id) : null;
-    if (node?.kind === "cluster") props.onToggleCluster?.(node.id);
+    const action = graphClickAction(node?.kind ?? null, ctrlKey, metaKey);
+    if (action === "toggle" && node) props.onToggleCluster?.(node.id);
+    else if (action === "open" && node) props.onOpenPage(node.title);
     else props.onSelectNode?.(id);
-  };
-  const doubleClick = (event: MouseEvent) => {
-    const node = renderer?.hitTest(event.clientX, event.clientY);
-    if (!node) return;
-    if (node.kind === "cluster") props.onToggleCluster?.(node.id);
-    else if (node.kind !== "asset") props.onOpenPage(node.title);
   };
   const pointers = new Map<number, { x: number; y: number }>();
   let pinchDistance = 0;
@@ -268,7 +253,7 @@ export function GraphCanvas(props: {
     if (pointers.size === 2) {
       pinchDistance = pointerDistance();
       dragFrames.flush();
-      if (drag?.id && drag.moved) worker?.drag(drag.id, drag.worldX, drag.worldY, drag.pinned);
+      if (drag?.id && drag.moved) worker?.drag(drag.id, drag.worldX, drag.worldY, drag.pinned, 0);
       if (drag?.id && drag.moved) worker?.resume();
       drag = null;
       return;
@@ -320,9 +305,9 @@ export function GraphCanvas(props: {
     pointers.delete(event.pointerId);
     pinchDistance = 0;
     dragFrames.flush();
-    if (drag && shouldClickPointer(drag.moved, cancelled)) click(drag.id);
+    if (drag && shouldClickPointer(drag.moved, cancelled)) click(drag.id, event.ctrlKey, event.metaKey);
     if (drag?.id && drag.moved) {
-      worker?.drag(drag.id, drag.worldX, drag.worldY, drag.pinned);
+      worker?.drag(drag.id, drag.worldX, drag.worldY, drag.pinned, 0);
       worker?.resume();
     }
     drag = null;
@@ -341,14 +326,13 @@ export function GraphCanvas(props: {
         ref={canvas}
         tabindex="0"
         role="application"
-        aria-label="Визуальный граф страниц. Стрелки перемещают камеру, Tab выбирает узлы, Enter подсвечивает"
+        aria-label="Визуальный граф страниц. Стрелки перемещают камеру, Tab выбирает узлы, Enter открывает, Ctrl+Enter подсвечивает"
         aria-activedescendant="graph-active-node"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={(event) => onPointerUp(event, true)}
         onPointerLeave={() => setHovered(null)}
-        onDblClick={doubleClick}
         onContextMenu={(event) => {
           event.preventDefault();
           const node = renderer?.hitTest(event.clientX, event.clientY);
@@ -364,7 +348,7 @@ export function GraphCanvas(props: {
         onWheel={(event) => {
           event.preventDefault();
           const rect = canvas.getBoundingClientRect();
-          renderer?.zoomBy(event.deltaY < 0 ? 1.12 : 0.89, event.clientX - rect.left, event.clientY - rect.top);
+          renderer?.zoomBy(wheelZoomFactor(event.deltaY, event.deltaMode), event.clientX - rect.left, event.clientY - rect.top);
         }}
         onKeyDown={(event) => {
           if (event.key === "Tab" && !event.ctrlKey) {
@@ -374,7 +358,7 @@ export function GraphCanvas(props: {
             if (node) renderer?.centerOn(node.id);
           } else if (event.key === "Enter") {
             const node = focusedNode();
-            if (node) select(node.id);
+            if (node) click(node.id, event.ctrlKey, event.metaKey);
           } else if (event.key === "Escape") {
             props.onSelectNode?.(null);
             setMenu(null);

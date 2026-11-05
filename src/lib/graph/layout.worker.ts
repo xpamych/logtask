@@ -1,121 +1,58 @@
-import { forceCollide, forceLink, forceManyBody, forceSimulation } from "d3-force";
-import type { Force, SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
+import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY } from "d3-force";
+import type { Simulation, SimulationLinkDatum, SimulationNodeDatum } from "d3-force";
 import type { GraphViewSettings } from "~/lib/api";
 import { nextDragAlpha } from "./dragAlpha.ts";
 import type { LayoutRequest } from "./layout.ts";
-import { applyHubGravity, compactComponentRadius, componentTargetsForComponents, connectedComponents, createCollisionSeparator, linkedSceneRadius, mergeLayout, normalizeMainComponentInPlace, selectHubNodes, stablePosition, unpackLayout } from "./layout.ts";
+import { initialNodePositions, stablePosition, unpackLayout } from "./layout.ts";
 
 interface WorkerNode extends SimulationNodeDatum {
   id: string;
 }
 
-let simulation: ReturnType<typeof forceSimulation<WorkerNode>> | null = null;
+type WorkerLink = SimulationLinkDatum<WorkerNode>;
+
+export function configureObsidianSimulation(
+  simulation: Simulation<WorkerNode, undefined>,
+  links: WorkerLink[],
+  settings: GraphViewSettings,
+): void {
+  const degrees = new Map(simulation.nodes().map((node) => [node.id, 0]));
+  const endpointId = (endpoint: string | number | WorkerNode) =>
+    typeof endpoint === "object" ? endpoint.id : String(endpoint);
+  for (const link of links) {
+    const source = endpointId(link.source);
+    const target = endpointId(link.target);
+    degrees.set(source, (degrees.get(source) ?? 0) + 1);
+    degrees.set(target, (degrees.get(target) ?? 0) + 1);
+  }
+  const repel = Math.abs(settings.repelForce) < 1 ? 1 : settings.repelForce;
+  simulation
+    .force("x", forceX<WorkerNode>(0).strength(settings.centerForce))
+    .force("y", forceY<WorkerNode>(0).strength(settings.centerForce))
+    .force("charge", forceManyBody<WorkerNode>().strength(-repel).distanceMin(30).theta(0.9))
+    .force("collide", forceCollide<WorkerNode>(60).strength(0.5))
+    .force("link", forceLink<WorkerNode, WorkerLink>(links)
+      .id((node) => node.id)
+      .distance(settings.linkDistance)
+      .strength((link) => {
+        const source = link.source as WorkerNode;
+        const target = link.target as WorkerNode;
+        return settings.linkForce / Math.max(1, Math.min(degrees.get(source.id) ?? 0, degrees.get(target.id) ?? 0));
+      }))
+    .velocityDecay(0.4)
+    .alphaDecay(settings.alphaDecay);
+}
+
+let simulation: Simulation<WorkerNode, undefined> | null = null;
 let nodes: WorkerNode[] = [];
-let links: SimulationLinkDatum<WorkerNode>[] = [];
+let links: WorkerLink[] = [];
 let settings: GraphViewSettings | null = null;
 let generation = 0;
 let paused = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
-let randomState = 1;
-
-function random() {
-  randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
-  return randomState / 4294967296;
-}
-
-let components: WorkerNode[][] = [];
-let targets = new Map<string, { x: number; y: number }>();
-let linkedNodeIds = new Set<string>();
-let centeredNodeIds = new Set<string>();
-let selfIsolatedIds = new Set<string>();
-let hubs: WorkerNode[] = [];
-let orphanRadius = 120;
-let nodeRadii = new Map<string, number>();
 let nodeIds: string[] = [];
-let separateCollisions: ReturnType<typeof createCollisionSeparator> | null = null;
-
-function forceMainCenter(strength: number): Force<WorkerNode, undefined> {
-  let initializedNodes: WorkerNode[] = [];
-  const force = (_alpha: number) => {
-    let count = 0;
-    let sumX = 0;
-    let sumY = 0;
-    for (const node of initializedNodes) {
-      if (!centeredNodeIds.has(node.id)) continue;
-      count += 1;
-      sumX += node.x ?? 0;
-      sumY += node.y ?? 0;
-    }
-    if (count === 0) return;
-    const shiftX = (sumX / count) * strength;
-    const shiftY = (sumY / count) * strength;
-    for (const node of initializedNodes) {
-      if (!centeredNodeIds.has(node.id)) continue;
-      node.x = (node.x ?? 0) - shiftX;
-      node.y = (node.y ?? 0) - shiftY;
-    }
-  };
-  force.initialize = (nodes: WorkerNode[]) => {
-    initializedNodes = nodes;
-  };
-  return force;
-}
-
-function forceComponentsCharge(strength: number): Force<WorkerNode, undefined> {
-  const forces = components.map((component) => {
-    const charge = forceManyBody<WorkerNode>().strength(-strength);
-    (charge.initialize as (nodes: WorkerNode[], random: () => number) => void)(component, random);
-    return charge;
-  });
-  const force = (alpha: number) => {
-    for (const charge of forces) charge(alpha);
-  };
-  force.initialize = () => undefined;
-  return force;
-}
-
-function updateComponentTargets(smooth: boolean) {
-  const desiredRadius = linkedSceneRadius(components) + 24 * ((settings?.repelForce ?? 45) / 45);
-  orphanRadius = smooth ? orphanRadius + (desiredRadius - orphanRadius) * 0.15 : desiredRadius;
-  targets = componentTargetsForComponents(
-    components.map((component) => component.map((node) => node.id)),
-    orphanRadius,
-    settings?.repelForce,
-  );
-}
-
-function applyComponentTargets() {
-  const startIndex = components[0]?.length === 1 ? 0 : 1;
-  for (let index = startIndex; index < components.length; index += 1) {
-    const component = components[index];
-    if (component.length === 0) continue;
-    const target = targets.get(component[0].id);
-    if (!target) continue;
-    const pinnedPositions = component
-      .filter((node) => node.fx !== undefined && node.fx !== null)
-      .map((node) => ({ node, x: node.x, y: node.y }));
-    if (component.length > 1) {
-      normalizeMainComponentInPlace(component, compactComponentRadius(component.length, settings?.repelForce));
-    }
-    const centerX = component.reduce((sum, node) => sum + (node.x ?? 0), 0) / component.length;
-    const centerY = component.reduce((sum, node) => sum + (node.y ?? 0), 0) / component.length;
-    for (const node of component) {
-      node.x = (node.x ?? 0) + target.x - centerX;
-      node.y = (node.y ?? 0) + target.y - centerY;
-      if (component.length === 1) {
-        node.vx = 0;
-        node.vy = 0;
-      }
-    }
-    for (const { node, x, y } of pinnedPositions) {
-      node.x = x;
-      node.y = y;
-    }
-  }
-}
 
 function postPositions() {
-  separateCollisions?.(nodes);
   const positions = {
     xy: new Float32Array(nodes.length * 2),
     pinned: new Uint8Array(nodes.length),
@@ -136,10 +73,7 @@ function postPositions() {
 
 function tick() {
   if (!simulation || paused) return;
-  for (let index = 0; index < 2; index += 1) simulation.tick();
-  updateComponentTargets(true);
-  applyComponentTargets();
-  applyHubGravity(nodes, hubs, linkedNodeIds, settings?.centerForce);
+  simulation.tick();
   postPositions();
   if (simulation.alpha() < simulation.alphaMin()) {
     self.postMessage({ type: "settled", generation });
@@ -148,42 +82,19 @@ function tick() {
   timer = setTimeout(tick, settings?.qualityTickMs ?? 16);
 }
 
-function restart(alpha = 0.7, preserveActiveAlpha = false) {
+function restart(alpha = 0.3) {
   clearTimeout(timer);
-  if (simulation && preserveActiveAlpha) {
-    alpha = nextDragAlpha(simulation.alpha(), simulation.alphaMin(), alpha);
-  }
-  simulation?.alpha(alpha);
-  if (alpha === 0) {
+  if (!simulation) return;
+  if (alpha === 0) simulation.alpha(0);
+  else if (simulation.alpha() < alpha) simulation.alpha(alpha);
+  if (alpha === 0 && simulation.alphaTarget() === 0) {
     if (!paused) self.postMessage({ type: "settled", generation });
     return;
   }
   if (paused) return;
-  simulation?.restart();
-  simulation?.stop();
+  simulation.restart();
+  simulation.stop();
   timer = setTimeout(tick, 0);
-}
-
-function applyForces() {
-  if (!simulation || !settings) return;
-  const currentSettings = settings;
-  simulation
-    .force("charge", forceComponentsCharge(currentSettings.repelForce))
-    .force(
-      "collide",
-      forceCollide<WorkerNode>()
-        .radius((node) => selfIsolatedIds.has(node.id) ? 0 : (nodeRadii.get(node.id) ?? 5) + 1)
-        .iterations(nodes.length > 2000 ? 1 : 2),
-    )
-    .force(
-      "link",
-      forceLink<WorkerNode, SimulationLinkDatum<WorkerNode>>(links)
-        .id((node) => node.id)
-        .distance(currentSettings.linkDistance)
-        .strength(currentSettings.linkForce),
-    )
-    .force("center", forceMainCenter(currentSettings.centerForce));
-  simulation.alphaDecay(currentSettings.alphaDecay).randomSource(random);
 }
 
 self.onmessage = (event: MessageEvent<LayoutRequest>) => {
@@ -210,19 +121,20 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
   }
   if (message.type === "params" && message.settings) {
     settings = message.settings;
-    applyForces();
+    if (simulation) configureObsidianSimulation(simulation, links, settings);
     restart(0.3);
     return;
   }
   if (message.type === "drag" && message.id && message.x !== undefined && message.y !== undefined) {
     const node = nodes.find((candidate) => candidate.id === message.id);
-    if (node) {
+    if (node && simulation) {
       node.x = message.x;
       node.y = message.y;
       node.fx = message.pinned ? message.x : undefined;
       node.fy = message.pinned ? message.y : undefined;
+      if (message.alphaTarget !== undefined) simulation.alphaTarget(message.alphaTarget);
       postPositions();
-      restart(0.7, true);
+      restart(nextDragAlpha(simulation.alpha(), simulation.alphaMin(), 0.3));
     }
     return;
   }
@@ -230,7 +142,7 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     settings = message.settings;
     const positions = message.positions
       ? unpackLayout(message.ids, message.positions)
-      : mergeLayout(message.ids, []);
+      : initialNodePositions(message.ids, message.edges ?? [], []);
     nodes = positions.map((position) => ({
       id: position.id,
       x: position.x,
@@ -240,43 +152,11 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     }));
     links = (message.edges ?? []).map((edge) => ({ ...edge }));
     simulation?.stop();
-    simulation = forceSimulation(nodes).stop();
-    const componentIds = connectedComponents(message.ids, message.edges ?? []);
-    const byId = new Map(nodes.map((node) => [node.id, node]));
-    components = componentIds.map((component) =>
-      component
-        .map((id) => byId.get(id))
-        .filter((node): node is WorkerNode => Boolean(node)),
-    );
-    const degrees = new Map(message.ids.map((id) => [id, 0]));
-    for (const edge of message.edges ?? []) {
-      degrees.set(edge.source, (degrees.get(edge.source) ?? 0) + 1);
-      degrees.set(edge.target, (degrees.get(edge.target) ?? 0) + 1);
-    }
-    selfIsolatedIds = new Set(
-      components
-        .filter((component) => component.length === 1)
-        .map((component) => component[0].id)
-        .filter((id) => (message.edges ?? []).some((edge) => edge.source === id && edge.target === id)),
-    );
-    hubs = selectHubNodes(nodes.filter((node) => !selfIsolatedIds.has(node.id)), degrees);
-    linkedNodeIds = new Set(
-      components
-        .filter((component) => component.length > 1)
-        .flatMap((component) => component.map((node) => node.id)),
-    );
-    centeredNodeIds = new Set(
-      components[0]?.length > 1 ? components[0].map((node) => node.id) : [],
-    );
-    nodeRadii = new Map(message.ids.map((id, index) => [id, message.radii?.[index] ?? 5]));
-    for (const id of selfIsolatedIds) nodeRadii.set(id, 0);
+    simulation = forceSimulation(nodes).stop().alphaTarget(0);
+    configureObsidianSimulation(simulation, links, settings);
     nodeIds = [...message.ids];
-    separateCollisions = createCollisionSeparator(nodes, nodeRadii);
-    applyForces();
-    updateComponentTargets(false);
-    applyComponentTargets();
     postPositions();
-    restart(message.alpha ?? (message.type === "update" ? 0.2 : 0.7));
+    restart(message.alpha ?? 0.3);
   }
 };
 

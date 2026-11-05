@@ -67,6 +67,9 @@ export interface GraphViewSettings {
   linkDistance: number;
   alphaDecay: number;
   localDepth: number;
+  localBacklinks: boolean;
+  localForelinks: boolean;
+  localInterlinks: boolean;
   journalAggregation: string;
   clusterThreshold: number;
   qualityTickMs?: number;
@@ -80,8 +83,16 @@ export async function visualGraphLocal(
   root: string,
   depth: number,
   visibleIds: string[],
+  options?: Pick<GraphViewSettings, "localBacklinks" | "localForelinks" | "localInterlinks">,
 ): Promise<GraphSnapshotDto> {
-  return invoke<GraphSnapshotDto>("visual_graph_local", { root, depth, visibleIds });
+  return invoke<GraphSnapshotDto>("visual_graph_local", {
+    root,
+    depth,
+    visibleIds,
+    backlinks: options?.localBacklinks ?? true,
+    forelinks: options?.localForelinks ?? true,
+    interlinks: options?.localInterlinks ?? true,
+  });
 }
 
 export async function visualGraphPath(

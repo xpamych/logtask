@@ -223,6 +223,44 @@ export function createLayoutMigration() {
   };
 }
 
+export function initialNodePositions(
+  ids: string[],
+  edges: { source: string; target: string }[],
+  saved: GraphLayoutEntry[],
+): GraphLayoutEntry[] {
+  const positions = new Map(saved.map((entry) => [entry.id, entry]));
+  const adjacency = new Map<string, string[]>();
+  for (const edge of edges) {
+    adjacency.set(edge.source, [...(adjacency.get(edge.source) ?? []), edge.target]);
+    adjacency.set(edge.target, [...(adjacency.get(edge.target) ?? []), edge.source]);
+  }
+  let sceneRadius = 0;
+  for (const entry of saved) sceneRadius = Math.max(sceneRadius, Math.hypot(entry.x, entry.y));
+  const added = ids.filter((id) => !positions.has(id));
+  const area = 60 * added.length * 60;
+  const spread = Math.sqrt(area);
+  const outerRadius = Math.sqrt(area / Math.PI + sceneRadius * sceneRadius) - sceneRadius;
+  return ids.map((id) => {
+    const old = positions.get(id);
+    if (old && Number.isFinite(old.x) && Number.isFinite(old.y)) return { ...old };
+    const neighbors = (adjacency.get(id) ?? [])
+      .map((neighbor) => positions.get(neighbor))
+      .filter((entry): entry is GraphLayoutEntry => Boolean(entry));
+    if (neighbors.length > 0) {
+      const x = neighbors.reduce((sum, entry) => sum + entry.x, 0) / neighbors.length;
+      const y = neighbors.reduce((sum, entry) => sum + entry.y, 0) / neighbors.length;
+      const point = { id, x: x + (Math.random() - 0.5) * spread, y: y + (Math.random() - 0.5) * spread, pinned: false };
+      positions.set(id, point);
+      return point;
+    }
+    const angle = Math.random() * Math.PI * 2;
+    const radius = sceneRadius + Math.sqrt(Math.random()) * outerRadius;
+    const point = { id, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, pinned: false };
+    positions.set(id, point);
+    return point;
+  });
+}
+
 export function mergeLayout(
   ids: string[],
   saved: GraphLayoutEntry[],
@@ -395,7 +433,7 @@ export interface LayoutRequest {
   y?: number;
   pinned?: boolean;
   alpha?: number;
-  radii?: number[];
+  alphaTarget?: number;
 }
 
 export interface LayoutResponse {
@@ -426,14 +464,14 @@ export function startLayoutWorker(callbacks: LayoutCallbacks) {
     worker.postMessage({ ...message, generation } satisfies LayoutRequest, transfer);
   };
   return {
-    update: (ids: string[], edges: { source: string; target: string }[], positions: GraphLayoutEntry[], settings: GraphViewSettings, alpha?: number, radii?: number[]) => {
+    update: (ids: string[], edges: { source: string; target: string }[], positions: GraphLayoutEntry[], settings: GraphViewSettings, alpha?: number) => {
       generation += 1;
       const packed = packLayout(positions);
-      send({ type: "update", ids, edges, positions: packed, settings, alpha, radii }, [packed.xy.buffer, packed.pinned.buffer]);
+      send({ type: "update", ids, edges, positions: packed, settings, alpha }, [packed.xy.buffer, packed.pinned.buffer]);
     },
     params: (settings: GraphViewSettings) => send({ type: "params", settings }),
-    drag: (id: string, x: number, y: number, pinned: boolean) =>
-      send({ type: "drag", id, x, y, pinned }),
+    drag: (id: string, x: number, y: number, pinned: boolean, alphaTarget?: number) =>
+      send({ type: "drag", id, x, y, pinned, alphaTarget }),
     pause: () => send({ type: "pause" }),
     resume: () => send({ type: "resume" }),
     stop: () => {

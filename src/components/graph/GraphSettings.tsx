@@ -1,5 +1,6 @@
 import { For } from "solid-js";
 import type { GraphColorGroup, GraphViewSettings } from "~/lib/api";
+import { obsidianCenterFromSlider, obsidianCenterToSlider, obsidianRepelFromSlider, obsidianRepelToSlider } from "~/lib/graph/graphSettings";
 
 export function GraphSettings(props: {
   settings: GraphViewSettings;
@@ -27,18 +28,26 @@ export function GraphSettings(props: {
       <span>{label}</span>
     </label>
   );
-  const range = (
-    key: "nodeScale" | "edgeScale" | "labelThreshold" | "centerForce" | "repelForce" | "linkForce" | "linkDistance" | "alphaDecay" | "clusterThreshold",
-    label: string,
-    min: number,
-    max: number,
-    step: number,
-  ) => (
-    <label class="graph-range">
-      <span>{label}: <b>{props.settings[key]}</b></span>
-      <input type="range" min={min} max={max} step={step} value={props.settings[key]} onInput={(event) => update({ [key]: Number(event.currentTarget.value) })} />
-    </label>
-  );
+  type RangeKey = "nodeScale" | "edgeScale" | "labelThreshold" | "centerForce" | "repelForce" | "linkForce" | "linkDistance" | "alphaDecay" | "clusterThreshold";
+  const toSlider = (key: RangeKey, value: number) => {
+    if (key === "centerForce" || key === "linkForce") return obsidianCenterToSlider(value);
+    if (key === "repelForce") return obsidianRepelToSlider(value);
+    return value;
+  };
+  const fromSlider = (key: RangeKey, value: number) => {
+    if (key === "centerForce" || key === "linkForce") return obsidianCenterFromSlider(value);
+    if (key === "repelForce") return obsidianRepelFromSlider(value);
+    return value;
+  };
+  const range = (key: RangeKey, label: string, min: number, max: number, step: number) => {
+    const value = () => toSlider(key, props.settings[key]);
+    return (
+      <label class="graph-range">
+        <span>{label}: <b>{Number(value().toFixed(2))}</b></span>
+        <input type="range" min={min} max={max} step={step} value={value()} onInput={(event) => update({ [key]: fromSlider(key, Number(event.currentTarget.value)) })} />
+      </label>
+    );
+  };
 
   return (
     <div class="graph-settings">
@@ -87,7 +96,7 @@ export function GraphSettings(props: {
         {toggle("arrows", "Стрелки на связях")}
         {range("nodeScale", "Размер узлов", 0.5, 3, 0.1)}
         {range("edgeScale", "Толщина связей", 0.5, 3, 0.1)}
-        {range("labelThreshold", "Порог подписей", 0.05, 2, 0.05)}
+        {range("labelThreshold", "Порог подписей", -1, 2, 0.05)}
         <label class="graph-field">Агрегация журналов
           <select value={props.settings.journalAggregation} onChange={(event) => update({ journalAggregation: event.currentTarget.value })}>
             <option value="month">По месяцам</option>
@@ -100,9 +109,9 @@ export function GraphSettings(props: {
       <section>
         <h2>Физика</h2>
         {range("centerForce", "Центрирование", 0, 1, 0.01)}
-        {range("repelForce", "Отталкивание", 20, 400, 10)}
+        {range("repelForce", "Отталкивание", 0, 20, 0.1)}
         {range("linkForce", "Притяжение", 0, 1, 0.05)}
-        {range("linkDistance", "Длина связи", 20, 300, 5)}
+        {range("linkDistance", "Длина связи", 30, 500, 1)}
         {range("alphaDecay", "Затухание", 0.005, 0.2, 0.005)}
       </section>
 

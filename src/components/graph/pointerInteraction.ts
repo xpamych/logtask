@@ -5,3 +5,13 @@ export function hasPointerDragged(startX: number, startY: number, x: number, y: 
 export function shouldClickPointer(moved: boolean, cancelled: boolean): boolean {
   return !moved && !cancelled;
 }
+
+export function graphClickAction(
+  kind: string | null,
+  ctrlKey: boolean,
+  metaKey: boolean,
+): "open" | "select" | "toggle" {
+  if (kind === "cluster") return "toggle";
+  if (kind && kind !== "asset" && !ctrlKey && !metaKey) return "open";
+  return "select";
+}

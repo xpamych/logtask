@@ -17,9 +17,9 @@ function descriptor(key: string, overrides: Partial<LabelDescriptor> = {}): Labe
   };
 }
 
-test("подпись усекается до 42 символов с многоточием", () => {
+test("подпись сохраняет полное название", () => {
   assert.equal(labelText("короткая"), "короткая");
-  assert.equal(labelText("x".repeat(50)), `${"x".repeat(41)}…`);
+  assert.equal(labelText("x".repeat(50)), "x".repeat(50));
 });
 
 test("ключ atlas учитывает стиль, тему и pixel ratio", () => {
@@ -30,9 +30,9 @@ test("ключ atlas учитывает стиль, тему и pixel ratio", ()
   assert.equal(base, labelCacheKey(descriptor("A"), 1));
 });
 
-test("лимит 200 не скрывает priority и offscreen проверяется с запасом", () => {
+test("невидимость отсекается, лимита подписей нет, offscreen проверяется с запасом", () => {
   assert.equal(allowLabel(0.5, false, 199), true);
-  assert.equal(allowLabel(0.5, false, 200), false);
+  assert.equal(allowLabel(0.5, false, 200), true);
   assert.equal(allowLabel(0.5, true, 200), true);
   assert.equal(allowLabel(0, true, 200), false);
   assert.equal(labelOutsideCanvas(10, 20, 800, 600), false);
@@ -49,7 +49,7 @@ test("atlas растеризует только новые ключи и сох�
   const second = layout.sync([descriptor("A"), descriptor("B")], 1, measure, rendered);
   assert.equal(rendered.length, 2);
   assert.deepEqual(first.map((sprite) => sprite.opacity), [0.75, 0.75]);
-  assert.deepEqual(first.map((sprite) => [sprite.x, sprite.y]), [[10, 20], [10, 20]]);
+  assert.deepEqual(first.map((sprite) => [sprite.x, sprite.y]), [[0, 20], [0, 20]]);
   assert.deepEqual(second, first);
 });
 
@@ -94,4 +94,69 @@ test("размер sprite остаётся CSS-величиной при раз�
   assert.equal(labelSpriteCssSize(20, 1), 20);
   assert.equal(labelSpriteCssSize(20, 1.5), 13.333333333333334);
   assert.equal(labelSpriteCssSize(20, 2), 10);
+});
+
+
+test("размер подписи входит в ключ кэша атласа", () => {
+  const descriptor = {
+    key: "A", text: "Страница", x: 0, y: 0, opacity: 1,
+    bold: false, priority: false, color: "#fff",
+  };
+  assert.notEqual(
+    labelCacheKey({ ...descriptor, fontSize: 16 }, 1),
+    labelCacheKey({ ...descriptor, fontSize: 20 }, 1),
+  );
+});
+
+
+test("высота строки атласа учитывает крупный шрифт и обводку", async () => {
+  const { labelLineHeight } = await import("./labelAtlas.ts");
+  const descriptor = {
+    key: "A", text: "Хаб", x: 0, y: 0, opacity: 1,
+    bold: false, priority: false, color: "#fff", fontSize: 20,
+  };
+  assert.equal(labelLineHeight(descriptor), 31);
+  assert.equal(labelLineHeight({ ...descriptor, fontSize: 10 }), 17.5);
+});
+
+
+test("подпись масштабируется от центра, а не уезжает вправо", () => {
+  const layout = new LabelAtlasLayout(128);
+  const measure = () => ({ width: 100, height: 20 });
+  const normal = layout.sync([descriptor("A", { x: 200, scale: 1 })], 1, measure, [])[0];
+  const enlarged = layout.sync([descriptor("A", { x: 200, scale: 2 })], 1, measure, [])[0];
+  assert.equal(normal.x, 150);
+  assert.equal(normal.x + normal.width / 2, 200);
+  assert.equal(enlarged.x, 100);
+  assert.equal(enlarged.x + enlarged.width / 2, 200);
+});
+
+
+test("названия не усекаются и переносятся по словам и длинным токенам", async () => {
+  const { labelText, wrapLabelLines } = await import("./labelAtlas.ts");
+  assert.equal(labelText("x".repeat(50)), "x".repeat(50));
+  const measure = (text: string) => text.length * 10;
+  assert.deepEqual(wrapLabelLines("абвг дежз", 45, measure), ["абвг", "дежз"]);
+  assert.deepEqual(wrapLabelLines("abcdefgh", 30, measure), ["abc", "def", "gh"]);
+  assert.deepEqual(wrapLabelLines("", 30, measure), [""]);
+});
+
+test("лимит 200 и DPR 2 не меняют доступность и CSS-размер подписи", async () => {
+  const { allowLabel, labelRasterToSpriteSize } = await import("./labelAtlas.ts");
+  assert.equal(allowLabel(0.5, false, 10000), true);
+  assert.equal(allowLabel(0, false, 0), false);
+  assert.equal(labelRasterToSpriteSize(40), 20);
+});
+
+
+test("2× raster сохраняет центр после обратного преобразования", async () => {
+  const { labelRasterToSpriteGeometry } = await import("./labelAtlas.ts");
+  assert.deepEqual(labelRasterToSpriteGeometry(150, 100), { x: 175, width: 50 });
+  assert.deepEqual(labelRasterToSpriteGeometry(100, 200), { x: 150, width: 100 });
+});
+
+test("atlas не превышает GPU texture limit", async () => {
+  const { atlasSizeSupported } = await import("./labelAtlas.ts");
+  assert.equal(atlasSizeSupported(8192, 8192), true);
+  assert.equal(atlasSizeSupported(16384, 8192), false);
 });
