@@ -3,6 +3,8 @@ import { stablePosition } from "~/lib/graph/layout";
 import { interpolateValue, smoothStepAmount, transitionAlpha, zoomCameraTarget } from "./motion";
 import { InstanceBatch } from "./geometry";
 import { arrowTriangle, circleTriangleFan, LINE_INSTANCE_STRIDE, lineQuad, nodeSegments, pushLineInstance, selfLinkTriangles } from "./instancing";
+import { allowLabel, LabelAtlas, labelOutsideCanvas, labelText } from "./labelAtlas";
+import type { LabelDescriptor } from "./labelAtlas";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
 import { createRenderEdgeCache, graphNodeLabelOpacity, graphNodeRadius, graphNodeRole, indexSceneNodes } from "./renderEdges";
@@ -233,6 +235,8 @@ export class WebGlRenderer {
   private resizeObserver: ResizeObserver;
   private themeObserver: MutationObserver;
   private labels: CanvasRenderingContext2D | null;
+  private labelAtlas: LabelAtlas | null = null;
+  private labelAtlasFailed = false;
   private highlighted = new Set<string>();
   private hovered: string | null = null;
   private nodeAlphas = new Map<string, number>();
@@ -278,6 +282,14 @@ export class WebGlRenderer {
     this.node64Shape = new InstancedShape(gl, NODE_VERTEX, circleTriangleFan(64), nodeAttributes);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    try {
+      this.labelAtlas = new LabelAtlas(gl);
+      labelCanvas.style.visibility = "hidden";
+    } catch (error) {
+      console.error("Инициализация atlas подписей:", error);
+      this.labelAtlasFailed = true;
+      labelCanvas.style.visibility = "visible";
+    }
     this.motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
     this.onMotionPreference = () => {
       this.cameraTarget = null;
@@ -636,18 +648,12 @@ export class WebGlRenderer {
     this.onFrameTime?.(performance.now() - started);
   }
 
-  private drawLabels() {
-    const ctx = this.labels;
-    if (!ctx || !this.settings) return;
-    const ratio = window.devicePixelRatio || 1;
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx.clearRect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    const foreground = this.foreground;
+  private labelDescriptors(): LabelDescriptor[] {
+    if (!this.settings) return [];
+    const descriptors: LabelDescriptor[] = [];
     const activeHighlight = this.activeHighlight();
     let count = 0;
-    const drawLabel = (node: SceneNode) => {
+    const addLabel = (node: SceneNode) => {
       const role = graphNodeRole(node.id, this.hovered, activeHighlight);
       const priority = role !== "normal";
       const opacity = graphNodeLabelOpacity(
@@ -656,23 +662,64 @@ export class WebGlRenderer {
         this.camera.zoom,
         this.settings!.labelThreshold,
       ) * (this.nodeAlphas.get(node.id) ?? 1);
-      if (opacity === 0 || (count >= 200 && !priority)) return;
+      if (!allowLabel(opacity, priority, count)) return;
       const point = this.positions.get(node.id)!;
       const screen = this.worldToScreen(point.x, point.y);
-      if (screen.x < -100 || screen.y < -30 || screen.x > this.canvas.clientWidth + 100 || screen.y > this.canvas.clientHeight + 30) return;
+      if (labelOutsideCanvas(screen.x, screen.y, this.canvas.clientWidth, this.canvas.clientHeight)) return;
       const title = node.clusterMembers ? `${node.title} (${node.clusterMembers.length})` : node.title;
-      ctx.globalAlpha = opacity;
-      ctx.font = role === "hovered" ? "bold 12px sans-serif" : "11px sans-serif";
-      ctx.fillStyle = foreground;
-      ctx.fillText(title.length > 42 ? `${title.slice(0, 41)}…` : title, screen.x, screen.y + this.nodeRadius(node) + 4);
+      descriptors.push({
+        key: node.id,
+        text: labelText(title),
+        x: screen.x,
+        y: screen.y + this.nodeRadius(node) + 4,
+        opacity,
+        bold: role === "hovered",
+        priority,
+        color: this.foreground,
+      });
       if (!priority) count += 1;
     };
     for (const node of this.scene.nodes) {
-      if (node.id !== this.hovered) drawLabel(node);
+      if (node.id !== this.hovered) addLabel(node);
     }
     const hoveredNode = this.hovered ? this.nodeById.get(this.hovered) : undefined;
-    if (hoveredNode) drawLabel(hoveredNode);
+    if (hoveredNode) addLabel(hoveredNode);
+    return descriptors;
+  }
+
+  private drawLabelsFallback(descriptors: LabelDescriptor[]) {
+    const ctx = this.labels!;
+    const ratio = window.devicePixelRatio || 1;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (const descriptor of descriptors) {
+      ctx.globalAlpha = descriptor.opacity;
+      ctx.font = descriptor.bold ? "bold 12px sans-serif" : "11px sans-serif";
+      ctx.fillStyle = descriptor.color;
+      ctx.fillText(descriptor.text, descriptor.x, descriptor.y);
+    }
     ctx.globalAlpha = 1;
+  }
+
+  private drawLabels() {
+    if (!this.labels || !this.settings) return;
+    const descriptors = this.labelDescriptors();
+    if (this.labelAtlas && !this.labelAtlasFailed) {
+      try {
+        this.labelAtlas.sync(descriptors, window.devicePixelRatio || 1);
+        this.labels.canvas.style.visibility = "hidden";
+        return;
+      } catch (error) {
+        console.error("Отрисовка atlas подписей:", error);
+        this.labelAtlasFailed = true;
+        this.labelAtlas.dispose();
+        this.labelAtlas = null;
+      }
+    }
+    this.labels.canvas.style.visibility = "visible";
+    this.drawLabelsFallback(descriptors);
   }
 
   dispose() {
@@ -685,5 +732,6 @@ export class WebGlRenderer {
     this.selfShape.dispose();
     this.node16Shape.dispose();
     this.node64Shape.dispose();
+    this.labelAtlas?.dispose();
   }
 }
