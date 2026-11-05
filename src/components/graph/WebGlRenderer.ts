@@ -1,7 +1,8 @@
 import type { GraphLayoutEntry, GraphViewSettings } from "~/lib/api";
 import { stablePosition } from "~/lib/graph/layout";
 import { interpolateValue, smoothStepAmount, transitionAlpha, zoomCameraTarget } from "./motion";
-import { GeometryBatch } from "./geometry";
+import { InstanceBatch } from "./geometry";
+import { arrowTriangle, circleTriangleFan, LINE_INSTANCE_STRIDE, lineQuad, nodeSegments, pushLineInstance, selfLinkTriangles } from "./instancing";
 import { colorForNode } from "~/lib/graph/model";
 import type { SceneGraph, SceneNode } from "~/lib/graph/model";
 import { createRenderEdgeCache, graphNodeLabelOpacity, graphNodeRadius, graphNodeRole, indexSceneNodes } from "./renderEdges";
@@ -15,15 +16,63 @@ interface Camera {
 
 type RGBA = [number, number, number, number];
 
-const VERTEX = `#version 300 es
-in vec2 a_position;
-in vec4 a_color;
+const CAMERA = `
 uniform vec2 u_resolution;
 uniform vec3 u_camera;
+vec4 project(vec2 world) {
+  vec2 p = (world - u_camera.xy) * u_camera.z / (u_resolution * 0.5);
+  return vec4(p.x, -p.y, 0.0, 1.0);
+}`;
+const NODE_VERTEX = `#version 300 es
+in vec2 a_position;
+in vec2 a_center;
+in float a_radius;
+in vec4 a_color;
 out vec4 v_color;
+${CAMERA}
 void main() {
-  vec2 p = (a_position - u_camera.xy) * u_camera.z / (u_resolution * 0.5);
-  gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
+  gl_Position = project(a_center + a_position * a_radius);
+  v_color = a_color;
+}`;
+const LINE_VERTEX = `#version 300 es
+in vec2 a_position;
+in vec2 a_start;
+in vec2 a_end;
+in vec4 a_color;
+in float a_width;
+out vec4 v_color;
+${CAMERA}
+void main() {
+  vec2 delta = a_end - a_start;
+  float lineLength = max(length(delta), 0.0001);
+  vec2 normal = vec2(-delta.y, delta.x) / lineLength;
+  vec2 world = mix(a_start, a_end, a_position.x) + normal * a_position.y * a_width;
+  gl_Position = project(world);
+  v_color = a_color;
+}`;
+const ARROW_VERTEX = `#version 300 es
+in vec2 a_position;
+in vec2 a_endpoint;
+in vec2 a_direction;
+in float a_size;
+in vec4 a_color;
+out vec4 v_color;
+${CAMERA}
+void main() {
+  vec2 normal = vec2(-a_direction.y, a_direction.x);
+  vec2 world = a_endpoint + a_direction * a_position.x * a_size + normal * a_position.y * a_size;
+  gl_Position = project(world);
+  v_color = a_color;
+}`;
+const SELF_VERTEX = `#version 300 es
+in vec4 a_geometry;
+in vec2 a_center;
+in vec4 a_color;
+in float a_width;
+out vec4 v_color;
+${CAMERA}
+void main() {
+  gl_Position = project(a_center + a_geometry.xy + a_geometry.zw * a_width);
   v_color = a_color;
 }`;
 const FRAGMENT = `#version 300 es
@@ -42,6 +91,99 @@ function shader(gl: WebGL2RenderingContext, type: number, source: string) {
   return result;
 }
 
+interface ShapeAttribute {
+  name: string;
+  size: number;
+  stride: number;
+  offset: number;
+  divisor: 0 | 1;
+  buffer: "template" | "instance" | "color";
+}
+
+function templateAttribute(name: string, size: number, stride = 0): ShapeAttribute {
+  return { name, size, stride, offset: 0, divisor: 0, buffer: "template" };
+}
+
+function instanceAttribute(name: string, size: number, stride: number, offset: number): ShapeAttribute {
+  return { name, size, stride, offset, divisor: 1, buffer: "instance" };
+}
+
+function colorAttribute(): ShapeAttribute {
+  return { name: "a_color", size: 4, stride: 16, offset: 0, divisor: 1, buffer: "color" };
+}
+
+class InstancedShape {
+  private program: WebGLProgram;
+  private vao: WebGLVertexArrayObject;
+  private templateBuffer: WebGLBuffer;
+  private instanceBuffer: WebGLBuffer;
+  private colorBuffer: WebGLBuffer;
+  private resolutionLocation: WebGLUniformLocation | null;
+  private cameraLocation: WebGLUniformLocation | null;
+
+  constructor(
+    private gl: WebGL2RenderingContext,
+    vertexSource: string,
+    template: Float32Array,
+    attributes: ShapeAttribute[],
+  ) {
+    this.program = gl.createProgram()!;
+    gl.attachShader(this.program, shader(gl, gl.VERTEX_SHADER, vertexSource));
+    gl.attachShader(this.program, shader(gl, gl.FRAGMENT_SHADER, FRAGMENT));
+    gl.linkProgram(this.program);
+    if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(this.program) ?? "ошибка программы WebGL");
+    }
+    this.resolutionLocation = gl.getUniformLocation(this.program, "u_resolution");
+    this.cameraLocation = gl.getUniformLocation(this.program, "u_camera");
+    this.vao = gl.createVertexArray()!;
+    this.templateBuffer = gl.createBuffer()!;
+    this.instanceBuffer = gl.createBuffer()!;
+    this.colorBuffer = gl.createBuffer()!;
+    gl.bindVertexArray(this.vao);
+    for (const attribute of attributes) {
+      const buffer = attribute.buffer === "template"
+        ? this.templateBuffer
+        : attribute.buffer === "instance"
+          ? this.instanceBuffer
+          : this.colorBuffer;
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      if (attribute.buffer === "template") gl.bufferData(gl.ARRAY_BUFFER, template, gl.STATIC_DRAW);
+      const location = gl.getAttribLocation(this.program, attribute.name);
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, attribute.size, gl.FLOAT, false, attribute.stride, attribute.offset);
+      gl.vertexAttribDivisor(location, attribute.divisor);
+    }
+    gl.bindVertexArray(null);
+  }
+
+  draw(mode: number, vertexCount: number, instances: InstanceBatch, colors: InstanceBatch) {
+    if (instances.count === 0) return;
+    const gl = this.gl;
+    gl.useProgram(this.program);
+    gl.bindVertexArray(this.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, instances.values(), gl.STREAM_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, colors.values(), gl.STREAM_DRAW);
+    gl.uniform2f(this.resolutionLocation, gl.canvas.width, gl.canvas.height);
+    const camera = this.camera;
+    gl.uniform3f(this.cameraLocation, camera.x, camera.y, camera.zoom);
+    gl.drawArraysInstanced(mode, 0, vertexCount, instances.count);
+  }
+
+  camera = { x: 0, y: 0, zoom: 1 };
+
+  dispose() {
+    const gl = this.gl;
+    gl.deleteBuffer(this.templateBuffer);
+    gl.deleteBuffer(this.instanceBuffer);
+    gl.deleteBuffer(this.colorBuffer);
+    gl.deleteVertexArray(this.vao);
+    gl.deleteProgram(this.program);
+  }
+}
+
 function color(value: string, alpha = 1): RGBA {
   const hex = value.trim().replace("#", "");
   if (/^[\da-f]{6}$/i.test(hex)) {
@@ -57,19 +199,25 @@ function color(value: string, alpha = 1): RGBA {
 
 export class WebGlRenderer {
   private gl: WebGL2RenderingContext;
-  private program: WebGLProgram;
-  private buffer: WebGLBuffer;
-  private positionLocation: number;
-  private vertexColorLocation: number;
-  private resolutionLocation: WebGLUniformLocation | null;
-  private cameraLocation: WebGLUniformLocation | null;
+  private lineShape: InstancedShape;
+  private arrowShape: InstancedShape;
+  private selfShape: InstancedShape;
+  private node16Shape: InstancedShape;
+  private node64Shape: InstancedShape;
   private scene: SceneGraph = { nodes: [], edges: [], revision: 0 };
   private nodeById = new Map<string, SceneNode>();
   private cachedRenderEdges = createRenderEdgeCache();
   private renderEdges: RenderEdge[] = [];
-  private lineBatch = new GeometryBatch();
-  private arrowBatch = new GeometryBatch();
-  private nodeBatch = new GeometryBatch();
+  private lineBatch = new InstanceBatch();
+  private arrowBatch = new InstanceBatch();
+  private selfBatch = new InstanceBatch();
+  private node16Batch = new InstanceBatch();
+  private node64Batch = new InstanceBatch();
+  private lineColors = new InstanceBatch();
+  private arrowColors = new InstanceBatch();
+  private selfColors = new InstanceBatch();
+  private node16Colors = new InstanceBatch();
+  private node64Colors = new InstanceBatch();
   private edgeColor: RGBA = [0.35, 0.75, 0.8, 0.78];
   private foreground = "#dddddd";
   private settings: GraphViewSettings | null = null;
@@ -100,18 +248,34 @@ export class WebGlRenderer {
     if (!gl) throw new Error("WebGL2 недоступен в этом окружении");
     this.gl = gl;
     this.labels = labelCanvas.getContext("2d");
-    this.program = gl.createProgram()!;
-    gl.attachShader(this.program, shader(gl, gl.VERTEX_SHADER, VERTEX));
-    gl.attachShader(this.program, shader(gl, gl.FRAGMENT_SHADER, FRAGMENT));
-    gl.linkProgram(this.program);
-    if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(this.program) ?? "ошибка программы WebGL");
-    }
-    this.positionLocation = gl.getAttribLocation(this.program, "a_position");
-    this.vertexColorLocation = gl.getAttribLocation(this.program, "a_color");
-    this.resolutionLocation = gl.getUniformLocation(this.program, "u_resolution");
-    this.cameraLocation = gl.getUniformLocation(this.program, "u_camera");
-    this.buffer = gl.createBuffer()!;
+    this.lineShape = new InstancedShape(gl, LINE_VERTEX, lineQuad(), [
+      templateAttribute("a_position", 2),
+      instanceAttribute("a_start", 2, LINE_INSTANCE_STRIDE, 0),
+      instanceAttribute("a_end", 2, LINE_INSTANCE_STRIDE, 8),
+      colorAttribute(),
+      instanceAttribute("a_width", 1, LINE_INSTANCE_STRIDE, 24),
+    ]);
+    this.arrowShape = new InstancedShape(gl, ARROW_VERTEX, arrowTriangle(), [
+      templateAttribute("a_position", 2),
+      instanceAttribute("a_endpoint", 2, 36, 0),
+      instanceAttribute("a_direction", 2, 36, 8),
+      instanceAttribute("a_size", 1, 36, 16),
+      colorAttribute(),
+    ]);
+    this.selfShape = new InstancedShape(gl, SELF_VERTEX, selfLinkTriangles(), [
+      templateAttribute("a_geometry", 4, 16),
+      instanceAttribute("a_center", 2, 28, 0),
+      colorAttribute(),
+      instanceAttribute("a_width", 1, 28, 24),
+    ]);
+    const nodeAttributes = [
+      templateAttribute("a_position", 2),
+      instanceAttribute("a_center", 2, 28, 0),
+      instanceAttribute("a_radius", 1, 28, 8),
+      colorAttribute(),
+    ];
+    this.node16Shape = new InstancedShape(gl, NODE_VERTEX, circleTriangleFan(16), nodeAttributes);
+    this.node64Shape = new InstancedShape(gl, NODE_VERTEX, circleTriangleFan(64), nodeAttributes);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     this.motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -372,44 +536,6 @@ export class WebGlRenderer {
     return moving;
   }
 
-  private vertex(vertices: GeometryBatch, x: number, y: number, rgba: RGBA) {
-    vertices.vertex(x, y, ...rgba);
-  }
-
-  private line(vertices: GeometryBatch, ax: number, ay: number, bx: number, by: number, rgba: RGBA) {
-    const dx = bx - ax;
-    const dy = by - ay;
-    const length = Math.hypot(dx, dy);
-    if (length < 0.0001) return;
-    const width = 0.35 * (this.settings?.edgeScale ?? 1);
-    const ox = (-dy / length) * width;
-    const oy = (dx / length) * width;
-    this.triangle(vertices, ax + ox, ay + oy, ax - ox, ay - oy, bx + ox, by + oy, rgba);
-    this.triangle(vertices, ax - ox, ay - oy, bx - ox, by - oy, bx + ox, by + oy, rgba);
-  }
-
-  private triangle(
-    vertices: GeometryBatch,
-    ax: number,
-    ay: number,
-    bx: number,
-    by: number,
-    cx: number,
-    cy: number,
-    rgba: RGBA,
-  ) {
-    this.vertex(vertices, ax, ay, rgba);
-    this.vertex(vertices, bx, by, rgba);
-    this.vertex(vertices, cx, cy, rgba);
-  }
-
-  private drawGeometry(mode: number, vertices: GeometryBatch) {
-    if (vertices.vertexCount === 0) return;
-    const gl = this.gl;
-    gl.bufferData(gl.ARRAY_BUFFER, vertices.values(), gl.STREAM_DRAW);
-    gl.drawArrays(mode, 0, vertices.vertexCount);
-  }
-
   private draw() {
     if (!this.canvas.width || !this.canvas.height) return;
     const started = performance.now();
@@ -417,25 +543,31 @@ export class WebGlRenderer {
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(this.program);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-    gl.enableVertexAttribArray(this.positionLocation);
-    gl.enableVertexAttribArray(this.vertexColorLocation);
-    gl.vertexAttribPointer(this.positionLocation, 2, gl.FLOAT, false, 24, 0);
-    gl.vertexAttribPointer(this.vertexColorLocation, 4, gl.FLOAT, false, 24, 8);
-    gl.uniform2f(this.resolutionLocation, this.canvas.width, this.canvas.height);
-    gl.uniform3f(
-      this.cameraLocation,
-      this.camera.x,
-      this.camera.y,
-      this.camera.zoom * (window.devicePixelRatio || 1),
-    );
+    const camera = {
+      x: this.camera.x,
+      y: this.camera.y,
+      zoom: this.camera.zoom * (window.devicePixelRatio || 1),
+    };
+    this.lineShape.camera = camera;
+    this.arrowShape.camera = camera;
+    this.selfShape.camera = camera;
+    this.node16Shape.camera = camera;
+    this.node64Shape.camera = camera;
 
     const activeHighlight = this.activeHighlight();
     const lines = this.lineBatch;
     const arrows = this.arrowBatch;
+    const selfLinks = this.selfBatch;
+    const lineColors = this.lineColors;
+    const arrowColors = this.arrowColors;
+    const selfColors = this.selfColors;
     lines.clear();
     arrows.clear();
+    selfLinks.clear();
+    lineColors.clear();
+    arrowColors.clear();
+    selfColors.clear();
+    const edgeWidth = 0.35 * (this.settings?.edgeScale ?? 1);
     for (const edge of this.renderEdges) {
       const source = this.positions.get(edge.source);
       const target = this.positions.get(edge.target);
@@ -446,18 +578,16 @@ export class WebGlRenderer {
       const base = muted ? color("#777777") : this.edgeColor;
       const rgba: RGBA = [base[0], base[1], base[2], this.edgeAlphas.get(key) ?? base[3]];
       if (edge.source === edge.target) {
-        for (let step = 0; step < 12; step += 1) {
-          const a = (step / 12) * Math.PI * 2;
-          const b = ((step + 1) / 12) * Math.PI * 2;
-          this.line(lines, source.x + Math.cos(a) * 16, source.y + Math.sin(a) * 16,
-            source.x + Math.cos(b) * 16, source.y + Math.sin(b) * 16, rgba);
-        }
+        selfLinks.push(source.x, source.y, ...rgba, edgeWidth);
+        selfColors.push(...rgba);
         continue;
       }
       const dx = target.x - source.x;
       const dy = target.y - source.y;
       const length = Math.max(0.001, Math.hypot(dx, dy));
-      this.line(lines, source.x, source.y, target.x, target.y, rgba);
+      if (pushLineInstance(lines, source.x, source.y, target.x, target.y, rgba, edgeWidth)) {
+        lineColors.push(...rgba);
+      }
       if (this.settings?.arrows) {
         for (const direction of [1, -1]) {
           if ((direction === 1 && !edge.forward) || (direction === -1 && !edge.backward)) continue;
@@ -470,22 +600,23 @@ export class WebGlRenderer {
           const tipX = endpoint.x - ux * radius;
           const tipY = endpoint.y - uy * radius;
           const size = 5 + Math.min(4, edge.weight / 2);
-          this.triangle(arrows,
-            tipX,
-            tipY,
-            tipX - ux * size - uy * size * 0.6,
-            tipY - uy * size + ux * size * 0.6,
-            tipX - ux * size + uy * size * 0.6,
-            tipY - uy * size - ux * size * 0.6,
-            rgba);
+          arrows.push(tipX, tipY, ux, uy, size, ...rgba);
+          arrowColors.push(...rgba);
         }
       }
     }
-    this.drawGeometry(gl.TRIANGLES, lines);
-    this.drawGeometry(gl.TRIANGLES, arrows);
+    this.lineShape.draw(gl.TRIANGLES, 6, lines, lineColors);
+    this.arrowShape.draw(gl.TRIANGLES, 3, arrows, arrowColors);
+    this.selfShape.draw(gl.TRIANGLES, 72, selfLinks, selfColors);
 
-    const triangles = this.nodeBatch;
-    triangles.clear();
+    const nodes16 = this.node16Batch;
+    const nodes64 = this.node64Batch;
+    const colors16 = this.node16Colors;
+    const colors64 = this.node64Colors;
+    nodes16.clear();
+    nodes64.clear();
+    colors16.clear();
+    colors64.clear();
     for (const node of this.scene.nodes) {
       const point = this.positions.get(node.id)!;
       const custom = this.settings ? colorForNode(node, this.settings.groups) : null;
@@ -494,21 +625,13 @@ export class WebGlRenderer {
       const alpha = this.nodeAlphas.get(node.id) ?? (role === "muted" ? 0.25 : 1);
       const rgba = color(role === "hovered" ? "#09bec8" : base, alpha);
       const radius = this.nodeRadius(node);
-      const segments = radius * this.camera.zoom >= 12 ? 64 : 16;
-      for (let segment = 0; segment < segments; segment += 1) {
-        const a = (segment / segments) * Math.PI * 2;
-        const b = ((segment + 1) / segments) * Math.PI * 2;
-        this.triangle(triangles,
-          point.x,
-          point.y,
-          point.x + Math.cos(a) * radius,
-          point.y + Math.sin(a) * radius,
-          point.x + Math.cos(b) * radius,
-          point.y + Math.sin(b) * radius,
-          rgba);
-      }
+      const batch = nodeSegments(radius, this.camera.zoom) === 64 ? nodes64 : nodes16;
+      const colors = batch === nodes64 ? colors64 : colors16;
+      batch.push(point.x, point.y, radius, ...rgba);
+      colors.push(...rgba);
     }
-    this.drawGeometry(gl.TRIANGLES, triangles);
+    this.node16Shape.draw(gl.TRIANGLE_FAN, 18, nodes16, colors16);
+    this.node64Shape.draw(gl.TRIANGLE_FAN, 66, nodes64, colors64);
     this.drawLabels();
     this.onFrameTime?.(performance.now() - started);
   }
@@ -557,7 +680,10 @@ export class WebGlRenderer {
     this.motionPreference.removeEventListener("change", this.onMotionPreference);
     this.themeObserver.disconnect();
     this.resizeObserver.disconnect();
-    this.gl.deleteBuffer(this.buffer);
-    this.gl.deleteProgram(this.program);
+    this.lineShape.dispose();
+    this.arrowShape.dispose();
+    this.selfShape.dispose();
+    this.node16Shape.dispose();
+    this.node64Shape.dispose();
   }
 }

@@ -32,3 +32,36 @@ export class GeometryBatch {
     return this.buffer.subarray(0, this.length);
   }
 }
+
+export class InstanceBatch {
+  private buffer: Float32Array;
+  private length = 0;
+  count = 0;
+
+  constructor(capacity = 4096) {
+    this.buffer = new Float32Array(capacity);
+  }
+
+  clear() {
+    this.length = 0;
+    this.count = 0;
+  }
+
+  push(...values: number[]) {
+    const required = this.length + values.length;
+    if (required > this.buffer.length) {
+      let capacity = this.buffer.length;
+      while (capacity < required) capacity *= 2;
+      const grown = new Float32Array(capacity);
+      grown.set(this.buffer);
+      this.buffer = grown;
+    }
+    this.buffer.set(values, this.length);
+    this.length = required;
+    this.count += 1;
+  }
+
+  values() {
+    return this.buffer.subarray(0, this.length);
+  }
+}
