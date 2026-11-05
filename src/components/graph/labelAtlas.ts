@@ -251,7 +251,9 @@ class LabelSpriteProgram {
     gl.uniform2f(gl.getUniformLocation(this.program, "u_resolution"), gl.canvas.width, gl.canvas.height);
     gl.uniform1f(gl.getUniformLocation(this.program, "u_pixelRatio"), pixelRatio);
     gl.uniform1i(gl.getUniformLocation(this.program, "u_texture"), 0);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.batch.count);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
 
   dispose() {
