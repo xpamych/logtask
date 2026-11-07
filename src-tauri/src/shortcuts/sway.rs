@@ -22,21 +22,78 @@ fn action_command(path: &Path, id: &str) -> String {
     format!("exec {} --shortcut {id}", shell_quote(path))
 }
 
-fn binding_command<'a>(config: &'a str, key: &str) -> Option<&'a str> {
-    config.lines().find_map(|line| {
+#[derive(Debug, PartialEq, Eq)]
+struct Binding<'a> {
+    key: &'a str,
+    command: &'a str,
+    plain: bool,
+}
+
+fn parse_bindings(config: &str) -> (Vec<Binding<'_>>, bool) {
+    let mut bindings = Vec::new();
+    let mut unrecognized = false;
+    for line in config.lines() {
         let line = line.trim();
-        let rest = line.strip_prefix("bindsym")?;
+        if line == "bindsym" {
+            unrecognized = true;
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("bindsym") else {
+            continue;
+        };
         if !rest.starts_with(char::is_whitespace) {
-            return None;
+            continue;
         }
-        let rest = rest.trim_start();
-        let key_end = rest.find(char::is_whitespace)?;
-        if &rest[..key_end] == key {
-            Some(rest[key_end..].trim())
-        } else {
-            None
+        let mut rest = rest.trim_start();
+        let mut plain = true;
+        let mut valid = true;
+        while rest.starts_with("--") {
+            let Some(option_end) = rest.find(char::is_whitespace) else {
+                unrecognized = true;
+                valid = false;
+                break;
+            };
+            let option = &rest[..option_end];
+            if !matches!(
+                option,
+                "--locked"
+                    | "--no-warn"
+                    | "--release"
+                    | "--to-code"
+                    | "--no-repeat"
+                    | "--inhibited"
+                    | "--whole-window"
+                    | "--border"
+                    | "--exclude-titlebar"
+                    | "--contents"
+            ) && !option.starts_with("--input-device=")
+            {
+                unrecognized = true;
+                valid = false;
+                break;
+            }
+            plain = false;
+            rest = rest[option_end..].trim_start();
         }
-    })
+        if !valid {
+            continue;
+        }
+        let Some(key_end) = rest.find(char::is_whitespace) else {
+            unrecognized = true;
+            continue;
+        };
+        let command = rest[key_end..].trim();
+        if command.is_empty() {
+            unrecognized = true;
+            continue;
+        }
+        bindings.push(Binding {
+            key: &rest[..key_end],
+            command,
+            plain,
+        });
+    }
+    (bindings, unrecognized)
 }
 
 fn plan_bindings(config: &str, executable: &Path) -> SwayPlan {
@@ -44,22 +101,36 @@ fn plan_bindings(config: &str, executable: &Path) -> SwayPlan {
         commands: Vec::new(),
         conflicts: Vec::new(),
     };
+    let (bindings, unrecognized) = parse_bindings(config);
     for (_, id, key) in SHORTCUTS {
         let command = action_command(executable, id);
-        match binding_command(config, key) {
-            Some(existing) if existing == command => {}
-            Some(_) => plan.conflicts.push(format!("{id}: {key}")),
-            None => plan.commands.push(format!("bindsym {key} {command}")),
+        let existing: Vec<_> = bindings
+            .iter()
+            .filter(|binding| binding.key == key)
+            .collect();
+        if unrecognized || existing.iter().any(|binding| binding.command != command) {
+            plan.conflicts.push(format!("{id}: {key}"));
+        } else if existing.is_empty() {
+            plan.commands.push(format!("bindsym {key} {command}"));
         }
     }
     plan
 }
 
 fn plan_unbindings(config: &str, executable: &Path) -> Vec<String> {
+    let (bindings, unrecognized) = parse_bindings(config);
+    if unrecognized {
+        return Vec::new();
+    }
     SHORTCUTS
         .into_iter()
         .filter(|(_, id, key)| {
-            binding_command(config, key) == Some(action_command(executable, id).as_str())
+            let command = action_command(executable, id);
+            let existing: Vec<_> = bindings
+                .iter()
+                .filter(|binding| binding.key == *key)
+                .collect();
+            existing.len() == 1 && existing[0].plain && existing[0].command == command
         })
         .map(|(_, _, key)| format!("unbindsym {key}"))
         .collect()
@@ -99,32 +170,61 @@ fn run_command(command: &str) -> Result<(), String> {
     }
 }
 
+fn apply_plan(plan: SwayPlan, mut run: impl FnMut(&str) -> Result<(), String>) -> BackendStatus {
+    let SwayPlan {
+        commands,
+        conflicts,
+    } = plan;
+    let mut applied: Vec<String> = Vec::new();
+    for command in commands {
+        if let Err(error) = run(&command) {
+            let mut errors = vec![error];
+            let mut rollback_failed = false;
+            for added in applied.iter().rev() {
+                let key = added
+                    .split_whitespace()
+                    .nth(1)
+                    .expect("сгенерированная команда bindsym содержит клавишу");
+                let rollback = format!("unbindsym {key}");
+                if let Err(error) = run(&rollback) {
+                    rollback_failed = true;
+                    errors.push(format!("не удалось откатить {rollback:?}: {error}"));
+                }
+            }
+            return BackendStatus {
+                active: rollback_failed,
+                conflicts,
+                error: Some(errors.join("; ")),
+            };
+        }
+        applied.push(command);
+    }
+    BackendStatus {
+        active: true,
+        conflicts,
+        error: None,
+    }
+}
+
 pub fn start_sway() -> BackendStatus {
     let result = std::env::current_exe()
         .map_err(|error| format!("не удалось определить путь Logtask: {error}"))
         .and_then(|executable| {
             let config = current_config()?;
-            let plan = plan_bindings(&config, &executable);
-            for command in &plan.commands {
-                run_command(command)?;
-            }
-            Ok(plan.conflicts)
+            Ok(plan_bindings(&config, &executable))
         });
-    match result {
-        Ok(conflicts) => BackendStatus {
-            active: true,
-            conflicts,
-            error: None,
+    let status = match result {
+        Ok(plan) => apply_plan(plan, run_command),
+        Err(error) => BackendStatus {
+            active: false,
+            conflicts: Vec::new(),
+            error: Some(error),
         },
-        Err(error) => {
-            log::warn!("глобальные сочетания Sway недоступны: {error}");
-            BackendStatus {
-                active: false,
-                conflicts: Vec::new(),
-                error: Some(error),
-            }
-        }
+    };
+    if let Some(error) = &status.error {
+        log::warn!("глобальные сочетания Sway недоступны полностью: {error}");
     }
+    status
 }
 
 pub fn stop_sway() {
@@ -144,7 +244,7 @@ pub fn stop_sway() {
 
 #[cfg(test)]
 mod tests {
-    use super::{plan_bindings, plan_unbindings, shell_quote, SwayPlan};
+    use super::{apply_plan, plan_bindings, plan_unbindings, shell_quote, SwayPlan};
     use std::path::Path;
 
     #[test]
@@ -201,6 +301,113 @@ mod tests {
             plan_unbindings(config, Path::new("/opt/logtask")),
             vec!["unbindsym Ctrl+Alt+space"]
         );
+    }
+
+    #[test]
+    fn locked_and_release_foreign_bindings_conflict() {
+        let config = concat!(
+            "bindsym --locked Ctrl+Alt+space exec /usr/bin/other --open\n",
+            "bindsym --release Ctrl+Alt+j exec /usr/bin/other --today\n",
+        );
+        let plan = plan_bindings(config, Path::new("/opt/logtask"));
+
+        assert_eq!(
+            plan.conflicts,
+            vec!["open: Ctrl+Alt+space", "today: Ctrl+Alt+j"]
+        );
+        assert_eq!(
+            plan.commands,
+            vec!["bindsym Ctrl+Shift+t exec '/opt/logtask' --shortcut new-task"]
+        );
+    }
+
+    #[test]
+    fn all_duplicate_binding_variants_are_checked() {
+        let config = concat!(
+            "bindsym Ctrl+Alt+space exec '/opt/logtask' --shortcut open\n",
+            "bindsym --locked Ctrl+Alt+space exec /usr/bin/other --open\n",
+            "bindsym Ctrl+Alt+j exec '/opt/logtask' --shortcut today\n",
+            "bindsym --release Ctrl+Alt+j exec '/opt/logtask' --shortcut today\n",
+        );
+        let plan = plan_bindings(config, Path::new("/opt/logtask"));
+
+        assert_eq!(plan.conflicts, vec!["open: Ctrl+Alt+space"]);
+        assert_eq!(
+            plan.commands,
+            vec!["bindsym Ctrl+Shift+t exec '/opt/logtask' --shortcut new-task"]
+        );
+    }
+
+    #[test]
+    fn unrecognized_bindsym_options_conservatively_conflict() {
+        let config = "bindsym --future-option Ctrl+Alt+space exec /usr/bin/other\n";
+        let plan = plan_bindings(config, Path::new("/opt/logtask"));
+
+        assert_eq!(plan.commands, Vec::<String>::new());
+        assert_eq!(
+            plan.conflicts,
+            vec![
+                "open: Ctrl+Alt+space",
+                "today: Ctrl+Alt+j",
+                "new-task: Ctrl+Shift+t",
+            ]
+        );
+    }
+
+    #[test]
+    fn failed_bind_rolls_back_only_commands_added_by_this_invocation() {
+        let plan = plan_bindings(
+            "bindsym Ctrl+Shift+t exec /usr/bin/other\n",
+            Path::new("/opt/logtask"),
+        );
+        let mut installed = Vec::new();
+        let mut calls = Vec::new();
+
+        let status = apply_plan(plan, |command| {
+            calls.push(command.to_string());
+            if command.contains("Ctrl+Alt+j") {
+                return Err("отказ swaymsg".to_string());
+            }
+            if let Some(key) = command.strip_prefix("unbindsym ") {
+                installed.retain(|binding: &String| !binding.contains(key));
+            } else {
+                installed.push(command.to_string());
+            }
+            Ok(())
+        });
+
+        assert!(installed.is_empty());
+        assert_eq!(
+            calls,
+            vec![
+                "bindsym Ctrl+Alt+space exec '/opt/logtask' --shortcut open",
+                "bindsym Ctrl+Alt+j exec '/opt/logtask' --shortcut today",
+                "unbindsym Ctrl+Alt+space",
+            ]
+        );
+        assert!(!status.active);
+        assert_eq!(status.conflicts, vec!["new-task: Ctrl+Shift+t"]);
+        assert!(status.error.unwrap().contains("отказ swaymsg"));
+    }
+
+    #[test]
+    fn failed_rollback_is_reported_as_partial_activity() {
+        let plan = plan_bindings("", Path::new("/opt/logtask"));
+        let mut installed = Vec::new();
+
+        let status = apply_plan(plan, |command| {
+            if command.contains("Ctrl+Alt+j") || command.starts_with("unbindsym ") {
+                return Err(format!("отказ: {command}"));
+            }
+            installed.push(command.to_string());
+            Ok(())
+        });
+
+        assert_eq!(installed.len(), 1);
+        assert!(status.active);
+        let error = status.error.unwrap();
+        assert!(error.contains("Ctrl+Alt+j"));
+        assert!(error.contains("unbindsym Ctrl+Alt+space"));
     }
 
     #[test]
