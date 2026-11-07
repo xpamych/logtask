@@ -6,6 +6,7 @@ mod recent;
 mod settings;
 mod state;
 pub mod sync;
+mod tray;
 mod watcher;
 
 use state::AppState;
@@ -99,10 +100,27 @@ pub fn run() {
             commands::integrations_test,
             commands::integrations_sync,
             commands::ping,
+            tray::ready,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let state = window.state::<AppState>();
+                let root = state.root.read().clone();
+                let available = state
+                    .tray_available
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                if tray::should_hide_on_close(root.as_deref(), available) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             let main = app.get_webview_window("main").expect("главное окно");
             let _ = main.show();
+            if let Err(e) = tray::init(app.handle()) {
+                log::warn!("системный трей недоступен: {e}");
+            }
 
             // WebKitGTK не диспатчит Shift+Tab в DOM (выполняет backtab-навигацию
             // нативно) — перехватываем на уровне виджета и шлём событие во фронт

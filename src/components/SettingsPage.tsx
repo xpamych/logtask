@@ -142,6 +142,17 @@ export function SettingsPage(props: {
             }
           />
         </label>
+
+        <label class="settings-row">
+          <span class="settings-label">Скрывать в трей при закрытии</span>
+          <input
+            type="checkbox"
+            checked={props.settings.closeToTray}
+            onChange={(e) =>
+              patch({ closeToTray: e.currentTarget.checked }, { immediate: true })
+            }
+          />
+        </label>
       </Show>
 
       <Show when={props.section === "tasks"}>

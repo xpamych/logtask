@@ -51,6 +51,8 @@ Logtask — десктоп-приложение: лёгкая замена Logse
    - `settings.rs` — настройки графа в `.logtask/settings.json`.
    - `graph_layout.rs` — производный кэш координат визуального графа в
      `.logtask/graph-layout.json` (можно удалять без потери данных).
+   - `tray.rs` — системный трей, меню навигации/новой задачи и скрытие окна
+     при закрытии по настройке `closeToTray`.
    - `config_edn.rs` — одноразовый импорт `:default-queries` из
      `logseq/config.edn`.
    - `recent.rs` — список недавних графов; `state.rs` — `AppState`
@@ -202,6 +204,7 @@ cargo test --workspace
 ## Безопасность
 
 - Разрешения Tauri — `src-tauri/capabilities/default.json`: `core:default`,
+  `core:app:allow-exit` (полный выход по `Ctrl+Q`),
   `core:window:allow-show`/`allow-set-title`/`allow-start-dragging`/
   `allow-minimize`/`allow-toggle-maximize`/`allow-close`/`allow-set-decorations`,
   `dialog:allow-open`, `opener:allow-open-url`, `window-state:default`;

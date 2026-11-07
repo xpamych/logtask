@@ -13,6 +13,7 @@ import {
   pickGraphDir,
   settingsGet,
   settingsSave,
+  trayReady,
   visualGraphLayoutSave,
 } from "~/lib/api";
 import { AllPages } from "~/components/AllPages";
@@ -54,6 +55,7 @@ const DEFAULT_SETTINGS: Settings = {
   taskpanelWidth: 320,
   favorites: [],
   systemTitlebar: false,
+  closeToTray: true,
   homeView: "journal",
   statuses: [
     { marker: "LATER", label: "Бэклог", color: "#888888", visible: true, shortcut: null },
@@ -291,9 +293,7 @@ const App: Component = () => {
     const onQuit = (e: KeyboardEvent) => {
       if (e.code === "KeyQ" && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
-        void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-          getCurrentWindow().close(),
-        );
+        void import("@tauri-apps/api/app").then(({ exit }) => exit(0));
       }
     };
     window.addEventListener("keydown", onQuit);
@@ -326,6 +326,10 @@ const App: Component = () => {
     navigate({ kind: "settings", section });
 
   const runGlobalCommand = (id: string) => {
+    if ((id === "newTask" || id === "today") && (starting() || !summary()?.root)) {
+      showToast("Сначала выберите или дождитесь загрузки графа");
+      return;
+    }
     switch (id) {
       case "palette":
         setPaletteMode((mode) => (mode === "commands" ? null : "commands"));
@@ -542,10 +546,26 @@ const App: Component = () => {
 
   let unlistenGraph: (() => void) | undefined;
   const unlistenSync: (() => void)[] = [];
+  const unlistenTray: (() => void)[] = [];
   onCleanup(() => {
     unlistenGraph?.();
     unlistenSync.forEach((u) => u());
+    unlistenTray.forEach((u) => u());
   });
+
+  const listenTrayEvents = async () => {
+    try {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlistenTray.push(await listen("tray-today", () => runGlobalCommand("today")));
+      unlistenTray.push(await listen("tray-new-task", () => runGlobalCommand("newTask")));
+      for (const event of await trayReady()) {
+        runGlobalCommand(event === "tray-today" ? "today" : "newTask");
+      }
+    } catch {
+      // фронт запущен вне Tauri
+    }
+  };
+  onMount(() => void listenTrayEvents());
 
   const listenGraphChanged = async () => {
     try {

@@ -122,6 +122,9 @@ pub struct Settings {
     /// true — системная рамка окна вместо встроенных кнопок управления
     #[serde(default)]
     pub system_titlebar: bool,
+    /// true — крестик скрывает окно в трей вместо завершения приложения
+    #[serde(default = "default_close_to_tray")]
+    pub close_to_tray: bool,
     /// домашний вид: "journal" | "tasks" | "pages" | "graph" (кнопка ⌂ и старт приложения)
     #[serde(default = "default_home_view")]
     pub home_view: String,
@@ -164,6 +167,10 @@ fn default_taskpanel_width() -> u32 {
 
 fn default_home_view() -> String {
     "journal".to_string()
+}
+
+fn default_close_to_tray() -> bool {
+    true
 }
 
 /// Дефолтный набор статусов (порядок канбана)
@@ -227,6 +234,7 @@ impl Default for Settings {
             taskpanel_width: default_taskpanel_width(),
             favorites: Vec::new(),
             system_titlebar: false,
+            close_to_tray: default_close_to_tray(),
             home_view: default_home_view(),
             statuses: default_statuses(),
             integrations: Default::default(),
@@ -272,6 +280,7 @@ mod tests {
         assert_eq!(s.taskpanel_width, 320);
         assert!(s.favorites.is_empty());
         assert!(!s.system_titlebar);
+        assert!(s.close_to_tray);
         assert_eq!(s.home_view, "journal");
     }
 
@@ -286,6 +295,7 @@ mod tests {
             taskpanel_width: 400,
             favorites: vec!["Пример - TODO".into()],
             system_titlebar: true,
+            close_to_tray: false,
             statuses: {
                 let mut st = default_statuses();
                 st[0].visible = false;
@@ -302,6 +312,7 @@ mod tests {
         assert_eq!(loaded.taskpanel_width, 400);
         assert_eq!(loaded.favorites, vec!["Пример - TODO".to_string()]);
         assert!(loaded.system_titlebar);
+        assert!(!loaded.close_to_tray);
         assert!(!loaded.statuses[0].visible);
         assert_eq!(loaded.home_view, "journal");
         assert_eq!(loaded.statuses.len(), 6);
@@ -314,6 +325,7 @@ mod tests {
         std::fs::create_dir_all(dir.join(".logtask")).unwrap();
         std::fs::write(dir.join(".logtask/settings.json"), "{}").unwrap();
         let loaded = load(&dir).unwrap();
+        assert!(loaded.close_to_tray);
         assert!(!loaded.graph_view.show_journals);
         assert!(!loaded.graph_view.show_tags);
         assert!(!loaded.graph_view.show_assets);

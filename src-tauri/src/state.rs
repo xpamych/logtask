@@ -8,6 +8,8 @@ use parking_lot::{Mutex, RwLock};
 pub struct AppState {
     pub graph: RwLock<Option<Graph>>,
     pub root: RwLock<Option<PathBuf>>,
+    pub tray_available: std::sync::atomic::AtomicBool,
+    pub tray_events: Mutex<crate::tray::TrayEvents>,
     /// поколение графа: увеличивается до смены/закрытия root и graph
     pub graph_epoch: std::sync::atomic::AtomicU64,
     /// watcher: пока жив — наблюдение активно
@@ -29,6 +31,8 @@ impl Default for AppState {
         AppState {
             graph: RwLock::new(None),
             root: RwLock::new(None),
+            tray_available: std::sync::atomic::AtomicBool::new(false),
+            tray_events: Mutex::new(crate::tray::TrayEvents::default()),
             graph_epoch: std::sync::atomic::AtomicU64::new(0),
             watcher: RwLock::new(None),
             layout_lock: Mutex::new(()),

@@ -406,11 +406,16 @@ export interface Settings {
   taskpanelWidth: number;
   favorites: string[];
   systemTitlebar: boolean;
+  closeToTray: boolean;
   homeView: string;
   statuses: StatusConfig[];
   integrations: IntegrationsConfig;
   graphView: GraphViewSettings;
   shortcuts: Record<string, string | null>;
+}
+
+export async function trayReady(): Promise<string[]> {
+  return invoke<string[]>("tray_ready");
 }
 
 export async function settingsGet(): Promise<Settings> {
