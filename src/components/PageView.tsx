@@ -394,39 +394,32 @@ export function PageView(props: {
                 />
               )}
             </For>
-            <Show when={virtual() && p().blocks.length === 0}>
-              <div class="placeholder">
-                Страница ещё не создана — ниже блоки, где она упоминается
+            <Show
+              when={composing()}
+              fallback={
+                <Show when={p().blocks.length === 0}>
+                  <button
+                    class="placeholder placeholder-btn"
+                    title="Нажмите, чтобы добавить запись"
+                    onClick={openComposer}
+                  >
+                    Страница пуста
+                  </button>
+                </Show>
+              }
+            >
+              <div class="block composer-row">
+                <span class="status-prio-dot empty" />
+                <textarea
+                  ref={composerEl}
+                  class="block-edit"
+                  placeholder="Новая запись…"
+                  rows={1}
+                  onInput={(e) => fitTextarea(e.currentTarget)}
+                  onKeyDown={onComposerKeyDown}
+                  onBlur={() => void submitComposer(false)}
+                />
               </div>
-            </Show>
-            <Show when={!virtual()}>
-              <Show
-                when={composing()}
-                fallback={
-                  <Show when={p().blocks.length === 0}>
-                    <button
-                      class="placeholder placeholder-btn"
-                      title="Нажмите, чтобы добавить запись"
-                      onClick={openComposer}
-                    >
-                      Страница пуста
-                    </button>
-                  </Show>
-                }
-              >
-                <div class="block composer-row">
-                  <span class="status-prio-dot empty" />
-                  <textarea
-                    ref={composerEl}
-                    class="block-edit"
-                    placeholder="Новая запись…"
-                    rows={1}
-                    onInput={(e) => fitTextarea(e.currentTarget)}
-                    onKeyDown={onComposerKeyDown}
-                    onBlur={() => void submitComposer(false)}
-                  />
-                </div>
-              </Show>
             </Show>
           </section>
         )}

@@ -1342,6 +1342,9 @@ pub async fn block_create(
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
+        graph
+            .ensure_page(&page, &root)
+            .map_err(|e| format!("ошибка создания страницы: {e}"))?;
         let position = graph
             .pages
             .get(&page)

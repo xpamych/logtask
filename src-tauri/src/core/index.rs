@@ -362,6 +362,47 @@ impl Graph {
             })
     }
 
+    /// Создаёт и индексирует отсутствующую обычную страницу для первой записи.
+    /// Существующие страницы и журналы остаются без изменений.
+    pub fn ensure_page(&mut self, name: &str, root: &Path) -> std::io::Result<()> {
+        if self.pages.contains_key(name) {
+            return Ok(());
+        }
+        if name.trim() != name {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "имя страницы содержит пробелы по краям",
+            ));
+        }
+        if journal_name(Path::new(name)).is_some() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "журнал нельзя создавать как обычную страницу",
+            ));
+        }
+
+        Self::create_page_file(name, root)?;
+        let name = name.trim();
+        let rel = PathBuf::from("pages").join(format!("{name}.md"));
+        let mtime = std::fs::metadata(root.join(&rel))?.modified().ok();
+        self.pages.insert(
+            name.to_string(),
+            Page {
+                name: name.to_string(),
+                kind: PageKind::Page,
+                roots: Vec::new(),
+                order: Vec::new(),
+                preamble: Vec::new(),
+                trailing_blank: 0,
+                ends_with_newline: true,
+                mtime,
+                content_hash: super::model::content_hash(""),
+                path: Some(rel),
+            },
+        );
+        Ok(())
+    }
+
     /// Удаляет файлы журналов, которые лента показывает пустыми: без блоков
     /// либо только со служебным заголовком даты. Сегодняшний день и страницы
     /// с непустой преамбулой сохраняются. Индекс обновляет вызывающий код.

@@ -102,7 +102,8 @@ backlinks или round-trip.
 - Списки задач: `kanban`, `tasks_by_query`, `matrix`
 - Сохранённые запросы: `queries_list`, `queries_save`, `import_logseq_queries`
 - Правки: `task_set_status`, `task_set_quadrant`, `task_set_priority`,
-  `block_update_text`, `block_delete`, `block_create`, `block_set_prop`
+  `block_update_text`, `block_delete`, `block_create` (при добавлении первой
+  записи создаёт отсутствующую обычную страницу), `block_set_prop`
 - CLOCK: `clock_start`, `clock_stop`
 - Интеграции: `integrations_states`, `integrations_set_secret`,
   `integrations_test`, `integrations_sync`
