@@ -36,8 +36,11 @@ fn preferred_shortcuts() -> [ShortcutSpec; 3] {
     ]
 }
 
-fn restore_decision(saved_shortcut_count: usize) -> RestoreDecision {
-    if saved_shortcut_count == 0 {
+fn restore_decision(saved_shortcut_ids: &[&str]) -> RestoreDecision {
+    if preferred_shortcuts()
+        .iter()
+        .any(|required| !saved_shortcut_ids.contains(&required.id))
+    {
         RestoreDecision::Bind
     } else {
         RestoreDecision::Subscribe
@@ -63,7 +66,12 @@ async fn run(app: AppHandle) -> Result<(), String> {
         .map_err(|error| format!("не удалось запросить ListShortcuts: {error}"))?
         .response()
         .map_err(|error| format!("ListShortcuts отклонён: {error}"))?;
-    if restore_decision(saved.shortcuts().len()) == RestoreDecision::Bind {
+    let saved_shortcut_ids: Vec<_> = saved
+        .shortcuts()
+        .iter()
+        .map(|shortcut| shortcut.id())
+        .collect();
+    if restore_decision(&saved_shortcut_ids) == RestoreDecision::Bind {
         let shortcuts: Vec<_> = preferred_shortcuts()
             .into_iter()
             .map(|shortcut| {
@@ -130,11 +138,27 @@ mod tests {
 
     #[test]
     fn empty_saved_list_requires_binding() {
-        assert_eq!(restore_decision(0), RestoreDecision::Bind);
+        assert_eq!(restore_decision(&[]), RestoreDecision::Bind);
+    }
+
+    #[test]
+    fn unrelated_saved_shortcuts_require_binding() {
+        assert_eq!(
+            restore_decision(&["another-application-action"]),
+            RestoreDecision::Bind
+        );
+    }
+
+    #[test]
+    fn partially_saved_shortcuts_require_binding() {
+        assert_eq!(restore_decision(&["open", "today"]), RestoreDecision::Bind);
     }
 
     #[test]
     fn existing_saved_shortcuts_are_only_restored() {
-        assert_eq!(restore_decision(3), RestoreDecision::Subscribe);
+        assert_eq!(
+            restore_decision(&["open", "today", "new-task"]),
+            RestoreDecision::Subscribe
+        );
     }
 }

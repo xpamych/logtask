@@ -122,7 +122,8 @@ backlinks или round-trip.
 Модуль `shortcuts/` выбирает backend по окружению рабочего стола. KDE,
 GNOME 48+ и Hyprland используют XDG GlobalShortcuts portal: при первом запуске
 `BindShortcuts` регистрирует `open`, `today`, `new-task`, при следующих
-`ListShortcuts` восстанавливает привязки без повторного Bind. `Activated`
+`ListShortcuts` восстанавливает полный набор без повторного Bind. Если любого
+из обязательных id нет, выполняется Bind с полным набором. `Activated`
 передаёт действие в общую с треем очередь, `Deactivated` игнорируется.
 
 Sway управляется через `swaymsg`: перед `bindsym` читается текущий конфиг,
