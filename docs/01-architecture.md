@@ -8,7 +8,8 @@
   файловый watcher, логирование. webkit2gtk-4.1 (уже установлен).
   Трей реализован в `tray.rs`; события до готовности frontend накапливаются
   в `AppState.tray_events` и выдаются через IPC `tray_ready`. При недоступном
-  трее крестик не скрывает окно. Глобальные хоткеи не реализованы — фаза 7.
+  трее крестик не скрывает окно. Глобальные сочетания Wayland реализованы
+  в `shortcuts/`; их события используют общую с треем очередь действий.
   - `sync/` — синхронизация задач с внешними источниками (docs/05-integrations.md):
     адаптеры generic/gitea/github/gitlab, merge с защитой от конфликтов,
     состояние в `.logtask/integrations-state.json`, токены в системном keyring.
@@ -110,11 +111,33 @@ backlinks или round-trip.
 - Интеграции: `integrations_states`, `integrations_set_secret`,
   `integrations_test`, `integrations_sync`
 - Настройки/прочее: `settings_get`, `settings_save`, `recent_graphs`,
-  `pick_graph_dir`, `ping`
+  `pick_graph_dir`, `global_shortcuts_status`, `niri_shortcuts_write`, `ping`
 - Событие: `graph-changed` (payload `GraphSummary` — счётчики
   pages/journals/blocks/tasks/backlinks + root); эмитится после любой
   переиндексации (watcher и команды записи). Прогресс синка —
   события `sync-started` / `sync-finished`.
+
+## Глобальные сочетания Wayland
+
+Модуль `shortcuts/` выбирает backend по окружению рабочего стола. KDE,
+GNOME 48+ и Hyprland используют XDG GlobalShortcuts portal: при первом запуске
+`BindShortcuts` регистрирует `open`, `today`, `new-task`, при следующих
+`ListShortcuts` восстанавливает привязки без повторного Bind. `Activated`
+передаёт действие в общую с треем очередь, `Deactivated` игнорируется.
+
+Sway управляется через `swaymsg`: перед `bindsym` читается текущий конфиг,
+чужая привязка не перезаписывается; при штатном выходе снимаются только точные
+неизменённые привязки Logtask. Для Niri кнопка в настройках создаёт только
+`~/.config/niri/logtask.kdl`; основной `config.kdl` приложение не изменяет,
+строку `include "logtask.kdl"` добавляет пользователь.
+
+Sway и Niri вызывают `logtask --shortcut open|today|new-task`. CLI отправляет
+JSON в Unix socket `$XDG_RUNTIME_DIR/logtask.sock` уже запущенного приложения,
+не создавая второе GUI-окно. Socket имеет права 0600, проверяются peer
+credentials, размер запроса ограничен 4 КиБ, таймаут — 2 с. Stale socket
+удаляется только после неудачного connect. Ошибка любого backend логируется
+и отображается в настройках, но не препятствует запуску Logtask. Root и
+`/dev/input` не используются.
 
 ## Файлы состояния приложения
 - `<граф>/.logtask/settings.json` — настройки графа (`settings.rs`):
@@ -181,7 +204,6 @@ backlinks или round-trip.
 - плагины (всё настраивается в `settings.json`)
 - block refs `((uuid))` — парсинг и индексация есть, рендер-превью текста
   и создание — фаза 7
-- глобальные горячие клавиши — фаза 7
 - whiteboards, PDF, flashcards
 - встроенная синхронизация графа между устройствами (используйте Syncthing;
   синхронизация задач с внешними API — см. docs/05-integrations.md)

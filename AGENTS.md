@@ -53,6 +53,11 @@ Logtask — десктоп-приложение: лёгкая замена Logse
      `.logtask/graph-layout.json` (можно удалять без потери данных).
    - `tray.rs` — системный трей, меню навигации/новой задачи и скрытие окна
      при закрытии по настройке `closeToTray`.
+   - `shortcuts/` — глобальные сочетания Wayland: XDG GlobalShortcuts portal
+     (KDE/GNOME 48+/Hyprland), `swaymsg` для Sway, отдельный KDL для Niri и
+     локальный Unix socket для CLI `logtask --shortcut open|today|new-task`.
+     Ошибки backend не блокируют запуск; root, `/dev/input` и второе GUI-окно
+     не используются.
    - `config_edn.rs` — одноразовый импорт `:default-queries` из
      `logseq/config.edn`.
    - `recent.rs` — список недавних графов; `state.rs` — `AppState`
@@ -95,6 +100,7 @@ docs/                 — архитектура (01), формат md (02), UI 
                         интеграции (05)
 src-tauri/            — Rust-крейт logtask (lib: logtask_lib, bin: main.rs)
   src/core/           — ядро (парсер/модель/индекс/query/сериализация/запись)
+  src/shortcuts/      — глобальные сочетания: portal/Sway/Niri, локальный IPC
   src/sync/           — интеграции: адаптеры generic/форжей, merge, state,
                         секреты (keyring), HTTP
   tests/              — интеграционные тесты + fixtures/graph (реальные файлы)
