@@ -14,6 +14,34 @@ use tauri::Manager;
 pub const MAX_REQUEST_BYTES: usize = 4096;
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
 
+#[derive(Debug)]
+pub enum ListenError {
+    AlreadyRunning(String),
+    Unavailable(String),
+}
+
+impl ListenError {
+    pub fn is_already_running(&self) -> bool {
+        matches!(self, Self::AlreadyRunning(_))
+    }
+}
+
+impl std::fmt::Display for ListenError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AlreadyRunning(message) | Self::Unavailable(message) => {
+                formatter.write_str(message)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ListenError {}
+
+fn unavailable(error: impl Into<String>) -> ListenError {
+    ListenError::Unavailable(error.into())
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
@@ -124,59 +152,90 @@ fn handle_connection(
         .map_err(|error| format!("ошибка записи IPC: {error}"))
 }
 
-fn remove_stale_socket(path: &Path) -> Result<(), String> {
+fn already_running(path: &Path) -> ListenError {
+    ListenError::AlreadyRunning(format!(
+        "Logtask уже запущен: активный socket {}",
+        path.display()
+    ))
+}
+
+fn ensure_not_running_at(path: &Path) -> Result<(), ListenError> {
     match UnixStream::connect(path) {
-        Ok(_) => Err(format!(
-            "Logtask уже запущен: активный socket {}",
-            path.display()
-        )),
+        Ok(_) => Err(already_running(path)),
+        Err(_) => Ok(()),
+    }
+}
+
+pub fn ensure_not_running() -> Result<(), ListenError> {
+    let path = socket_path().map_err(unavailable)?;
+    ensure_not_running_at(&path)
+}
+
+fn remove_stale_socket(path: &Path) -> Result<(), ListenError> {
+    match UnixStream::connect(path) {
+        Ok(_) => Err(already_running(path)),
         Err(connect_error) => {
-            let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+            let metadata =
+                fs::symlink_metadata(path).map_err(|error| unavailable(error.to_string()))?;
             if !metadata.file_type().is_socket() || metadata.uid() != unsafe { libc::geteuid() } {
-                return Err(format!(
+                return Err(unavailable(format!(
                     "путь IPC занят посторонним файлом: {}",
                     path.display()
-                ));
+                )));
             }
             fs::remove_file(path).map_err(|error| {
-                format!(
+                unavailable(format!(
                     "не удалось удалить stale socket после ошибки подключения {connect_error}: {error}"
-                )
+                ))
             })
         }
     }
 }
 
-fn validate_runtime_dir(path: &Path) -> Result<(), String> {
+fn validate_runtime_dir(path: &Path) -> Result<(), ListenError> {
     let parent = path
         .parent()
-        .ok_or_else(|| "некорректный путь IPC".to_string())?;
-    let metadata = fs::symlink_metadata(parent)
-        .map_err(|error| format!("каталог IPC {} недоступен: {error}", parent.display()))?;
+        .ok_or_else(|| unavailable("некорректный путь IPC"))?;
+    let metadata = fs::symlink_metadata(parent).map_err(|error| {
+        unavailable(format!(
+            "каталог IPC {} недоступен: {error}",
+            parent.display()
+        ))
+    })?;
     if !metadata.is_dir()
         || metadata.file_type().is_symlink()
         || metadata.uid() != unsafe { libc::geteuid() }
     {
-        return Err(format!(
+        return Err(unavailable(format!(
             "каталог IPC должен принадлежать текущему пользователю: {}",
             parent.display()
-        ));
+        )));
     }
     Ok(())
+}
+
+fn classify_bind_error(path: &Path, error: &std::io::Error) -> ListenError {
+    if error.kind() == std::io::ErrorKind::AddrInUse {
+        already_running(path)
+    } else {
+        unavailable(format!(
+            "не удалось создать socket {}: {error}",
+            path.display()
+        ))
+    }
 }
 
 pub fn listen_at(
     path: &Path,
     perform: impl Fn(ShortcutAction) + Send + 'static,
-) -> Result<IpcServer, String> {
+) -> Result<IpcServer, ListenError> {
     validate_runtime_dir(path)?;
     if path.exists() {
         remove_stale_socket(path)?;
     }
-    let listener = UnixListener::bind(path)
-        .map_err(|error| format!("не удалось создать socket {}: {error}", path.display()))?;
+    let listener = UnixListener::bind(path).map_err(|error| classify_bind_error(path, &error))?;
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-        .map_err(|error| format!("не удалось установить socket 0600: {error}"))?;
+        .map_err(|error| unavailable(format!("не удалось установить socket 0600: {error}")))?;
 
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
@@ -197,7 +256,7 @@ pub fn listen_at(
                 }
             }
         })
-        .map_err(|error| format!("не удалось запустить IPC listener: {error}"))?;
+        .map_err(|error| unavailable(format!("не удалось запустить IPC listener: {error}")))?;
     Ok(IpcServer {
         path: path.to_path_buf(),
         stop,
@@ -205,8 +264,8 @@ pub fn listen_at(
     })
 }
 
-pub fn listen(app: &tauri::AppHandle) -> Result<(), String> {
-    let path = socket_path()?;
+pub fn listen(app: &tauri::AppHandle) -> Result<(), ListenError> {
+    let path = socket_path().map_err(unavailable)?;
     let app_for_action = app.clone();
     let server = listen_at(&path, move |action| action.perform(&app_for_action))?;
     *app.state::<crate::state::AppState>().shortcut_ipc.lock() = Some(server);
@@ -252,7 +311,10 @@ pub fn send_to(path: &Path, action: ShortcutAction) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{listen_at, parse_request, send_to, MAX_REQUEST_BYTES};
+    use super::{
+        classify_bind_error, ensure_not_running_at, listen_at, parse_request, send_to, ListenError,
+        MAX_REQUEST_BYTES,
+    };
     use crate::shortcuts::ShortcutAction;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixListener;
@@ -316,11 +378,31 @@ mod tests {
     }
 
     #[test]
+    fn bind_address_race_is_already_running() {
+        let error = classify_bind_error(
+            PathBuf::from("test.sock").as_path(),
+            &std::io::Error::new(std::io::ErrorKind::AddrInUse, "занято"),
+        );
+        assert!(matches!(error, ListenError::AlreadyRunning(_)));
+
+        let error = classify_bind_error(
+            PathBuf::from("test.sock").as_path(),
+            &std::io::Error::new(std::io::ErrorKind::PermissionDenied, "запрещено"),
+        );
+        assert!(matches!(error, ListenError::Unavailable(_)));
+    }
+
+    #[test]
     fn active_socket_rejects_second_listener() {
         let path = socket_path("active");
+        assert!(ensure_not_running_at(&path).is_ok());
+
         let server = listen_at(&path, |_| {}).unwrap();
+        let preflight_error = ensure_not_running_at(&path).unwrap_err();
+        assert!(matches!(preflight_error, ListenError::AlreadyRunning(_)));
+
         let error = listen_at(&path, |_| {}).unwrap_err();
-        assert!(error.contains("уже"), "unexpected error: {error}");
+        assert!(matches!(error, ListenError::AlreadyRunning(_)));
 
         drop(server);
         assert!(!path.exists());

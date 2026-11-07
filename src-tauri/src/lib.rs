@@ -13,8 +13,37 @@ mod watcher;
 use state::AppState;
 use tauri::Manager;
 
+fn show_startup_error(message: &str) {
+    eprintln!("{message}");
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::*;
+        if gtk::init().is_ok() {
+            let dialog = gtk::MessageDialog::new(
+                None::<&gtk::Window>,
+                gtk::DialogFlags::MODAL,
+                gtk::MessageType::Error,
+                gtk::ButtonsType::Close,
+                message,
+            );
+            dialog.set_title("Logtask");
+            dialog.run();
+            dialog.close();
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    match shortcuts::ipc::ensure_not_running() {
+        Err(error) if error.is_already_running() => {
+            show_startup_error(&error.to_string());
+            return;
+        }
+        Err(error) => eprintln!("локальный IPC глобальных сочетаний недоступен: {error}"),
+        Ok(()) => {}
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -121,12 +150,17 @@ pub fn run() {
         })
         .setup(|app| {
             let main = app.get_webview_window("main").expect("главное окно");
+            if let Err(error) = shortcuts::ipc::listen(app.handle()) {
+                if error.is_already_running() {
+                    show_startup_error(&error.to_string());
+                    app.handle().exit(1);
+                    return Ok(());
+                }
+                log::warn!("локальный IPC глобальных сочетаний недоступен: {error}");
+            }
             let _ = main.show();
             if let Err(e) = tray::init(app.handle()) {
                 log::warn!("системный трей недоступен: {e}");
-            }
-            if let Err(e) = shortcuts::ipc::listen(app.handle()) {
-                log::warn!("локальный IPC глобальных сочетаний недоступен: {e}");
             }
             shortcuts::start_backend(app.handle().clone());
 
@@ -155,6 +189,11 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("ошибка запуска Logtask");
+        .build(tauri::generate_context!())
+        .expect("ошибка запуска Logtask")
+        .run(|_, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                shortcuts::stop_backend();
+            }
+        });
 }

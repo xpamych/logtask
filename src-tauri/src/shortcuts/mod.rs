@@ -150,6 +150,19 @@ pub fn start_backend(app: AppHandle) {
     });
 }
 
+fn exit_cleanup(backend: Backend, stop_sway: impl FnOnce()) {
+    if backend == Backend::Sway {
+        stop_sway();
+    }
+}
+
+pub fn stop_backend() {
+    exit_cleanup(
+        detect_backend(&DesktopEnvironment::from_env()),
+        sway::stop_sway,
+    );
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ShortcutAction {
@@ -203,7 +216,9 @@ pub fn parse_cli(args: &[String]) -> Result<Option<ShortcutAction>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_backend, parse_cli, Backend, DesktopEnvironment, ShortcutAction};
+    use super::{
+        detect_backend, exit_cleanup, parse_cli, Backend, DesktopEnvironment, ShortcutAction,
+    };
 
     fn environment(session: &str, desktop: &str) -> DesktopEnvironment {
         DesktopEnvironment {
@@ -288,6 +303,20 @@ mod tests {
         ] {
             let args = vec!["--shortcut".to_string(), id.to_string()];
             assert_eq!(parse_cli(&args).unwrap(), Some(action));
+        }
+    }
+
+    #[test]
+    fn exit_cleanup_runs_only_for_sway() {
+        for (backend, expected_calls) in [
+            (Backend::Sway, 1),
+            (Backend::Portal, 0),
+            (Backend::Niri, 0),
+            (Backend::Unsupported, 0),
+        ] {
+            let mut calls = 0;
+            exit_cleanup(backend, || calls += 1);
+            assert_eq!(calls, expected_calls, "backend: {backend:?}");
         }
     }
 
