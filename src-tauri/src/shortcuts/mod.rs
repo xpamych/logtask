@@ -1,8 +1,17 @@
 pub mod ipc;
+pub mod niri;
 pub mod portal;
+pub mod sway;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BackendStatus {
+    pub active: bool,
+    pub conflicts: Vec<String>,
+    pub error: Option<String>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
