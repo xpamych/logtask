@@ -6,7 +6,7 @@ import { globalShortcutsStatus, niriConfigWrite } from "~/lib/api";
 const GLOBAL_SHORTCUTS = [
   { keys: "Ctrl+Alt+Space", label: "Показать Logtask" },
   { keys: "Ctrl+Alt+J", label: "Открыть сегодняшний журнал" },
-  { keys: "Ctrl+Shift+T", label: "Создать задачу" },
+  { keys: "Ctrl+Alt+N", label: "Создать задачу" },
 ];
 
 export function BackendStatus(): JSX.Element {

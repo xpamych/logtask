@@ -11,7 +11,7 @@ pub struct SwayResult {
 const SHORTCUTS: [(ShortcutAction, &str, &str); 3] = [
     (ShortcutAction::Open, "open", "Ctrl+Alt+space"),
     (ShortcutAction::Today, "today", "Ctrl+Alt+j"),
-    (ShortcutAction::NewTask, "new-task", "Ctrl+Shift+t"),
+    (ShortcutAction::NewTask, "new-task", "Ctrl+Alt+n"),
 ];
 
 #[derive(Debug, PartialEq, Eq)]
@@ -250,8 +250,15 @@ pub fn stop_sway() {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_plan, plan_bindings, plan_unbindings, shell_quote, SwayPlan};
+    use super::{apply_plan, plan_bindings, plan_unbindings, shell_quote, SwayPlan, SHORTCUTS};
     use std::path::Path;
+
+    #[test]
+    fn new_task_uses_ctrl_alt_n() {
+        assert!(SHORTCUTS.iter().any(|(action, _, trigger)| *action
+            == super::ShortcutAction::NewTask
+            && *trigger == "Ctrl+Alt+n"));
+    }
 
     #[test]
     fn executable_path_is_shell_quoted() {
@@ -271,7 +278,7 @@ mod tests {
             plan.commands,
             vec![
                 "bindsym Ctrl+Alt+j exec '/opt/logtask' --shortcut today",
-                "bindsym Ctrl+Shift+t exec '/opt/logtask' --shortcut new-task",
+                "bindsym Ctrl+Alt+n exec '/opt/logtask' --shortcut new-task",
             ]
         );
     }
@@ -286,7 +293,7 @@ mod tests {
             plan.commands,
             vec![
                 "bindsym Ctrl+Alt+j exec '/opt/logtask' --shortcut today",
-                "bindsym Ctrl+Shift+t exec '/opt/logtask' --shortcut new-task",
+                "bindsym Ctrl+Alt+n exec '/opt/logtask' --shortcut new-task",
             ]
         );
         assert!(!plan
@@ -300,7 +307,7 @@ mod tests {
         let config = concat!(
             "bindsym Ctrl+Alt+space exec '/opt/logtask' --shortcut open\n",
             "bindsym Ctrl+Alt+j exec /usr/bin/other --shortcut today\n",
-            "bindsym Ctrl+Shift+t exec '/opt/new-logtask' --shortcut new-task\n",
+            "bindsym Ctrl+Alt+n exec '/opt/new-logtask' --shortcut new-task\n",
         );
 
         assert_eq!(
@@ -323,7 +330,7 @@ mod tests {
         );
         assert_eq!(
             plan.commands,
-            vec!["bindsym Ctrl+Shift+t exec '/opt/logtask' --shortcut new-task"]
+            vec!["bindsym Ctrl+Alt+n exec '/opt/logtask' --shortcut new-task"]
         );
     }
 
@@ -340,7 +347,7 @@ mod tests {
         assert_eq!(plan.conflicts, vec!["open: Ctrl+Alt+space"]);
         assert_eq!(
             plan.commands,
-            vec!["bindsym Ctrl+Shift+t exec '/opt/logtask' --shortcut new-task"]
+            vec!["bindsym Ctrl+Alt+n exec '/opt/logtask' --shortcut new-task"]
         );
     }
 
@@ -355,7 +362,7 @@ mod tests {
             vec![
                 "open: Ctrl+Alt+space",
                 "today: Ctrl+Alt+j",
-                "new-task: Ctrl+Shift+t",
+                "new-task: Ctrl+Alt+n",
             ]
         );
     }
@@ -363,7 +370,7 @@ mod tests {
     #[test]
     fn failed_bind_rolls_back_only_commands_added_by_this_invocation() {
         let plan = plan_bindings(
-            "bindsym Ctrl+Shift+t exec /usr/bin/other\n",
+            "bindsym Ctrl+Alt+n exec /usr/bin/other\n",
             Path::new("/opt/logtask"),
         );
         let mut installed = Vec::new();
@@ -392,7 +399,7 @@ mod tests {
             ]
         );
         assert!(!status.active);
-        assert_eq!(status.conflicts, vec!["new-task: Ctrl+Shift+t"]);
+        assert_eq!(status.conflicts, vec!["new-task: Ctrl+Alt+n"]);
         assert!(status.error.unwrap().contains("отказ swaymsg"));
     }
 
@@ -430,7 +437,7 @@ mod tests {
                 commands: vec![
                     "bindsym Ctrl+Alt+space exec '/opt/logtask' --shortcut open".to_string(),
                     "bindsym Ctrl+Alt+j exec '/opt/logtask' --shortcut today".to_string(),
-                    "bindsym Ctrl+Shift+t exec '/opt/logtask' --shortcut new-task".to_string(),
+                    "bindsym Ctrl+Alt+n exec '/opt/logtask' --shortcut new-task".to_string(),
                 ],
             }
         );

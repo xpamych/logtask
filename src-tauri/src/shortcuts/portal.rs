@@ -31,9 +31,29 @@ fn preferred_shortcuts() -> [ShortcutSpec; 3] {
         ShortcutSpec {
             id: "new-task",
             description: "Создать задачу",
-            preferred_trigger: "CTRL+SHIFT+T",
+            preferred_trigger: "CTRL+ALT+N",
         },
     ]
+}
+
+fn is_missing_shortcuts_field(error: &str) -> bool {
+    error.contains("missing field shortcuts")
+}
+
+fn validate_bound_shortcuts(bound_shortcut_ids: &[&str]) -> Result<(), String> {
+    let missing: Vec<_> = preferred_shortcuts()
+        .iter()
+        .filter(|required| !bound_shortcut_ids.contains(&required.id))
+        .map(|required| required.id)
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "система не назначила глобальные сочетания: {}",
+            missing.join(", ")
+        ))
+    }
 }
 
 fn restore_decision(saved_shortcut_ids: &[&str]) -> RestoreDecision {
@@ -79,12 +99,25 @@ async fn run(app: AppHandle) -> Result<(), String> {
                     .preferred_trigger(shortcut.preferred_trigger)
             })
             .collect();
-        portal
+        let response = portal
             .bind_shortcuts(&session, &shortcuts, None)
             .await
             .map_err(|error| format!("не удалось запросить BindShortcuts: {error}"))?
-            .response()
-            .map_err(|error| format!("BindShortcuts отклонён: {error}"))?;
+            .response();
+        match response {
+            Ok(response) => {
+                let bound_shortcut_ids = response
+                    .shortcuts()
+                    .iter()
+                    .map(|shortcut| shortcut.id())
+                    .collect::<Vec<_>>();
+                validate_bound_shortcuts(&bound_shortcut_ids)?;
+            }
+            Err(error) if is_missing_shortcuts_field(&error.to_string()) => {
+                validate_bound_shortcuts(&[])?;
+            }
+            Err(error) => return Err(format!("BindShortcuts отклонён: {error}")),
+        }
     }
 
     super::set_status(
@@ -117,7 +150,10 @@ pub fn start_portal(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{preferred_shortcuts, restore_decision, RestoreDecision};
+    use super::{
+        is_missing_shortcuts_field, preferred_shortcuts, restore_decision,
+        validate_bound_shortcuts, RestoreDecision,
+    };
 
     #[test]
     fn preferred_triggers_match_application_shortcuts() {
@@ -131,7 +167,7 @@ mod tests {
             vec![
                 ("open", "CTRL+ALT+SPACE"),
                 ("today", "CTRL+ALT+J"),
-                ("new-task", "CTRL+SHIFT+T"),
+                ("new-task", "CTRL+ALT+N"),
             ]
         );
     }
@@ -160,5 +196,37 @@ mod tests {
             restore_decision(&["open", "today", "new-task"]),
             RestoreDecision::Subscribe
         );
+    }
+
+    #[test]
+    fn empty_bind_response_lists_all_unassigned_actions() {
+        let error = validate_bound_shortcuts(&[]).unwrap_err();
+        assert!(error.contains("open"), "unexpected error: {error}");
+        assert!(error.contains("today"), "unexpected error: {error}");
+        assert!(error.contains("new-task"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn partial_bind_response_lists_only_missing_action() {
+        let error = validate_bound_shortcuts(&["open", "today"]).unwrap_err();
+        assert!(error.contains("new-task"), "unexpected error: {error}");
+        assert!(!error.contains("open"), "unexpected error: {error}");
+        assert!(!error.contains("today"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn complete_bind_response_is_accepted() {
+        assert!(validate_bound_shortcuts(&["open", "today", "new-task"]).is_ok());
+    }
+
+    #[test]
+    fn only_missing_shortcuts_field_is_an_empty_response() {
+        assert!(is_missing_shortcuts_field(
+            "ZBus Error: missing field shortcuts"
+        ));
+        assert!(!is_missing_shortcuts_field(
+            "ZBus Error: missing field session_handle"
+        ));
+        assert!(!is_missing_shortcuts_field("отклонено пользователем"));
     }
 }

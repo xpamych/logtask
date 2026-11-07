@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 const SHORTCUTS: [(ShortcutAction, &str, &str); 3] = [
     (ShortcutAction::Open, "open", "Ctrl+Alt+Space"),
     (ShortcutAction::Today, "today", "Ctrl+Alt+J"),
-    (ShortcutAction::NewTask, "new-task", "Ctrl+Shift+T"),
+    (ShortcutAction::NewTask, "new-task", "Ctrl+Alt+N"),
 ];
 
 fn kdl_string(value: &str) -> String {
@@ -88,7 +88,7 @@ mod tests {
             .contains("spawn \"/opt/Log task/logtask\\\"debug\" \"--shortcut\" \"new-task\";"));
         assert!(config.contains("Ctrl+Alt+Space {"));
         assert!(config.contains("Ctrl+Alt+J {"));
-        assert!(config.contains("Ctrl+Shift+T {"));
+        assert!(config.contains("Ctrl+Alt+N {"));
     }
 
     #[test]
