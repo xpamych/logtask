@@ -1,4 +1,5 @@
 pub mod ipc;
+pub mod portal;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
