@@ -2,7 +2,7 @@ use std::path::Path;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 #[derive(Default)]
 pub struct TrayEvents {
@@ -11,7 +11,7 @@ pub struct TrayEvents {
 }
 
 impl TrayEvents {
-    fn deliver(&mut self, event: &'static str, emit: impl FnOnce(&'static str)) {
+    pub(crate) fn deliver(&mut self, event: &'static str, emit: impl FnOnce(&'static str)) {
         if self.ready {
             emit(event);
         } else {
@@ -50,29 +50,20 @@ impl TrayAction {
     }
 
     fn perform(self, app: &AppHandle) {
-        if self == Self::Quit {
-            app.exit(0);
-            return;
-        }
-        show_main(app);
-        let event = match self {
-            Self::Open => None,
-            Self::Today => Some("tray-today"),
-            Self::NewTask => Some("tray-new-task"),
-            Self::Quit => return,
+        let action = match self {
+            Self::Open => crate::shortcuts::ShortcutAction::Open,
+            Self::Today => crate::shortcuts::ShortcutAction::Today,
+            Self::NewTask => crate::shortcuts::ShortcutAction::NewTask,
+            Self::Quit => {
+                app.exit(0);
+                return;
+            }
         };
-        if let Some(event) = event {
-            app.state::<crate::state::AppState>()
-                .tray_events
-                .lock()
-                .deliver(event, |event| {
-                    let _ = app.emit(event, ());
-                });
-        }
+        action.perform(app);
     }
 }
 
-fn show_main(app: &AppHandle) {
+pub(crate) fn show_main(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };

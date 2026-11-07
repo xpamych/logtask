@@ -10,6 +10,8 @@ pub struct AppState {
     pub root: RwLock<Option<PathBuf>>,
     pub tray_available: std::sync::atomic::AtomicBool,
     pub tray_events: Mutex<crate::tray::TrayEvents>,
+    /// listener локальных глобальных сочетаний; удаляет socket при выходе
+    pub shortcut_ipc: Mutex<Option<crate::shortcuts::ipc::IpcServer>>,
     /// поколение графа: увеличивается до смены/закрытия root и graph
     pub graph_epoch: std::sync::atomic::AtomicU64,
     /// watcher: пока жив — наблюдение активно
@@ -33,6 +35,7 @@ impl Default for AppState {
             root: RwLock::new(None),
             tray_available: std::sync::atomic::AtomicBool::new(false),
             tray_events: Mutex::new(crate::tray::TrayEvents::default()),
+            shortcut_ipc: Mutex::new(None),
             graph_epoch: std::sync::atomic::AtomicU64::new(0),
             watcher: RwLock::new(None),
             layout_lock: Mutex::new(()),

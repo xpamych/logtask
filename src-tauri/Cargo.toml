@@ -46,5 +46,6 @@ http = "1"
 
 # нативный перехват клавиш (WebKitGTK не диспатчит Shift+Tab в DOM)
 [target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
 gtk = "0.18"
 webkit2gtk = "2.0"

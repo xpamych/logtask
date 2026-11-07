@@ -4,6 +4,7 @@ pub mod core;
 pub mod graph_layout;
 mod recent;
 mod settings;
+pub mod shortcuts;
 mod state;
 pub mod sync;
 mod tray;
@@ -120,6 +121,9 @@ pub fn run() {
             let _ = main.show();
             if let Err(e) = tray::init(app.handle()) {
                 log::warn!("системный трей недоступен: {e}");
+            }
+            if let Err(e) = shortcuts::ipc::listen(app.handle()) {
+                log::warn!("локальный IPC глобальных сочетаний недоступен: {e}");
             }
 
             // WebKitGTK не диспатчит Shift+Tab в DOM (выполняет backtab-навигацию

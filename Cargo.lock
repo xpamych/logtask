@@ -2537,6 +2537,7 @@ dependencies = [
  "http",
  "image",
  "keyring",
+ "libc",
  "log",
  "notify",
  "parking_lot",
