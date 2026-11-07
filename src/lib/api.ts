@@ -407,6 +407,7 @@ export interface Settings {
   favorites: string[];
   systemTitlebar: boolean;
   closeToTray: boolean;
+  showCalendar: boolean;
   homeView: string;
   statuses: StatusConfig[];
   integrations: IntegrationsConfig;

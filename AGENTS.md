@@ -73,7 +73,8 @@ Logtask — десктоп-приложение: лёгкая замена Logse
      `StatusPrioDot` (кружок статуса/приоритета с попапом), `BlockMenu`
      (общее контекстное меню блока — и в ленте, и в карточках задач),
      `TaskCard`, `Kanban`, `Matrix`, `Queries`, `QueryEditor`, `Sidebar`,
-     `SettingsPage` (настройки страницей в центре, разделы в сайдбаре).
+     `SettingsPage` (настройки страницей в центре, разделы в сайдбаре),
+     `MiniCalendar` (переход к существующим дням журнала).
    - `components/graph/` — глобальный/локальный граф, WebGL2 renderer, меню и
      настройки; `lib/graph/` — фильтры, кластеры, Worker layout, live/persistence.
    - `lib/api.ts` — типизированные обёртки над `invoke()` для каждой

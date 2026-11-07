@@ -10,6 +10,7 @@ import {
   IconX,
 } from "~/components/icons";
 import { SETTINGS_SECTIONS } from "./SettingsPage";
+import { MiniCalendar } from "./MiniCalendar";
 import type { SettingsSection } from "./SettingsPage";
 
 export function Sidebar(props: {
@@ -23,6 +24,10 @@ export function Sidebar(props: {
   saveError: string | null;
   favorites: string[];
   recentPages: string[];
+  showCalendar: boolean;
+  weekStart: 0 | 1;
+  refreshKey: number;
+  onOpenDay: (name: string) => void;
   onOpenPage: (name: string) => void;
   onShowJournal: () => void;
   onShowTasks: () => void;
@@ -122,6 +127,10 @@ export function Sidebar(props: {
             </For>
           </Show>
         </div>
+      </Show>
+
+      <Show when={props.showCalendar}>
+        <MiniCalendar weekStart={props.weekStart} refreshKey={props.refreshKey} onSelect={props.onOpenDay} />
       </Show>
 
       <nav class="sidebar-section">

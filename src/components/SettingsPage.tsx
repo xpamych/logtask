@@ -144,6 +144,17 @@ export function SettingsPage(props: {
         </label>
 
         <label class="settings-row">
+          <span class="settings-label">Показывать мини-календарь</span>
+          <input
+            type="checkbox"
+            checked={props.settings.showCalendar}
+            onChange={(e) =>
+              patch({ showCalendar: e.currentTarget.checked }, { immediate: true })
+            }
+          />
+        </label>
+
+        <label class="settings-row">
           <span class="settings-label">Скрывать в трей при закрытии</span>
           <input
             type="checkbox"

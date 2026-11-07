@@ -150,6 +150,7 @@ credentials, размер запроса ограничен 4 КиБ, тайма
 ## Файлы состояния приложения
 - `<граф>/.logtask/settings.json` — настройки графа (`settings.rs`):
   `theme` (dark|light), `fontScale` (0.85…1.4), `weekStart` (0|1),
+  `showCalendar` (мини-календарь в левой панели),
   `kanbanLimit`, `statuses` (маркер/label/цвет/visible/shortcut, порядок
   канбана), `graphView` (фильтры, цветовые группы, отображение, физика и
   локальная глубина визуального графа).

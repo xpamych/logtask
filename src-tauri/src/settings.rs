@@ -125,6 +125,9 @@ pub struct Settings {
     /// true — крестик скрывает окно в трей вместо завершения приложения
     #[serde(default = "default_close_to_tray")]
     pub close_to_tray: bool,
+    /// показывать мини-календарь в левой панели
+    #[serde(default = "default_show_calendar")]
+    pub show_calendar: bool,
     /// домашний вид: "journal" | "tasks" | "pages" | "graph" (кнопка ⌂ и старт приложения)
     #[serde(default = "default_home_view")]
     pub home_view: String,
@@ -170,6 +173,10 @@ fn default_home_view() -> String {
 }
 
 fn default_close_to_tray() -> bool {
+    true
+}
+
+fn default_show_calendar() -> bool {
     true
 }
 
@@ -235,6 +242,7 @@ impl Default for Settings {
             favorites: Vec::new(),
             system_titlebar: false,
             close_to_tray: default_close_to_tray(),
+            show_calendar: default_show_calendar(),
             home_view: default_home_view(),
             statuses: default_statuses(),
             integrations: Default::default(),
@@ -281,6 +289,7 @@ mod tests {
         assert!(s.favorites.is_empty());
         assert!(!s.system_titlebar);
         assert!(s.close_to_tray);
+        assert!(s.show_calendar);
         assert_eq!(s.home_view, "journal");
     }
 
@@ -296,6 +305,7 @@ mod tests {
             favorites: vec!["Пример - TODO".into()],
             system_titlebar: true,
             close_to_tray: false,
+            show_calendar: false,
             statuses: {
                 let mut st = default_statuses();
                 st[0].visible = false;
@@ -313,6 +323,7 @@ mod tests {
         assert_eq!(loaded.favorites, vec!["Пример - TODO".to_string()]);
         assert!(loaded.system_titlebar);
         assert!(!loaded.close_to_tray);
+        assert!(!loaded.show_calendar);
         assert!(!loaded.statuses[0].visible);
         assert_eq!(loaded.home_view, "journal");
         assert_eq!(loaded.statuses.len(), 6);
@@ -326,6 +337,7 @@ mod tests {
         std::fs::write(dir.join(".logtask/settings.json"), "{}").unwrap();
         let loaded = load(&dir).unwrap();
         assert!(loaded.close_to_tray);
+        assert!(loaded.show_calendar);
         assert!(!loaded.graph_view.show_journals);
         assert!(!loaded.graph_view.show_tags);
         assert!(!loaded.graph_view.show_assets);

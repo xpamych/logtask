@@ -56,6 +56,7 @@ const DEFAULT_SETTINGS: Settings = {
   favorites: [],
   systemTitlebar: false,
   closeToTray: true,
+  showCalendar: true,
   homeView: "journal",
   statuses: [
     { marker: "LATER", label: "Бэклог", color: "#888888", visible: true, shortcut: null },
@@ -683,6 +684,8 @@ const App: Component = () => {
     `${sidebarCollapsed() ? 0 : sidebarW()}px ${sidebarCollapsed() ? 0 : 5}px 1fr ` +
     `${panelCollapsed() ? 0 : 5}px ${panelCollapsed() ? 0 : panelW()}px`;
 
+  let journalTapeRef: { openDay: (name: string) => Promise<void> } | undefined;
+
   return (
     <Show when={!starting()} fallback={<div class="placeholder">Загрузка графа…</div>}>
       <Show when={!graphNotChosen()} fallback={<Welcome onPick={pickGraph} onCreate={createGraph} />}>
@@ -722,6 +725,13 @@ const App: Component = () => {
               saveError={saveError()}
               favorites={settings().favorites}
               recentPages={recentPages()}
+              showCalendar={settings().showCalendar}
+              weekStart={settings().weekStart === 0 ? 0 : 1}
+              refreshKey={refreshKey()}
+              onOpenDay={(name) => {
+                showJournal();
+                queueMicrotask(() => void journalTapeRef?.openDay(name));
+              }}
               onOpenPage={openPage}
               onShowJournal={showJournal}
               onShowTasks={showTasksPage}
@@ -748,7 +758,7 @@ const App: Component = () => {
                           fallback={
                             <Show
                               when={showAllPages()}
-                              fallback={<JournalTape refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+                              fallback={<JournalTape ref={(handle) => (journalTapeRef = handle)} refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
                             >
                               <AllPages
                                 pages={pages()}

@@ -15,6 +15,7 @@ import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { backlinksRefreshToken, visibleJournalsAfterRefresh } from "~/lib/journalRefresh";
 import { composerMarker } from "~/lib/composer";
+import { findJournalDay } from "~/lib/journalOpen";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
 
@@ -24,6 +25,7 @@ export function JournalTape(props: {
   onOpenPage: (name: string) => void;
   refreshKey: number;
   settings?: Settings | null;
+  ref?: (handle: { openDay: (name: string) => Promise<void> }) => void;
 }): JSX.Element {
   const [days, setDays] = createSignal<string[]>([]);
   const [pages, setPages] = createSignal<Record<string, PageDto>>({});
@@ -111,6 +113,39 @@ export function JournalTape(props: {
       if (my === epoch) setLoading(false);
     }
   };
+
+  let openDayEpoch = 0;
+  const openDay = async (name: string) => {
+    const my = ++openDayEpoch;
+    try {
+      if (!days().includes(name)) {
+        if (days().length === 0) await reload();
+        if (my !== openDayEpoch) return;
+        const oldest = days()[days().length - 1];
+        if (name > oldest) {
+          const fresh = await pageGet(name);
+          if (my !== openDayEpoch) return;
+          setPages((prev) => ({ ...prev, [name]: fresh }));
+          setDays((prev) => [...prev, name].sort((a, b) => b.localeCompare(a)));
+        } else {
+          const older = await findJournalDay(name, oldest, journalPrev);
+          if (my !== openDayEpoch) return;
+          await appendDays(older, epoch);
+        }
+      }
+      if (my !== openDayEpoch) return;
+      requestAnimationFrame(() => {
+        const el = mainEl?.querySelector(`[data-journal-day="${name}"]`);
+        if (!el) return;
+        el.scrollIntoView({ block: "start", behavior: "auto" });
+        el.classList.add("block-focus");
+        window.setTimeout(() => el.classList.remove("block-focus"), 2200);
+      });
+    } catch (e) {
+      if (my === openDayEpoch) setError(String(e));
+    }
+  };
+  props.ref?.({ openDay });
 
   const onStatusChange = async (uuid: string, marker: string): Promise<string> => {
     try {
@@ -259,7 +294,7 @@ export function JournalTape(props: {
       </Show>
       <For each={days()}>
         {(name) => (
-          <section class="day">
+          <section class="day" data-journal-day={name}>
             <h2 class="day-title">{formatJournalName(name)}</h2>
             <Show when={pages()[name]} fallback={<div class="placeholder">…</div>}>
               {(page) => (
