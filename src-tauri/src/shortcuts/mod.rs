@@ -150,14 +150,15 @@ pub fn start_backend(app: AppHandle) {
     });
 }
 
-fn exit_cleanup(backend: Backend, stop_sway: impl FnOnce()) {
-    if backend == Backend::Sway {
+fn exit_cleanup(cleanup_backend: bool, backend: Backend, stop_sway: impl FnOnce()) {
+    if cleanup_backend && backend == Backend::Sway {
         stop_sway();
     }
 }
 
-pub fn stop_backend() {
+pub fn stop_backend(cleanup_backend: bool) {
     exit_cleanup(
+        cleanup_backend,
         detect_backend(&DesktopEnvironment::from_env()),
         sway::stop_sway,
     );
@@ -315,9 +316,16 @@ mod tests {
             (Backend::Unsupported, 0),
         ] {
             let mut calls = 0;
-            exit_cleanup(backend, || calls += 1);
+            exit_cleanup(true, backend, || calls += 1);
             assert_eq!(calls, expected_calls, "backend: {backend:?}");
         }
+    }
+
+    #[test]
+    fn rejected_instance_does_not_cleanup_sway() {
+        let mut calls = 0;
+        exit_cleanup(false, Backend::Sway, || calls += 1);
+        assert_eq!(calls, 0);
     }
 
     #[test]

@@ -44,6 +44,10 @@ pub fn run() {
         Ok(()) => {}
     }
 
+    let cleanup_backend = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let cleanup_backend_setup = std::sync::Arc::clone(&cleanup_backend);
+    let cleanup_backend_exit = std::sync::Arc::clone(&cleanup_backend);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -148,7 +152,7 @@ pub fn run() {
                 }
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
             let main = app.get_webview_window("main").expect("главное окно");
             if let Err(error) = shortcuts::ipc::listen(app.handle()) {
                 if error.is_already_running() {
@@ -162,6 +166,7 @@ pub fn run() {
             if let Err(e) = tray::init(app.handle()) {
                 log::warn!("системный трей недоступен: {e}");
             }
+            cleanup_backend_setup.store(true, std::sync::atomic::Ordering::Release);
             shortcuts::start_backend(app.handle().clone());
 
             // WebKitGTK не диспатчит Shift+Tab в DOM (выполняет backtab-навигацию
@@ -191,9 +196,11 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("ошибка запуска Logtask")
-        .run(|_, event| {
+        .run(move |_, event| {
             if matches!(event, tauri::RunEvent::Exit) {
-                shortcuts::stop_backend();
+                shortcuts::stop_backend(
+                    cleanup_backend_exit.load(std::sync::atomic::Ordering::Acquire),
+                );
             }
         });
 }
