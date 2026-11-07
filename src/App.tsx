@@ -561,8 +561,8 @@ const App: Component = () => {
       for (const event of await trayReady()) {
         runGlobalCommand(event === "tray-today" ? "today" : "newTask");
       }
-    } catch {
-      // фронт запущен вне Tauri
+    } catch (e) {
+      console.warn("события трея не подключены:", e);
     }
   };
   onMount(() => void listenTrayEvents());

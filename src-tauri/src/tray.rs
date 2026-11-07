@@ -25,7 +25,7 @@ impl TrayEvents {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename = "tray_ready")]
 pub fn ready(state: tauri::State<'_, crate::state::AppState>) -> Vec<&'static str> {
     state.tray_events.lock().mark_ready()
 }
