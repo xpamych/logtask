@@ -38,7 +38,7 @@ jobs:
         run: npm run build
 
       - name: Аудит production-зависимостей
-        run: npm audit --omit=dev
+        run: npm audit --omit=dev --registry=https://registry.npmjs.org
 
       - name: Форматирование Rust
         run: cargo fmt --check
