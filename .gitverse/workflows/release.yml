@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TAG: ${{ gitverse.ref_name }}
+    steps:
+      - name: Исходники
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Системные зависимости Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config curl jq file ca-certificates \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Зависимости npm
+        run: npm ci
+
+      - name: Тесты frontend
+        run: node --conditions=browser --test src/lib/graph/*.test.ts src/components/graph/*.test.ts src/lib/*.test.ts
+
+      - name: Сборка frontend
+        run: npm run build
+
+      - name: Аудит production-зависимостей
+        run: npm audit --omit=dev
+
+      - name: Проверка Rust
+        run: |
+          cargo fmt --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+
+      - name: Сборка приложения
+        run: npm run app:build
+
+      - name: Описание аннотированного тега
+        id: notes
+        run: |
+          set -e
+          if [[ "$(git cat-file -t "$TAG")" != tag ]]; then
+            echo "Тег $TAG не является аннотированным" >&2
+            exit 1
+          fi
+          BODY="$(git tag -l "$TAG" --format='%(contents)')"
+          if [[ -z "$BODY" ]]; then
+            echo "Не найдено описание аннотированного тега $TAG" >&2
+            exit 1
+          fi
+          {
+            echo 'body<<LOGTASK_RELEASE_BODY'
+            printf '%s\n' "$BODY"
+            echo 'LOGTASK_RELEASE_BODY'
+          } >> "$GITVERSE_OUTPUT"
+
+      - name: Формирование архива
+        id: package
+        run: |
+          set -e
+          mkdir -p pkg/logtask-linux-x86_64
+          cp target/release/logtask pkg/logtask-linux-x86_64/
+          cp public/icon.png pkg/logtask-linux-x86_64/logtask.png
+          printf '%s\n' \
+            '[Desktop Entry]' \
+            'Name=Logtask' \
+            'Comment=Журнал по дням и задачи над md-файлами Logseq' \
+            'Exec=logtask' \
+            'Icon=logtask' \
+            'Terminal=false' \
+            'Type=Application' \
+            'Categories=Utility;Office;' \
+            > pkg/logtask-linux-x86_64/logtask.desktop
+          tar -czf logtask-linux-x86_64.tar.gz -C pkg logtask-linux-x86_64
+          tar -tzf logtask-linux-x86_64.tar.gz
+          ASSETS=(logtask-linux-x86_64.tar.gz)
+          for pattern in \
+            target/release/bundle/deb/*.deb \
+            target/release/bundle/rpm/*.rpm \
+            target/release/bundle/appimage/*.AppImage; do
+            if [[ -f "$pattern" ]]; then
+              ASSETS+=("$pattern")
+            fi
+          done
+          {
+            echo 'files<<LOGTASK_RELEASE_FILES'
+            printf '%s\n' "${ASSETS[@]}"
+            echo 'LOGTASK_RELEASE_FILES'
+          } >> "$GITVERSE_OUTPUT"
+
+      - name: Артефакт сборки
+        uses: actions/upload-artifact@v4
+        with:
+          name: logtask-linux-x86_64
+          path: logtask-linux-x86_64.tar.gz
+
+      - name: Создание или обновление релиза
+        uses: actions/create-release@v1
+        with:
+          api_key: ${{ secrets.GITVERSE_API_KEY }}
+          title: Logtask ${{ gitverse.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          files: ${{ steps.package.outputs.files }}
+          draft: false
+          pre_release: false
