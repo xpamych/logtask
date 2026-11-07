@@ -120,7 +120,10 @@ backlinks или round-trip.
 ## Глобальные сочетания Wayland
 
 Модуль `shortcuts/` выбирает backend по окружению рабочего стола. KDE,
-GNOME 48+ и Hyprland используют XDG GlobalShortcuts portal: при первом запуске
+GNOME 48+ и Hyprland используют XDG GlobalShortcuts portal. Перед созданием
+сессии host-приложение регистрирует `ru.logtask.app` через host Registry; если
+окружение не находит app info с этим id, backend показывает ошибку, не мешая
+запуску Logtask. При первом запуске
 `BindShortcuts` регистрирует `open`, `today`, `new-task`, при следующих
 `ListShortcuts` восстанавливает полный набор без повторного Bind. Если любого
 из обязательных id нет, выполняется Bind с полным набором. Ответ Bind проверяется

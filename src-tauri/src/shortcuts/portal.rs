@@ -4,6 +4,8 @@ use tauri::AppHandle;
 
 use crate::shortcuts::ShortcutAction;
 
+const LOGTASK_APP_ID: &str = "ru.logtask.app";
+
 #[derive(Debug, PartialEq, Eq)]
 enum RestoreDecision {
     Bind,
@@ -68,6 +70,11 @@ fn restore_decision(saved_shortcut_ids: &[&str]) -> RestoreDecision {
 }
 
 async fn run(app: AppHandle) -> Result<(), String> {
+    let app_id = ashpd::AppID::try_from(LOGTASK_APP_ID)
+        .map_err(|error| format!("некорректный application id Logtask: {error}"))?;
+    ashpd::register_host_app(app_id).await.map_err(|error| {
+        format!("не удалось зарегистрировать Logtask в XDG host portal: {error}")
+    })?;
     let portal = GlobalShortcuts::new()
         .await
         .map_err(|error| format!("не удалось подключиться к XDG GlobalShortcuts: {error}"))?;
@@ -152,8 +159,14 @@ pub fn start_portal(app: AppHandle) -> Result<(), String> {
 mod tests {
     use super::{
         is_missing_shortcuts_field, preferred_shortcuts, restore_decision,
-        validate_bound_shortcuts, RestoreDecision,
+        validate_bound_shortcuts, RestoreDecision, LOGTASK_APP_ID,
     };
+
+    #[test]
+    fn application_id_is_valid_and_owned_by_logtask() {
+        assert_eq!(LOGTASK_APP_ID, "ru.logtask.app");
+        assert!(ashpd::AppID::try_from(LOGTASK_APP_ID).is_ok());
+    }
 
     #[test]
     fn preferred_triggers_match_application_shortcuts() {
