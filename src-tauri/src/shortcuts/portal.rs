@@ -79,6 +79,12 @@ async fn run(app: AppHandle) -> Result<(), String> {
             .map_err(|error| format!("BindShortcuts отклонён: {error}"))?;
     }
 
+    super::set_status(
+        &app,
+        super::Backend::Portal,
+        "работает",
+        "Сочетания настраиваются в параметрах рабочего окружения.".to_string(),
+    );
     while let Some(event) = activated.next().await {
         match ShortcutAction::parse(event.shortcut_id()) {
             Some(action) => action.perform(&app),
@@ -93,8 +99,9 @@ async fn run(app: AppHandle) -> Result<(), String> {
 
 pub fn start_portal(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = run(app).await {
+        if let Err(error) = run(app.clone()).await {
             log::warn!("XDG GlobalShortcuts недоступен: {error}");
+            super::set_status(&app, super::Backend::Portal, "ошибка", error);
         }
     });
     Ok(())

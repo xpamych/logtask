@@ -1900,6 +1900,28 @@ pub fn ping() -> &'static str {
     "logtask-core: ok"
 }
 
+#[tauri::command]
+pub fn global_shortcuts_status(app: tauri::AppHandle) -> crate::shortcuts::BackendStatus {
+    crate::shortcuts::status(&app)
+}
+
+#[tauri::command]
+pub fn niri_config_write(app: tauri::AppHandle) -> Result<String, String> {
+    let path = crate::shortcuts::niri::write_niri_config()?;
+    let message = format!(
+        "Создан {}. Добавьте `{}` в config.kdl и перезапустите Niri.",
+        path.display(),
+        crate::shortcuts::niri::niri_include()
+    );
+    crate::shortcuts::set_status(
+        &app,
+        crate::shortcuts::Backend::Niri,
+        "требуется перезагрузка",
+        message,
+    );
+    Ok(path.display().to_string())
+}
+
 /// Резолв пути ассета внутри графа. Logseq пишет ссылки на картинки
 /// относительно md-файла (`../assets/x.png` из journals/ и pages/),
 /// поэтому ведущие `..`/`./` отбрасываются и путь ищется от корня графа

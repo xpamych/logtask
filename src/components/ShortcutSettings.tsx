@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Settings } from "~/lib/api";
+import { BackendStatus } from "~/shortcuts/BackendStatus";
 import { COMMAND_DEFINITIONS } from "~/lib/commands";
 import type { CommandContext } from "~/lib/commands";
 import { pushModalContext } from "~/lib/modalState";
@@ -71,6 +72,8 @@ export function ShortcutSettings(props: {
 
   return (
     <div class="shortcut-settings">
+      <BackendStatus />
+      <h2>Сочетания внутри приложения</h2>
       <div class="settings-row">
         <span class="settings-label">Нажмите сочетание, затем новые клавиши. Escape — отмена, Backspace — очистить.</span>
         <button

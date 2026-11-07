@@ -1,6 +1,12 @@
-use super::{BackendStatus, ShortcutAction};
+use super::ShortcutAction;
 use std::path::Path;
 use std::process::Command;
+
+pub struct SwayResult {
+    pub active: bool,
+    pub conflicts: Vec<String>,
+    pub error: Option<String>,
+}
 
 const SHORTCUTS: [(ShortcutAction, &str, &str); 3] = [
     (ShortcutAction::Open, "open", "Ctrl+Alt+space"),
@@ -170,7 +176,7 @@ fn run_command(command: &str) -> Result<(), String> {
     }
 }
 
-fn apply_plan(plan: SwayPlan, mut run: impl FnMut(&str) -> Result<(), String>) -> BackendStatus {
+fn apply_plan(plan: SwayPlan, mut run: impl FnMut(&str) -> Result<(), String>) -> SwayResult {
     let SwayPlan {
         commands,
         conflicts,
@@ -191,7 +197,7 @@ fn apply_plan(plan: SwayPlan, mut run: impl FnMut(&str) -> Result<(), String>) -
                     errors.push(format!("не удалось откатить {rollback:?}: {error}"));
                 }
             }
-            return BackendStatus {
+            return SwayResult {
                 active: rollback_failed,
                 conflicts,
                 error: Some(errors.join("; ")),
@@ -199,14 +205,14 @@ fn apply_plan(plan: SwayPlan, mut run: impl FnMut(&str) -> Result<(), String>) -
         }
         applied.push(command);
     }
-    BackendStatus {
+    SwayResult {
         active: true,
         conflicts,
         error: None,
     }
 }
 
-pub fn start_sway() -> BackendStatus {
+pub fn start_sway() -> SwayResult {
     let result = std::env::current_exe()
         .map_err(|error| format!("не удалось определить путь Logtask: {error}"))
         .and_then(|executable| {
@@ -215,7 +221,7 @@ pub fn start_sway() -> BackendStatus {
         });
     let status = match result {
         Ok(plan) => apply_plan(plan, run_command),
-        Err(error) => BackendStatus {
+        Err(error) => SwayResult {
             active: false,
             conflicts: Vec::new(),
             error: Some(error),

@@ -418,6 +418,20 @@ export async function trayReady(): Promise<string[]> {
   return invoke<string[]>("tray_ready");
 }
 
+export interface GlobalShortcutsStatus {
+  backend: string;
+  status: string;
+  message: string;
+}
+
+export async function globalShortcutsStatus(): Promise<GlobalShortcutsStatus> {
+  return invoke<GlobalShortcutsStatus>("global_shortcuts_status");
+}
+
+export async function niriConfigWrite(): Promise<string> {
+  return invoke<string>("niri_config_write");
+}
+
 export async function settingsGet(): Promise<Settings> {
   return invoke<Settings>("settings_get");
 }

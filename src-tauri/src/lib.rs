@@ -40,6 +40,7 @@ pub fn run() {
                 .build(),
         )
         .manage(AppState::default())
+        .manage(shortcuts::GlobalShortcutsState::default())
         .invoke_handler(tauri::generate_handler![
             commands::graph_load,
             commands::graph_summary,
@@ -101,6 +102,8 @@ pub fn run() {
             commands::integrations_test,
             commands::integrations_sync,
             commands::ping,
+            commands::global_shortcuts_status,
+            commands::niri_config_write,
             tray::ready,
         ])
         .on_window_event(|window, event| {
@@ -125,6 +128,7 @@ pub fn run() {
             if let Err(e) = shortcuts::ipc::listen(app.handle()) {
                 log::warn!("локальный IPC глобальных сочетаний недоступен: {e}");
             }
+            shortcuts::start_backend(app.handle().clone());
 
             // WebKitGTK не диспатчит Shift+Tab в DOM (выполняет backtab-навигацию
             // нативно) — перехватываем на уровне виджета и шлём событие во фронт
