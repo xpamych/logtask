@@ -153,6 +153,7 @@ export interface InlineSegment {
     | "code"
     | "highlight"
     | "image"
+    | "blockRef"
     | "url";
   text: string;
   target?: string;
@@ -167,7 +168,7 @@ export interface InlineSegment {
 // порядок альтернатив важен: inline code раньше ссылок, картинки и
 // md-ссылки раньше [[ссылок]], голый URL — последним (после md-ссылки)
 const INLINE_RE =
-  /(`+)([\s\S]*?)\1|(!\[\[[^\]]+\]\])|(!\[[^\]]*\]\([^)]+\))|(\[[^\]]+\]\(https?:\/\/[^)]+\))|(\[\[[^\]|]+(?:\|[^\]]*)?\]\])|(#(?:\[\[[^\]]+\]\]|\[[^\]]+\]|[^\s#\[)\],.;:!?("«»]+))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(\^\^[^^]+\^\^)|(https?:\/\/[^\s)\]]+)/g;
+  /(`+)([\s\S]*?)\1|(\(\(\s*[0-9a-fA-F-]+\s*\)\))|(!\[\[[^\]]+\]\])|(!\[[^\]]*\]\([^)]+\))|(\[[^\]]+\]\(https?:\/\/[^)]+\))|(\[\[[^\]|]+(?:\|[^\]]*)?\]\])|(#(?:\[\[[^\]]+\]\]|\[[^\]]+\]|[^\s#\[)\],.;:!?("«»]+))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(\^\^[^^]+\^\^)|(https?:\/\/[^\s)\]]+)/g;
 
 /** Хвостовую пунктуацию голого URL (точка/запятая в конце предложения)
  *  не включаем в ссылку */
@@ -191,9 +192,16 @@ export function parseInline(input: string): InlineSegment[] {
     }
     const start = m.index;
     const end = m.index + m[0].length;
-    const [, codeDelimiter, codeText, imgEmbed, imgMd, mdLink, link, tag, bold, italic, strike, highlight, bareUrl] = m;
+    const [, codeDelimiter, codeText, blockRef, imgEmbed, imgMd, mdLink, link, tag, bold, italic, strike, highlight, bareUrl] = m;
     if (codeDelimiter !== undefined) {
       segments.push({ type: "code", text: codeText, start, end });
+    } else if (blockRef !== undefined) {
+      const target = blockRef.slice(2, -2).trim();
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target)) {
+        segments.push({ type: "blockRef", text: blockRef, target, start, end });
+      } else {
+        segments.push({ type: "text", text: blockRef, start, end });
+      }
     } else if (imgEmbed !== undefined) {
       // logseq-вставка: ![[../assets/x.png]]
       const path = imgEmbed.slice(3, -2).trim();
