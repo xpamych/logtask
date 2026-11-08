@@ -1,5 +1,6 @@
 //! ядро Logtask: парсер outliner, модель, индекс, query (см. docs/)
 
+pub mod block_refs;
 pub mod fswrite;
 pub mod index;
 pub mod model;
