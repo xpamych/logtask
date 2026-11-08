@@ -1,3 +1,26 @@
+import type { InlineSegment } from "./text.ts";
+
+export class LatestRequest {
+  private epoch = 0;
+
+  next(): number {
+    return ++this.epoch;
+  }
+
+  isCurrent(epoch: number): boolean {
+    return epoch === this.epoch;
+  }
+}
+
+export function uniqueBlockRefIds(segments: InlineSegment[]): string[] {
+  const ids = new Set<string>();
+  for (const segment of segments) {
+    if (segment.type === "blockRef" && segment.target) ids.add(segment.target);
+    for (const id of uniqueBlockRefIds(segment.children ?? [])) ids.add(id);
+  }
+  return [...ids];
+}
+
 export interface AutocompleteContext {
   kind: "page" | "block";
   query: string;

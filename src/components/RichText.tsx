@@ -1,8 +1,10 @@
-import { For, Show, createSignal, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import type { JSX } from "solid-js";
+import type { BlockRefDto } from "~/lib/api";
 import type { InlineSegment } from "~/lib/text";
 import { parseInline, splitMdBlocks, unescapeLeadingDash } from "~/lib/text";
-import { faviconDataUrl, openExternal, webTitle } from "~/lib/api";
+import { blockRefsResolve, faviconDataUrl, openExternal, webTitle } from "~/lib/api";
+import { LatestRequest, uniqueBlockRefIds } from "~/lib/blockRefs";
 import { AssetImage } from "./AssetImage";
 import { CodeBlock } from "./CodeBlock";
 import { IconLink } from "./icons";
@@ -47,14 +49,34 @@ function BareUrlText(props: { url: string }): JSX.Element {
 }
 
 /** Текст блока без md-разметки: [[ссылки]], #теги, **жирный**, *курсив*,
- *  ~~зачёркнутый~~, `код`, ^^подсветка^^, заголовки и блоки кода.
+ *  ~~зачёркнутый~~, `код`, ^^подсветка^^, ((block refs)), заголовки и код.
  *  Разметка видна только в режиме редактирования. Рендер — только
  *  JSX-сегменты, никакого innerHTML. */
 export function RichText(props: {
   text: string;
-  onOpenPage?: (name: string) => void;
+  onOpenPage?: (name: string, uuid?: string) => void;
 }): JSX.Element {
   const blocks = () => splitMdBlocks(props.text.trim());
+  const [refs, setRefs] = createSignal<Record<string, BlockRefDto>>({});
+  const requests = new LatestRequest();
+
+  createEffect(() => {
+    const ids = uniqueBlockRefIds(
+      blocks().flatMap((block) => block.kind === "code" ? [] : parseInline(block.text)),
+    );
+    const epoch = requests.next();
+    setRefs({});
+    if (ids.length === 0) {
+      setRefs({});
+      return;
+    }
+    void blockRefsResolve(ids).then((resolved) => {
+      if (!requests.isCurrent(epoch)) return;
+      setRefs(Object.fromEntries(resolved.map((target) => [target.uuid, target])));
+    }).catch(() => {
+      if (requests.isCurrent(epoch)) setRefs({});
+    });
+  });
 
   const link = (seg: InlineSegment) => (
     <span
@@ -69,6 +91,28 @@ export function RichText(props: {
       {seg.text}
     </span>
   );
+
+  const blockRef = (seg: InlineSegment): JSX.Element => {
+    const target = refs()[seg.target ?? ""];
+    if (!target) return seg.text;
+    if (!target.found) {
+      return <span class="block-ref-missing" title="Блок не найден">{seg.text}</span>;
+    }
+    return (
+      <button
+        type="button"
+        class="block-ref"
+        aria-label={`${target.text} — открыть блок на странице ${target.page}`}
+        title={`Открыть блок на странице ${target.page}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onOpenPage?.(target.page, target.blockUuid);
+        }}
+      >
+        {target.text}
+      </button>
+    );
+  };
 
   const renderSegments = (segs: InlineSegment[]): JSX.Element => (
     <For each={segs}>
@@ -97,6 +141,8 @@ export function RichText(props: {
           case "link":
           case "tag":
             return link(seg);
+          case "blockRef":
+            return blockRef(seg);
           case "bold":
             return <strong>{renderSegments(seg.children ?? [])}</strong>;
           case "italic":

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { completeAutocomplete, findAutocompleteContext } from "./blockRefs.ts";
+import { completeAutocomplete, findAutocompleteContext, LatestRequest, uniqueBlockRefIds } from "./blockRefs.ts";
 import { parseInline, renderSourceMap, splitMdBlocks } from "./text.ts";
 
 const ID = "019a2f10-7c3e-7c21-9f4a-3fd6c6e1a812";
@@ -58,4 +58,21 @@ test("autocomplete страницы сохраняет формат и суфф�
     text: "до [[Logtask]] по",
     caret: 14,
   });
+});
+
+test("preview запрашивает каждый UUID один раз", () => {
+  const segments = parseInline(`${REF} ${REF} (( ${OTHER} ))`);
+  assert.deepEqual(uniqueBlockRefIds(segments), [ID, OTHER]);
+});
+
+test("preview отклоняет устаревший async-ответ", () => {
+  const request = new LatestRequest();
+  const stale = request.next();
+  const current = request.next();
+  assert.equal(request.isCurrent(stale), false);
+  assert.equal(request.isCurrent(current), true);
+});
+
+test("preview находит refs внутри форматирования", () => {
+  assert.deepEqual(uniqueBlockRefIds(parseInline(`**${REF}**`)), [ID]);
 });
