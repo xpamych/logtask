@@ -41,6 +41,7 @@ export function BlockMenu(props: {
   onLevel: (key: "urgency" | "importance", level: string | null) => void;
   onDeadline: () => void;
   onDelete: () => void;
+  onCopyRef: () => void;
   onClockToggle?: () => void;
 }): JSX.Element {
   let menuEl: HTMLDivElement | undefined;
@@ -219,7 +220,6 @@ export function BlockMenu(props: {
             )}
           </Show>
 
-          <div class="block-menu-title">Прочее</div>
           <button
             class="block-menu-item"
             onClick={() => props.onDeadline()}
@@ -228,6 +228,10 @@ export function BlockMenu(props: {
           </button>
         </Show>
 
+        <div class="block-menu-title">Прочее</div>
+        <button class="block-menu-item" onClick={() => props.onCopyRef()}>
+          Копировать ссылку на блок
+        </button>
         <button
           class="block-menu-item danger"
           onClick={() => {

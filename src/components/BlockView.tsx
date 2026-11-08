@@ -17,6 +17,7 @@ import {
   blockMergeDown,
   blockMergeUp,
   blockOutdent,
+  blockRefCreate,
   blockSetProp,
   blockSplit,
   blockUpdateText,
@@ -510,6 +511,18 @@ export function BlockView(props: {
     }
   };
 
+  const onCopyRef = async () => {
+    try {
+      const result = await blockRefCreate(b.uuid);
+      await navigator.clipboard.writeText(result.ref);
+      setB("uuid", result.uuid);
+      setMenu(null);
+      props.onChanged?.();
+    } catch (error) {
+      setPasteError(`Не удалось скопировать ссылку: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   return (
     <div
       class="block"
@@ -604,6 +617,7 @@ export function BlockView(props: {
             onLevel={(k, l) => void onLevel(k, l)}
             onDeadline={() => void onDeadline()}
             onDelete={onDeleteBlock}
+            onCopyRef={() => void onCopyRef()}
             onClockToggle={b.task ? () => void onClockToggle() : undefined}
           />
         )}

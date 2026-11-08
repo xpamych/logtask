@@ -6,6 +6,7 @@ import {
   assetSave,
   clipboardAssetSave,
   blockDelete,
+  blockRefCreate,
   blockSetProp,
   blockUpdateText,
   clockStart,
@@ -276,6 +277,18 @@ export function TaskCard(props: {
     }
   };
 
+  const onCopyRef = async () => {
+    try {
+      const result = await blockRefCreate(t.uuid);
+      await navigator.clipboard.writeText(result.ref);
+      setT("uuid", result.uuid);
+      setMenuPos(null);
+      props.onChanged?.();
+    } catch (error) {
+      setPasteError(`Не удалось скопировать ссылку: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   onMount(() => {
     const isMac = navigator.platform.includes("Mac");
     const isPrimary = () => {
@@ -530,6 +543,7 @@ export function TaskCard(props: {
             onDeadline={() => void onDeadline()}
             onClockToggle={() => void onClockToggle()}
             onDelete={() => void onDelete()}
+            onCopyRef={() => void onCopyRef()}
           />
         )}
       </Show>
