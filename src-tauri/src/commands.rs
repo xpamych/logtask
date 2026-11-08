@@ -368,6 +368,109 @@ pub struct SearchHit {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockRefDto {
+    pub uuid: String,
+    pub block_uuid: String,
+    pub page: String,
+    pub text: String,
+    pub found: bool,
+}
+
+/// Пакетно разрешает постоянные Logseq ID в текущие блоки графа.
+#[tauri::command]
+pub fn block_refs_resolve(
+    uuids: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<BlockRefDto>, String> {
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    Ok(graph
+        .resolve_block_refs(&uuids)
+        .into_iter()
+        .zip(uuids)
+        .map(|(target, uuid)| match target {
+            Some(target) => BlockRefDto {
+                uuid,
+                block_uuid: target.block_id.to_string(),
+                page: target.page,
+                text: target.text,
+                found: true,
+            },
+            None => BlockRefDto {
+                uuid,
+                block_uuid: String::new(),
+                page: String::new(),
+                text: String::new(),
+                found: false,
+            },
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockRefSearchHit {
+    pub uuid: String,
+    pub page: String,
+    pub text: String,
+}
+
+/// Ищет блоки для автодополнения ((...)).
+#[tauri::command]
+pub fn block_refs_search(
+    query: String,
+    limit: usize,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<BlockRefSearchHit>, String> {
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    Ok(graph
+        .search_block_refs(&query, limit.min(50))
+        .into_iter()
+        .map(|hit| BlockRefSearchHit {
+            uuid: hit.block_id.to_string(),
+            page: hit.page,
+            text: hit.text,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockRefCreatedDto {
+    pub r#ref: String,
+    pub uuid: String,
+}
+
+/// Возвращает ((uuid)), при необходимости сохраняя постоянный id:: в блоке.
+#[tauri::command]
+pub async fn block_ref_create(
+    uuid: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<BlockRefCreatedDto, String> {
+    let root = state.root.read().clone();
+    let root = root.ok_or("граф не загружен")?;
+    let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
+    let ensured = {
+        let mut graph = state.graph.write();
+        let graph = graph.as_mut().ok_or("граф не загружен")?;
+        graph.ensure_block_ref(&root, id)?
+    };
+    let current_uuid = if ensured.changed {
+        crate::watcher::reindex_and_emit(&app);
+        reindexed_block_uuid(&state, &ensured.page, ensured.position)?
+    } else {
+        uuid
+    };
+    Ok(BlockRefCreatedDto {
+        r#ref: format!("(({}))", ensured.persisted_id),
+        uuid: current_uuid,
+    })
+}
+
 fn page_get_impl(graph: &Graph, name: &str) -> Result<PageDto, String> {
     let page = graph
         .pages

@@ -579,6 +579,37 @@ export async function search(query: string): Promise<SearchHit[]> {
   return invoke<SearchHit[]>("search", { query });
 }
 
+export interface BlockRefDto {
+  uuid: string;
+  blockUuid: string;
+  page: string;
+  text: string;
+  found: boolean;
+}
+
+export async function blockRefsResolve(uuids: string[]): Promise<BlockRefDto[]> {
+  return invoke<BlockRefDto[]>("block_refs_resolve", { uuids });
+}
+
+export interface BlockRefSearchHit {
+  uuid: string;
+  page: string;
+  text: string;
+}
+
+export async function blockRefsSearch(query: string, limit = 6): Promise<BlockRefSearchHit[]> {
+  return invoke<BlockRefSearchHit[]>("block_refs_search", { query, limit });
+}
+
+export interface BlockRefCreatedDto {
+  ref: string;
+  uuid: string;
+}
+
+export async function blockRefCreate(uuid: string): Promise<BlockRefCreatedDto> {
+  return invoke<BlockRefCreatedDto>("block_ref_create", { uuid });
+}
+
 /** Сохраняет изображение из буфера в assets графа */
 export async function assetSave(data: number[], mime: string): Promise<string> {
   return invoke<string>("asset_save", { data, mime });

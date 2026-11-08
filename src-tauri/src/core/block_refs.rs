@@ -12,7 +12,53 @@ pub struct BlockRefTarget {
     pub text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnsuredBlockRef {
+    pub persisted_id: String,
+    pub page: String,
+    pub position: usize,
+    pub changed: bool,
+}
+
 impl Graph {
+    pub fn ensure_block_ref(
+        &mut self,
+        root: &std::path::Path,
+        block_id: Uuid,
+    ) -> Result<EnsuredBlockRef, String> {
+        let block = self.blocks.get(&block_id).ok_or("блок не найден")?;
+        let page = self.page_of_block(&block_id);
+        let position = self
+            .pages
+            .get(&page)
+            .and_then(|p| p.order.iter().position(|id| *id == block_id))
+            .ok_or("блок не найден на странице")?;
+        if let Some(raw_id) = block.props.get("id") {
+            let id = Uuid::parse_str(raw_id)
+                .map_err(|_| "существующий id:: блока не является UUID".to_string())?;
+            return Ok(EnsuredBlockRef {
+                persisted_id: id.to_string(),
+                page,
+                position,
+                changed: false,
+            });
+        }
+
+        let persisted_id = Uuid::now_v7().to_string();
+        let id_for_write = persisted_id.clone();
+        self.mutate_block(&block_id, root, |block| {
+            block.set_prop("id", Some(&id_for_write));
+        })
+        .map_err(|error| format!("ошибка записи: {error}"))?
+        .ok_or("блок не найден")?;
+        Ok(EnsuredBlockRef {
+            persisted_id,
+            page,
+            position,
+            changed: true,
+        })
+    }
+
     fn block_ref_candidates(&self) -> Vec<(&Block, String)> {
         let mut pages: Vec<_> = self.pages.values().collect();
         pages.sort_by(|a, b| a.name.cmp(&b.name));
@@ -174,5 +220,64 @@ mod tests {
         assert_eq!(limited.len(), 2);
         assert!(graph.search_block_refs(" ", 6).is_empty());
         assert!(graph.search_block_refs("релиз", 0).is_empty());
+    }
+
+    fn disk_graph(name: &str, text: &str) -> (std::path::PathBuf, Graph) {
+        let dir =
+            std::env::temp_dir().join(format!("logtask_block_refs_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::write(dir.join("pages/test.md"), text).unwrap();
+        let mut graph = Graph::default();
+        graph.index_dir(&dir).unwrap();
+        (dir, graph)
+    }
+
+    #[test]
+    fn ensure_adds_persistent_id_before_logbook() {
+        let (dir, mut graph) = disk_graph(
+            "add",
+            "- TODO задача\n  :LOGBOOK:\n  CLOCK: [2026-01-01 Thu 10:00:00]\n  :END:\n- сосед\n",
+        );
+        let id = graph.pages["test"].order[0];
+        let ensured = graph.ensure_block_ref(&dir, id).unwrap();
+
+        assert!(ensured.changed);
+        assert_eq!(ensured.page, "test");
+        assert_eq!(ensured.position, 0);
+        uuid::Uuid::parse_str(&ensured.persisted_id).unwrap();
+        let text = std::fs::read_to_string(dir.join("pages/test.md")).unwrap();
+        assert!(text.contains(&format!("\n  id:: {}\n  :LOGBOOK:", ensured.persisted_id)));
+        assert!(text.ends_with("  :END:\n- сосед\n"));
+        graph.index_dir(&dir).unwrap();
+        let resolved = graph.resolve_block_refs(&[ensured.persisted_id]);
+        assert_eq!(resolved[0].as_ref().unwrap().text, "задача");
+    }
+
+    #[test]
+    fn ensure_existing_id_does_not_rewrite_file() {
+        let source = format!("- блок\n  id:: {A}\n");
+        let (dir, mut graph) = disk_graph("existing", &source);
+        let file = dir.join("pages/test.md");
+        let mtime = std::fs::metadata(&file).unwrap().modified().unwrap();
+        let id = graph.pages["test"].order[0];
+        let ensured = graph.ensure_block_ref(&dir, id).unwrap();
+
+        assert!(!ensured.changed);
+        assert_eq!(ensured.persisted_id, A);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
+        assert_eq!(std::fs::metadata(&file).unwrap().modified().unwrap(), mtime);
+    }
+
+    #[test]
+    fn ensure_rejects_invalid_existing_id() {
+        let source = "- блок\n  id:: не uuid\n";
+        let (dir, mut graph) = disk_graph("invalid", source);
+        let id = graph.pages["test"].order[0];
+        assert!(graph.ensure_block_ref(&dir, id).is_err());
+        assert_eq!(
+            std::fs::read_to_string(dir.join("pages/test.md")).unwrap(),
+            source
+        );
     }
 }
