@@ -94,3 +94,43 @@ test("Escape закрывает список, стрелки цикличны", 
   assert.equal(controller.onKeyDown({ key: "Escape", preventDefault() {} }), true);
   assert.equal(controller.open, false);
 });
+
+test("отложенное создание ref не перезаписывает новый текст", async () => {
+  let resolveRef!: (value: { ref: string; uuid: string }) => void;
+  const { controller, accepted } = fixture({
+    createRef: () => new Promise<{ ref: string; uuid: string }>((resolve) => { resolveRef = resolve; }),
+  });
+  await controller.onInput("((old", 5);
+  const accepting = controller.accept(controller.items[0]);
+  await controller.onInput("new text", 8);
+  resolveRef({ ref: `((${ID}))`, uuid: "fresh" });
+  await accepting;
+  assert.equal(accepted.length, 0);
+});
+
+test("повторный accept не запускает конкурирующее создание ref", async () => {
+  let calls = 0;
+  let resolveRef!: (value: { ref: string; uuid: string }) => void;
+  const { controller, accepted } = fixture({
+    createRef: () => {
+      calls++;
+      return new Promise<{ ref: string; uuid: string }>((resolve) => { resolveRef = resolve; });
+    },
+  });
+  await controller.onInput("((old", 5);
+  const first = controller.accept(controller.items[0]);
+  const second = controller.accept(controller.items[0]);
+  resolveRef({ ref: `((${ID}))`, uuid: "fresh" });
+  await Promise.all([first, second]);
+  assert.equal(calls, 1);
+  assert.equal(accepted.length, 1);
+});
+
+test("ошибка поиска закрывает список и видна пользователю", async () => {
+  const { controller, errors } = fixture({
+    searchBlocks: async () => { throw new Error("поиск недоступен"); },
+  });
+  await controller.onInput("((old", 5);
+  assert.equal(controller.open, false);
+  assert.deepEqual(errors, ["поиск недоступен"]);
+});

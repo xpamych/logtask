@@ -106,9 +106,9 @@ export function BlockView(props: {
   /** позиция каретки в extra-строках → смещение в editorSource(b.source): в исходнике
    *  у extra-строк есть отступы, а между ними — строки свойств/логбука;
    *  каждую extra-строку матчим по тексту к её строке исходника */
-  const extraToSource = (off: number): number => {
+  const extraToSource = (off: number, labels: Record<string, string>): number => {
     const joined = b.extra.join("\n");
-    const map = renderSourceMap(joined);
+    const map = renderSourceMap(joined, labels);
     const pos = map[Math.min(off, map.length - 1)];
     const lines = joined.split("\n");
     let lineIdx = 0;
@@ -154,13 +154,17 @@ export function BlockView(props: {
   const caretToSource = (container: HTMLElement, node: Node, offset: number): number => {
     // edit_source = [приоритет "[#X] "] + content + продолжения
     const prioLen = /^\[#.\]\s*/.exec(editorSource(b.source))?.[0].length ?? 0;
+    const labels = Object.fromEntries(
+      Array.from(container.querySelectorAll<HTMLElement>(".block-ref[data-uuid]"))
+        .map((el) => [el.dataset.uuid!, el.textContent ?? ""]),
+    );
     const anchorEl =
       node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
     const extraEl = container.querySelector(".block-extra");
     if (extraEl && anchorEl && extraEl.contains(anchorEl)) {
-      return extraToSource(domOffset(extraEl as HTMLElement, node, offset));
+      return extraToSource(domOffset(extraEl as HTMLElement, node, offset), labels);
     }
-    const map = renderSourceMap(b.content);
+    const map = renderSourceMap(b.content, labels);
     const off = Math.min(domOffset(container, node, offset), map.length - 1);
     return prioLen + map[off];
   };
@@ -581,6 +585,9 @@ export function BlockView(props: {
               onAccept={(item) => void autocomplete.accept(item)}
             />
           </Show>
+        </Show>
+        <Show when={!editing() && pasteError()}>
+          {(message) => <div class="error">{message()}</div>}
         </Show>
       </div>
       {(b.urgency || b.importance) && (

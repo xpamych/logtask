@@ -102,6 +102,7 @@ export function RichText(props: {
       <button
         type="button"
         class="block-ref"
+        data-uuid={seg.target}
         aria-label={`${target.text} — открыть блок на странице ${target.page}`}
         title={`Открыть блок на странице ${target.page}`}
         onClick={(e) => {

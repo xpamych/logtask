@@ -27,6 +27,7 @@ export class AutocompleteController {
   private context: AutocompleteContext | null = null;
   private text = "";
   private epoch = 0;
+  private accepting = false;
   private readonly debounceMs: number;
   private readonly options: AutocompleteOptions;
 
@@ -40,21 +41,25 @@ export class AutocompleteController {
     this.context = findAutocompleteContext(text, caret);
     const context = this.context;
     const epoch = ++this.epoch;
-    if (!context || (context.kind === "block" && context.query.trim() === "")) {
-      this.close();
-      return;
-    }
+    this.close();
+    if (!context || (context.kind === "block" && context.query.trim() === "")) return;
     if (context.kind === "block" && this.debounceMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, this.debounceMs));
     }
     if (epoch !== this.epoch) return;
-    const items = context.kind === "page"
-      ? (await this.options.searchPages(context.query)).slice(0, 6).map((name) => ({ id: name, text: name }))
-      : (await this.options.searchBlocks(context.query)).slice(0, 6);
-    if (epoch !== this.epoch) return;
-    this.items = items;
-    this.activeIndex = 0;
-    this.open = items.length > 0;
+    try {
+      const items = context.kind === "page"
+        ? (await this.options.searchPages(context.query)).slice(0, 6).map((name) => ({ id: name, text: name }))
+        : (await this.options.searchBlocks(context.query)).slice(0, 6);
+      if (epoch !== this.epoch) return;
+      this.items = items;
+      this.activeIndex = 0;
+      this.open = items.length > 0;
+    } catch (error) {
+      if (epoch !== this.epoch) return;
+      this.close();
+      this.options.onError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   onKeyDown(event: KeyEventLike): boolean | Promise<boolean> {
@@ -67,6 +72,7 @@ export class AutocompleteController {
     }
     if (event.key === "Escape") {
       event.preventDefault();
+      this.epoch++;
       this.close();
       return true;
     }
@@ -79,16 +85,24 @@ export class AutocompleteController {
 
   async accept(item: AutocompleteItem): Promise<void> {
     const context = this.context;
-    if (!context) return;
+    if (!context || this.accepting) return;
+    const text = this.text;
+    const epoch = ++this.epoch;
+    this.accepting = true;
+    this.close();
     try {
       const replacement = context.kind === "page"
         ? `[[${item.text}]]`
         : (await this.options.createRef(item.id)).ref;
-      const result = completeAutocomplete(this.text, context, replacement);
+      if (epoch !== this.epoch || text !== this.text) return;
+      const result = completeAutocomplete(text, context, replacement);
       this.options.onAccept(result);
-      this.close();
     } catch (error) {
-      this.options.onError(error instanceof Error ? error.message : String(error));
+      if (epoch === this.epoch) {
+        this.options.onError(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      this.accepting = false;
     }
   }
 

@@ -76,3 +76,13 @@ test("preview отклоняет устаревший async-ответ", () => {
 test("preview находит refs внутри форматирования", () => {
   assert.deepEqual(uniqueBlockRefIds(parseInline(`**${REF}**`)), [ID]);
 });
+
+test("source map использует длину разрешённого превью", () => {
+  for (const preview of ["x", "Очень длинный текст оригинального блока"]) {
+    const input = `до ${REF} после`;
+    const map = renderSourceMap(input, { [ID]: preview });
+    const suffixIndex = "до ".length + preview.length;
+    assert.equal(map[suffixIndex], input.indexOf(" после"));
+    assert.equal(input.slice(map[suffixIndex]), " после");
+  }
+});

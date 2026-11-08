@@ -427,6 +427,9 @@ export function TaskCard(props: {
             />
           </Show>
         </Show>
+        <Show when={!editing() && pasteError()}>
+          {(message) => <div class="error">{message()}</div>}
+        </Show>
         <Show when={t.context}>
           <span class="task-context-badge">контекст</span>
         </Show>

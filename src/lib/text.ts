@@ -339,7 +339,7 @@ export interface FlatSegment {
   end: number;
 }
 
-export function flatInline(input: string): FlatSegment[] {
+export function flatInline(input: string, blockRefLabels: Record<string, string> = {}): FlatSegment[] {
   const out: FlatSegment[] = [];
   const walk = (segs: InlineSegment[], base: number) => {
     for (const s of segs) {
@@ -358,6 +358,9 @@ export function flatInline(input: string): FlatSegment[] {
           break;
         }
         case "image":
+          break;
+        case "blockRef":
+          out.push({ text: blockRefLabels[s.target ?? ""] ?? s.text, start: base + s.start, end: base + s.end });
           break;
         default:
           out.push({ text: s.text, start: base + s.start, end: base + s.end });
@@ -389,7 +392,7 @@ export function clickCaretPosition(
   return visibleOffset >= visibleLength ? sourceLength : mapped;
 }
 
-export function renderSourceMap(input: string): number[] {
+export function renderSourceMap(input: string, blockRefLabels: Record<string, string> = {}): number[] {
   const map: number[] = [];
   let rendered = 0;
   // каретка j внутри сегмента [srcStart, srcEnd) с видимым текстом длины L
@@ -424,11 +427,11 @@ export function renderSourceMap(input: string): number[] {
       const h = /^(#{1,6})\s+(.*)$/.exec(line);
       if (h) {
         const textStart = lineStart + h[1].length + 1;
-        for (const leaf of flatInline(h[2])) {
+        for (const leaf of flatInline(h[2], blockRefLabels)) {
           pushMapping(leaf.text.length, textStart + leaf.start, textStart + leaf.end);
         }
       } else {
-        for (const leaf of flatInline(line)) {
+        for (const leaf of flatInline(line, blockRefLabels)) {
           pushMapping(leaf.text.length, lineStart + leaf.start, lineStart + leaf.end);
         }
       }
