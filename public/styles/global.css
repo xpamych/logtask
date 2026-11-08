@@ -2923,3 +2923,10 @@ textarea.push-body {
   color: var(--muted);
   text-decoration: line-through;
 }
+
+.ac-item-page {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}

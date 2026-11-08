@@ -1,13 +1,14 @@
-import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { createStore } from "solid-js/store";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
-import { clickCaretPosition, completeWikiLink, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
+import { clickCaretPosition, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
 import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
 import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot } from "./StatusPrioDot";
+import { Autocomplete, createAutocomplete } from "./Autocomplete";
 import type { BlockDto, Settings } from "~/lib/api";
 import {
   assetSave,
@@ -21,7 +22,6 @@ import {
   blockUpdateText,
   clockStart,
   clockStop,
-  pageList,
   taskSetPriority,
   taskSetQuadrant,
 } from "~/lib/api";
@@ -51,13 +51,21 @@ export function BlockView(props: {
   const [draft, setDraft] = createSignal("");
   const [menu, setMenu] = createSignal<{ x: number; y: number } | null>(null);
   const [saving, setSaving] = createSignal(false);
-  const [acItems, setAcItems] = createSignal<string[]>([]);
-  const [acOpen, setAcOpen] = createSignal(false);
-  const [acIndex, setAcIndex] = createSignal(0);
   let textareaEl: HTMLTextAreaElement | undefined;
-  let allPages: string[] | null = null;
   const [pasteError, setPasteError] = createSignal<string | null>(null);
   const [pasteBusy, setPasteBusy] = createSignal(false);
+  const autocomplete = createAutocomplete(
+    ({ text, caret }) => {
+      setDraft(text);
+      queueMicrotask(() => {
+        if (!textareaEl) return;
+        textareaEl.focus();
+        setTextareaValue(textareaEl, text);
+        textareaEl.setSelectionRange(caret, caret);
+      });
+    },
+    setPasteError,
+  );
 
   const onImagePaste = async (e: ClipboardEvent) => {
     const el = textareaEl;
@@ -80,57 +88,10 @@ export function BlockView(props: {
     }
   };
 
-  /// автодополнение: найти незакрытое [[ в тексте
-  const autocompleteQuery = (text: string): string | null => {
-    const lastOpen = text.lastIndexOf("[[");
-    if (lastOpen === -1) return null;
-    const after = text.slice(lastOpen + 2);
-    if (after.includes("]]")) return null;
-    if (after.includes("\n")) return null;
-    return after;
-  };
-
   const onEditInput = async (e: HTMLTextAreaElement) => {
     setDraft(e.value);
     fitTextarea(e);
-    const q = autocompleteQuery(e.value);
-    if (q === null) {
-      setAcOpen(false);
-      return;
-    }
-    // перечитываем список страниц при каждом открытии автодополнения — дёшево
-    // и не даёт кэшу устареть
-    if (!acOpen() || allPages === null) {
-      try {
-        allPages = await pageList();
-      } catch {
-        allPages = [];
-      }
-    }
-    const lq = q.toLowerCase();
-    const hits = allPages
-      .filter((p) => p.toLowerCase().includes(lq))
-      .slice(0, 6);
-    setAcItems(hits);
-    setAcIndex(0);
-    setAcOpen(hits.length > 0);
-  };
-
-  const acceptAutocomplete = (name: string) => {
-    const text = draft();
-    const query = autocompleteQuery(text);
-    if (query === null) return;
-    const { text: replaced, caret } = completeWikiLink(text, name, query);
-    setDraft(replaced);
-    setAcOpen(false);
-    queueMicrotask(() => {
-      const el = textareaEl;
-      if (el) {
-        el.focus();
-        setTextareaValue(el, replaced);
-        el.setSelectionRange(caret, caret);
-      }
-    });
+    await autocomplete.onInput(e.value, e.selectionStart);
   };
 
   /** длина текста (в символах) от начала root до DOM-точки (node, offset) */
@@ -395,27 +356,9 @@ export function BlockView(props: {
     // IME-композиция: Enter подтверждает ввод, а не сохранение
     if (e.isComposing) return;
     // навигация по автодополнению
-    if (acOpen()) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setAcIndex((i) => (i + 1) % acItems().length);
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setAcIndex((i) => (i - 1 + acItems().length) % acItems().length);
-        return;
-      }
-      if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        acceptAutocomplete(acItems()[acIndex()]);
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setAcOpen(false);
-        return;
-      }
+    if (autocomplete.open && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) {
+      void autocomplete.onKeyDown(e);
+      return;
     }
     // Tab / Shift+Tab — вложенность блока (текст не меняется, курсор на месте)
     if (e.key === "Tab") {
@@ -610,27 +553,20 @@ export function BlockView(props: {
             onKeyDown={onKeyDown}
             onPaste={(e) => void onImagePaste(e)}
             onBlur={() => void save()}
+            aria-expanded={autocomplete.open}
+            aria-controls={`block-autocomplete-${b.uuid}`}
+            aria-activedescendant={autocomplete.open ? `block-autocomplete-${b.uuid}-${autocomplete.activeIndex}` : undefined}
             rows={1}
           />
           <Show when={pasteBusy()}><div class="muted">Сохранение изображения…</div></Show>
           <Show when={pasteError()}>{(message) => <div class="error">{message()}</div>}</Show>
-          <Show when={acOpen()}>
-            <div class="ac-list">
-              <For each={acItems()}>
-                {(name, i) => (
-                  <button
-                    class="ac-item"
-                    classList={{ active: i() === acIndex() }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      acceptAutocomplete(name);
-                    }}
-                  >
-                    {name}
-                  </button>
-                )}
-              </For>
-            </div>
+          <Show when={autocomplete.open}>
+            <Autocomplete
+              id={`block-autocomplete-${b.uuid}`}
+              items={autocomplete.items}
+              activeIndex={autocomplete.activeIndex}
+              onAccept={(item) => void autocomplete.accept(item)}
+            />
           </Show>
         </Show>
       </div>

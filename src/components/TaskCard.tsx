@@ -22,7 +22,8 @@ import { primaryTaskElement, selectedTaskUuid, setSelectedTaskUuid, visibleTaskU
 import { applyTaskMenuChange } from "~/lib/taskMenuState";
 import { editorSource, persistedSource } from "~/lib/text";
 import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
-import { fitTextarea } from "~/lib/textarea";
+import { fitTextarea, setTextareaValue } from "~/lib/textarea";
+import { Autocomplete, createAutocomplete } from "./Autocomplete";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot, MARKERS, STATUS_COLORS } from "./StatusPrioDot";
@@ -96,6 +97,18 @@ export function TaskCard(props: {
   let rootEl: HTMLDivElement | undefined;
   const [pasteError, setPasteError] = createSignal<string | null>(null);
   const [pasteBusy, setPasteBusy] = createSignal(false);
+  const autocomplete = createAutocomplete(
+    ({ text, caret }) => {
+      setDraft(text);
+      queueMicrotask(() => {
+        if (!textareaEl) return;
+        textareaEl.focus();
+        setTextareaValue(textareaEl, text);
+        textareaEl.setSelectionRange(caret, caret);
+      });
+    },
+    setPasteError,
+  );
 
   const onImagePaste = async (e: ClipboardEvent) => {
     const el = textareaEl;
@@ -369,11 +382,14 @@ export function TaskCard(props: {
             onInput={(e) => {
               setDraft(e.currentTarget.value);
               fitTextarea(e.currentTarget);
+              void autocomplete.onInput(e.currentTarget.value, e.currentTarget.selectionStart);
             }}
             onPaste={(e) => void onImagePaste(e)}
             onKeyDown={(e) => {
               if (e.isComposing) return;
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              if (autocomplete.open && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) {
+                void autocomplete.onKeyDown(e);
+              } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 void saveEdit();
               } else if (e.key === "Escape") {
@@ -382,10 +398,21 @@ export function TaskCard(props: {
               }
             }}
             onBlur={() => void saveEdit()}
+            aria-expanded={autocomplete.open}
+            aria-controls={`task-autocomplete-${t.uuid}`}
+            aria-activedescendant={autocomplete.open ? `task-autocomplete-${t.uuid}-${autocomplete.activeIndex}` : undefined}
             rows={1}
           />
           <Show when={pasteBusy()}><div class="muted">Сохранение изображения…</div></Show>
           <Show when={pasteError()}>{(message) => <div class="error">{message()}</div>}</Show>
+          <Show when={autocomplete.open}>
+            <Autocomplete
+              id={`task-autocomplete-${t.uuid}`}
+              items={autocomplete.items}
+              activeIndex={autocomplete.activeIndex}
+              onAccept={(item) => void autocomplete.accept(item)}
+            />
+          </Show>
         </Show>
         <Show when={t.context}>
           <span class="task-context-badge">контекст</span>
