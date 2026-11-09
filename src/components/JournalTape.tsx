@@ -17,6 +17,7 @@ import { backlinksRefreshToken, visibleJournalsAfterRefresh } from "~/lib/journa
 import { composerMarker } from "~/lib/composer";
 import { findJournalDay } from "~/lib/journalOpen";
 import { BlockView } from "./BlockView";
+import { Autocomplete, createAutocomplete } from "./Autocomplete";
 import { RichText } from "./RichText";
 
 const PAGE_SIZE = 5;
@@ -194,6 +195,17 @@ export function JournalTape(props: {
   const [composerDay, setComposerDay] = createSignal<string | null>(null);
   const [composerKind, setComposerKind] = createSignal<"TODO" | null>(null);
   let composerEl: HTMLTextAreaElement | undefined;
+  const autocomplete = createAutocomplete(
+    ({ text, caret }) => {
+      queueMicrotask(() => {
+        if (!composerEl) return;
+        composerEl.focus();
+        setTextareaValue(composerEl, text);
+        composerEl.setSelectionRange(caret, caret);
+      });
+    },
+    setError,
+  );
 
   const openComposer = (day: string, kind: "command" | "plain" = "plain") => {
     setComposerDay(day);
@@ -233,6 +245,10 @@ export function JournalTape(props: {
 
   const onComposerKeyDown = (e: KeyboardEvent) => {
     if (e.isComposing) return;
+    if (autocomplete.open && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) {
+      void autocomplete.onKeyDown(e);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void submitComposer(true);
@@ -329,15 +345,31 @@ export function JournalTape(props: {
                   >
                     <div class="block composer-row">
                       <span class="status-prio-dot empty" />
-                      <textarea
-                        ref={composerEl}
-                        class="block-edit"
-                        placeholder="Новая запись…"
-                        rows={1}
-                        onInput={(e) => fitTextarea(e.currentTarget)}
-                        onKeyDown={onComposerKeyDown}
-                        onBlur={() => void submitComposer(false)}
-                      />
+                      <div class="block-content">
+                        <textarea
+                          ref={composerEl}
+                          class="block-edit"
+                          placeholder="Новая запись…"
+                          rows={1}
+                          onInput={(e) => {
+                            fitTextarea(e.currentTarget);
+                            void autocomplete.onInput(e.currentTarget.value, e.currentTarget.selectionStart);
+                          }}
+                          onKeyDown={onComposerKeyDown}
+                          onBlur={() => void submitComposer(false)}
+                          aria-expanded={autocomplete.open}
+                          aria-controls="journal-composer-autocomplete"
+                          aria-activedescendant={autocomplete.open ? `journal-composer-autocomplete-${autocomplete.activeIndex}` : undefined}
+                        />
+                        <Show when={autocomplete.open}>
+                          <Autocomplete
+                            id="journal-composer-autocomplete"
+                            items={autocomplete.items}
+                            activeIndex={autocomplete.activeIndex}
+                            onAccept={(item) => void autocomplete.accept(item)}
+                          />
+                        </Show>
+                      </div>
                     </div>
                   </Show>
                   <BacklinksPanel name={name} refreshKey={props.refreshKey} />
