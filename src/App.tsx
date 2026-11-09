@@ -41,7 +41,7 @@ import { activeModalContext, pushModalContext } from "~/lib/modalState";
 import { commandForContext, effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { homeViewFromSetting } from "~/lib/homeView";
 import type { MobilePanel } from "~/lib/mobilePanels";
-import { mobilePanelAfterNavigation, mobilePanelAfterToggle, panelVisible } from "~/lib/mobilePanels";
+import { centerGridColumn, mobilePanelAfterNavigation, mobilePanelAfterToggle, panelVisible } from "~/lib/mobilePanels";
 import { isGraphNotChosen, loadGraphBootstrap } from "~/lib/startup";
 import { selectedTaskUuid } from "~/lib/taskNavigation";
 import { SettingsWriteQueue } from "~/lib/settingsQueue";
@@ -797,6 +797,7 @@ const App: Component = () => {
             <PanelResizer side="left" start={sidebarW} onResize={setSidebarW} onCommit={commitWidths} />
             </div>
           </Show>
+          <div class="center-content" style={{ "grid-column": centerGridColumn(mobileLayout()) }}>
           <Show when={summary()}>
             <Show
               when={settingsSection()}
@@ -875,6 +876,7 @@ const App: Component = () => {
               )}
             </Show>
           </Show>
+          </div>
           <Show when={panelVisible(mobileLayout(), panelCollapsed(), mobilePanel(), "right")}>
             <PanelResizer side="right" start={panelW} onResize={setPanelW} onCommit={commitWidths} />
             <aside

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mobilePanelAfterNavigation, mobilePanelAfterToggle, panelVisible } from "./mobilePanels.ts";
+import { centerGridColumn, mobilePanelAfterNavigation, mobilePanelAfterToggle, panelVisible } from "./mobilePanels.ts";
 
 test("мобильные панели открываются по одной", () => {
   assert.equal(mobilePanelAfterToggle(null, "left"), "left");
@@ -31,4 +31,9 @@ test("навигация сохраняет правую панель тольк
   assert.equal(mobilePanelAfterNavigation("right", false), null);
   assert.equal(mobilePanelAfterNavigation("left", true), null);
   assert.equal(mobilePanelAfterNavigation("left", false), null);
+});
+
+test("центр закреплён за своей grid-колонкой при скрытии левой панели", () => {
+  assert.equal(centerGridColumn(false), 3);
+  assert.equal(centerGridColumn(true), 1);
 });

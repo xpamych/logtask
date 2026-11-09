@@ -14,6 +14,10 @@ export function mobilePanelAfterNavigation(
   return preserveRight && current === "right" ? "right" : null;
 }
 
+export function centerGridColumn(mobile: boolean): number {
+  return mobile ? 1 : 3;
+}
+
 export function panelVisible(
   mobile: boolean,
   collapsed: boolean,

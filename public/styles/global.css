@@ -157,6 +157,19 @@ body {
   min-height: 0;
 }
 
+.center-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.center-content > * {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .topbar {
   flex: none;
   display: flex;
