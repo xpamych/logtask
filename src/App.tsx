@@ -40,6 +40,8 @@ import { COMMAND_DEFINITIONS } from "~/lib/commands";
 import { activeModalContext, pushModalContext } from "~/lib/modalState";
 import { commandForContext, effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { homeViewFromSetting } from "~/lib/homeView";
+import type { MobilePanel } from "~/lib/mobilePanels";
+import { mobilePanelAfterNavigation, mobilePanelAfterToggle, panelVisible } from "~/lib/mobilePanels";
 import { isGraphNotChosen, loadGraphBootstrap } from "~/lib/startup";
 import { selectedTaskUuid } from "~/lib/taskNavigation";
 import { SettingsWriteQueue } from "~/lib/settingsQueue";
@@ -129,6 +131,8 @@ const App: Component = () => {
   const [panelW, setPanelW] = createSignal(DEFAULT_SETTINGS.taskpanelWidth);
   const [sidebarCollapsed, setSidebarCollapsed] = createSignal(loadCollapsed("logtask:sidebarCollapsed"));
   const [panelCollapsed, setPanelCollapsed] = createSignal(loadCollapsed("logtask:panelCollapsed"));
+  const [mobileLayout, setMobileLayout] = createSignal(window.matchMedia("(max-width: 768px)").matches);
+  const [mobilePanel, setMobilePanel] = createSignal<MobilePanel | null>(null);
   const [recentPages, setRecentPages] = createSignal<string[]>(loadRecentPages());
   // граф явно закрыт пользователем — показываем экран приветствия
   const [graphClosed, setGraphClosed] = createSignal(false);
@@ -238,6 +242,7 @@ const App: Component = () => {
   const [fwdStack, setFwdStack] = createSignal<View[]>([]);
 
   const applyView = (v: View) => {
+    setMobilePanel((current) => mobilePanelAfterNavigation(current, true));
     setFocusUuid(null);
     setSettingsSection(v.kind === "settings" ? v.section : null);
     setCurrent(v.kind === "page" ? v.name : null);
@@ -246,7 +251,8 @@ const App: Component = () => {
     setShowGraph(v.kind === "graph");
   };
 
-  const navigate = (v: View) => {
+  const navigate = (v: View, preserveRight = false) => {
+    setMobilePanel((current) => mobilePanelAfterNavigation(current, preserveRight));
     const cur = currentView();
     if (JSON.stringify(cur) !== JSON.stringify(v)) {
       setBackStack((s) => [...s.slice(-49), cur]);
@@ -301,9 +307,26 @@ const App: Component = () => {
     onCleanup(() => window.removeEventListener("keydown", onQuit));
   });
 
-  const openPage = (name: string, uuid?: string) => {
+  onMount(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const onMediaChange = (event: MediaQueryListEvent) => {
+      setMobileLayout(event.matches);
+      setMobilePanel(null);
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobilePanel(null);
+    };
+    media.addEventListener("change", onMediaChange);
+    window.addEventListener("keydown", onEscape);
+    onCleanup(() => {
+      media.removeEventListener("change", onMediaChange);
+      window.removeEventListener("keydown", onEscape);
+    });
+  });
+
+  const openPage = (name: string, uuid?: string, preserveRight = false) => {
     if (!name) return;
-    navigate({ kind: "page", name });
+    navigate({ kind: "page", name }, preserveRight);
     setFocusUuid(uuid ?? null);
     // недавние страницы (свежие первыми, максимум 10)
     const list = [name, ...recentPages().filter((p) => p !== name)].slice(0, 10);
@@ -317,10 +340,10 @@ const App: Component = () => {
 
   const showAllPagesView = () => navigate({ kind: "pages" });
 
-  const showGraphView = (id?: string) => {
+  const showGraphView = (id?: string, preserveRight = false) => {
     setGraphFocusId(id);
     setRightTab("graphSettings");
-    navigate({ kind: "graph" });
+    navigate({ kind: "graph" }, preserveRight);
   };
 
   const showSettingsView = (section: SettingsSection) =>
@@ -681,31 +704,48 @@ const App: Component = () => {
   };
 
   const gridCols = () =>
-    `${sidebarCollapsed() ? 0 : sidebarW()}px ${sidebarCollapsed() ? 0 : 5}px 1fr ` +
-    `${panelCollapsed() ? 0 : 5}px ${panelCollapsed() ? 0 : panelW()}px`;
+    mobileLayout()
+      ? "1fr"
+      : `${sidebarCollapsed() ? 0 : sidebarW()}px ${sidebarCollapsed() ? 0 : 5}px 1fr ` +
+        `${panelCollapsed() ? 0 : 5}px ${panelCollapsed() ? 0 : panelW()}px`;
 
   let journalTapeRef: { openDay: (name: string) => Promise<void> } | undefined;
 
   return (
     <Show when={!starting()} fallback={<div class="placeholder">Загрузка графа…</div>}>
       <Show when={!graphNotChosen()} fallback={<Welcome onPick={pickGraph} onCreate={createGraph} />}>
-        <div class="shell">
+        <div
+          class="shell"
+          classList={{
+            mobile: mobileLayout(),
+            "mobile-open-left": mobileLayout() && mobilePanel() === "left",
+            "mobile-open-right": mobileLayout() && mobilePanel() === "right",
+          }}
+        >
         <Topbar
           onOpenPage={openPage}
-          sidebarCollapsed={sidebarCollapsed()}
-          panelCollapsed={panelCollapsed()}
-          onToggleSidebar={() =>
+          sidebarCollapsed={mobileLayout() ? mobilePanel() !== "left" : sidebarCollapsed()}
+          panelCollapsed={mobileLayout() ? mobilePanel() !== "right" : panelCollapsed()}
+          onToggleSidebar={() => {
+            if (mobileLayout()) {
+              setMobilePanel(mobilePanelAfterToggle(mobilePanel(), "left"));
+              return;
+            }
             setSidebarCollapsed((v) => {
               saveCollapsed("logtask:sidebarCollapsed", !v);
               return !v;
-            })
-          }
-          onTogglePanel={() =>
+            });
+          }}
+          onTogglePanel={() => {
+            if (mobileLayout()) {
+              setMobilePanel(mobilePanelAfterToggle(mobilePanel(), "right"));
+              return;
+            }
             setPanelCollapsed((v) => {
               saveCollapsed("logtask:panelCollapsed", !v);
               return !v;
-            })
-          }
+            });
+          }}
           systemTitlebar={settings().systemTitlebar}
           canBack={backStack().length > 0}
           canForward={fwdStack().length > 0}
@@ -716,7 +756,20 @@ const App: Component = () => {
           syncing={syncing()}
         />
         <div class="app" style={{ "grid-template-columns": gridCols() }}>
-          <Show when={!sidebarCollapsed()}>
+          <Show when={mobileLayout() && mobilePanel() !== null}>
+            <button
+              type="button"
+              class="mobile-backdrop"
+              aria-label="Закрыть панель"
+              onClick={() => setMobilePanel(null)}
+            />
+          </Show>
+          <Show when={panelVisible(mobileLayout(), sidebarCollapsed(), mobilePanel(), "left")}>
+            <div
+              class="mobile-sidebar-slot"
+              inert={mobileLayout() && mobilePanel() !== "left"}
+              aria-hidden={mobileLayout() && mobilePanel() !== "left"}
+            >
             <Sidebar
               summary={summary()}
               view={navView()}
@@ -742,6 +795,7 @@ const App: Component = () => {
               onCloseGraph={() => void closeGraph()}
             />
             <PanelResizer side="left" start={sidebarW} onResize={setSidebarW} onCommit={commitWidths} />
+            </div>
           </Show>
           <Show when={summary()}>
             <Show
@@ -821,9 +875,13 @@ const App: Component = () => {
               )}
             </Show>
           </Show>
-          <Show when={!panelCollapsed()}>
+          <Show when={panelVisible(mobileLayout(), panelCollapsed(), mobilePanel(), "right")}>
             <PanelResizer side="right" start={panelW} onResize={setPanelW} onCommit={commitWidths} />
-            <aside class="taskpanel">
+            <aside
+              class="taskpanel"
+              inert={mobileLayout() && mobilePanel() !== "right"}
+              aria-hidden={mobileLayout() && mobilePanel() !== "right"}
+            >
               <div class="tabs">
                 <Show when={!showGraph()}>
                   <button class="tab" classList={{ active: rightTab() === "toc" }} onClick={() => setRightTab("toc")}>Оглавление</button>
@@ -845,7 +903,11 @@ const App: Component = () => {
                   />
                 </Show>
                 <Show when={!showGraph() && rightTab() === "toc"}>
-                  <Contents page={current()} refreshKey={refreshKey()} onOpenPage={openPage} />
+                  <Contents
+                    page={current()}
+                    refreshKey={refreshKey()}
+                    onOpenPage={(name, uuid) => openPage(name, uuid, true)}
+                  />
                 </Show>
                 <Show when={!showGraph() && rightTab() === "local"}>
                   <LocalGraph
@@ -854,8 +916,8 @@ const App: Component = () => {
                     refreshKey={refreshKey()}
                     settings={settings().graphView}
                     onSettingsChange={(graphView) => saveSettingsAuto({ ...settings(), graphView })}
-                    onOpenPage={openPage}
-                    onOpenGlobal={showGraphView}
+                    onOpenPage={(name) => openPage(name, undefined, true)}
+                    onOpenGlobal={(id) => showGraphView(id, true)}
                   />
                 </Show>
                 <Show when={error()}>{(e) => <p class="error">{e()}</p>}</Show>

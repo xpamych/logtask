@@ -336,7 +336,7 @@ pub enum LinkTarget {
 /// Запись в блоке после его основной строки: свойство, логбук или сырая строка.
 /// Порядок важен для round-trip сериализации. Каждый вариант хранит свой
 /// точный отступ, чтобы сериализация давала байт-в-байт исходный текст.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trailing {
     Prop {
         indent: String,
@@ -374,7 +374,7 @@ fn insert_pos_before_blank(trailing: &[Trailing]) -> usize {
 }
 
 /// Сериализационное представление блока (для round-trip в исходный .md)
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockRaw {
     /// точный отступ строки блока в исходнике
     pub indent_str: String,
@@ -409,7 +409,6 @@ pub struct Block {
     pub children: Vec<uuid::Uuid>,
     /// uuid родителя
     pub parent: Option<uuid::Uuid>,
-    #[serde(skip)]
     pub raw: BlockRaw,
 }
 
@@ -894,16 +893,16 @@ pub struct Page {
     /// порядок блоков как в файле
     pub order: Vec<uuid::Uuid>,
     /// сырые строки до первого блока (для round-trip)
-    #[serde(default, skip)]
+    #[serde(default)]
     pub preamble: Vec<String>,
     /// пустые строки в конце файла (для round-trip)
-    #[serde(default, skip)]
+    #[serde(default)]
     pub trailing_blank: u16,
     /// оканчивается ли файл переводом строки (для round-trip)
-    #[serde(default = "default_true", skip)]
+    #[serde(default = "default_true")]
     pub ends_with_newline: bool,
     pub mtime: Option<std::time::SystemTime>,
-    #[serde(default, skip)]
+    #[serde(default)]
     pub content_hash: u64,
     /// путь к файлу относительно корня графа
     #[serde(default)]
@@ -914,7 +913,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Graph {
     /// все блоки графа
     pub blocks: HashMap<uuid::Uuid, Block>,

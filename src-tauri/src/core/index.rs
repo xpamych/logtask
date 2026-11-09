@@ -9,7 +9,7 @@ use super::model::{Block, Graph, LinkTarget, Page, PageKind, Trailing};
 use super::parser::parse_document;
 
 /// Имена журналов: "2026_09_11" — валидная дата
-fn journal_name(path: &Path) -> Option<String> {
+pub(crate) fn journal_name(path: &Path) -> Option<String> {
     let stem = path.file_stem()?.to_str()?;
     let mut parts = stem.split('_');
     let (y, m, d) = (parts.next()?, parts.next()?, parts.next()?);
@@ -33,7 +33,7 @@ fn journal_name(path: &Path) -> Option<String> {
 }
 
 /// Результат индексации
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IndexStats {
     pub pages: usize,
     pub journals: usize,
@@ -52,8 +52,15 @@ impl Graph {
         self.backlinks.clear();
         self.block_page.clear();
 
+        if let Some((cached, stats)) = super::index_cache::load(root) {
+            *self = cached;
+            return Ok(stats);
+        }
+
         let journals_dir = root.join("journals");
         let pages_dir = root.join("pages");
+        let manifest = super::index_cache::manifest(root);
+        let mut complete = true;
 
         let mut stats = IndexStats {
             pages: 0,
@@ -64,14 +71,25 @@ impl Graph {
         };
 
         if journals_dir.is_dir() {
-            self.index_subdir(root, &journals_dir, PageKind::Journal, &mut stats)?;
+            self.index_subdir(
+                root,
+                &journals_dir,
+                PageKind::Journal,
+                &mut stats,
+                &mut complete,
+            )?;
         }
         if pages_dir.is_dir() {
-            self.index_subdir(root, &pages_dir, PageKind::Page, &mut stats)?;
+            self.index_subdir(root, &pages_dir, PageKind::Page, &mut stats, &mut complete)?;
         }
 
         // обратные ссылки
         self.rebuild_backlinks();
+        if complete {
+            if let Some(files) = manifest {
+                super::index_cache::save_if_unchanged(root, self, &stats, files);
+            }
+        }
 
         Ok(stats)
     }
@@ -82,6 +100,7 @@ impl Graph {
         dir: &Path,
         kind: PageKind,
         stats: &mut IndexStats,
+        complete: &mut bool,
     ) -> std::io::Result<()> {
         let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)?
             .filter_map(|e| e.ok().map(|e| e.path()))
@@ -105,7 +124,10 @@ impl Graph {
             }
             let text = match std::fs::read_to_string(&path) {
                 Ok(t) => t,
-                Err(_) => continue,
+                Err(_) => {
+                    *complete = false;
+                    continue;
+                }
             };
             let mtime = std::fs::metadata(&path)
                 .ok()

@@ -3,6 +3,7 @@
 pub mod block_refs;
 pub mod fswrite;
 pub mod index;
+pub mod index_cache;
 pub mod model;
 pub mod parser;
 pub mod query;

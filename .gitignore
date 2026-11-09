@@ -6,6 +6,7 @@ node_modules/
 .vite/
 target/release/bundle/
 src-tauri/gen/
+src-tauri/tests/fixtures/graph/.logtask/
 docs/superpowers/
 .superpowers/
 .worktrees/
