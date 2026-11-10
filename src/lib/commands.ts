@@ -1,5 +1,15 @@
 export type CommandContext = "global" | "taskList" | "taskMenu";
 
+export function pageActionAvailable(view: {
+  current: string | null;
+  settings: boolean;
+  graph: boolean;
+  tasks: boolean;
+  pages: boolean;
+}): boolean {
+  return !view.settings && (view.current !== null || (!view.graph && !view.tasks && !view.pages));
+}
+
 export interface CommandDefinition {
   id: string;
   label: string;
@@ -15,6 +25,8 @@ export const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   { id: "today", label: "Сегодняшний журнал", context: "global", defaultShortcut: "mod+j" },
   { id: "settings", label: "Настройки", context: "global", defaultShortcut: "mod+," },
   { id: "help", label: "Горячие клавиши", context: "global", defaultShortcut: "f1" },
+  { id: "exportHtml", label: "Экспорт в HTML", context: "global", defaultShortcut: null },
+  { id: "printPage", label: "Печать", context: "global", defaultShortcut: null },
   { id: "taskNext", label: "Следующая задача", context: "taskList", defaultShortcut: "j" },
   { id: "taskPrevious", label: "Предыдущая задача", context: "taskList", defaultShortcut: "k" },
   { id: "taskOpen", label: "Открыть источник задачи", context: "taskList", defaultShortcut: "enter" },

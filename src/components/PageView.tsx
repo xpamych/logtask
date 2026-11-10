@@ -19,11 +19,14 @@ import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { PageLoadGuard } from "~/lib/pageLoad";
 import { IconStar } from "~/components/icons";
+import { savePages } from "~/lib/exportActions";
 import { BlockView } from "./BlockView";
 import { RichText } from "./RichText";
 
 export function PageView(props: {
   name: string;
+  ref?: (handle: { exportHtml: () => Promise<void> }) => void;
+  onToast?: (text: string) => void;
   onOpenPage: (name: string, uuid?: string) => void;
   refreshKey: number;
   focusUuid?: string | null;
@@ -50,6 +53,23 @@ export function PageView(props: {
   const [renameBusy, setRenameBusy] = createSignal(false);
   // позиция выпадающего меню страницы (⋯ справа в заголовке)
   const [menuPos, setMenuPos] = createSignal<{ x: number; y: number } | null>(null);
+  const [exportBusy, setExportBusy] = createSignal(false);
+
+  const exportHtml = async () => {
+    const current = page();
+    if (!current || exportBusy()) return;
+    setExportBusy(true);
+    setError(null);
+    try {
+      const saved = await savePages([current]);
+      if (saved) props.onToast?.(`HTML сохранён: ${saved}`);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setExportBusy(false);
+    }
+  };
+  props.ref?.({ exportHtml });
 
   const onReveal = async () => {
     try {
@@ -353,6 +373,25 @@ export function PageView(props: {
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
+                    <button
+                      class="page-menu-item"
+                      disabled={exportBusy()}
+                      onClick={() => {
+                        setMenuPos(null);
+                        void exportHtml();
+                      }}
+                    >
+                      {exportBusy() ? "Экспорт…" : "Экспорт в HTML"}
+                    </button>
+                    <button
+                      class="page-menu-item"
+                      onClick={() => {
+                        setMenuPos(null);
+                        window.print();
+                      }}
+                    >
+                      Печать
+                    </button>
                     <button
                       class="page-menu-item"
                       onClick={() => {

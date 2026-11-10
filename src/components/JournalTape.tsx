@@ -16,6 +16,7 @@ import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState
 import { backlinksRefreshToken, visibleJournalsAfterRefresh } from "~/lib/journalRefresh";
 import { composerMarker } from "~/lib/composer";
 import { findJournalDay } from "~/lib/journalOpen";
+import { savePages } from "~/lib/exportActions";
 import { BlockView } from "./BlockView";
 import { Autocomplete, createAutocomplete } from "./Autocomplete";
 import { RichText } from "./RichText";
@@ -26,13 +27,20 @@ export function JournalTape(props: {
   onOpenPage: (name: string) => void;
   refreshKey: number;
   settings?: Settings | null;
-  ref?: (handle: { openDay: (name: string) => Promise<void> }) => void;
+  onToast?: (text: string) => void;
+  ref?: (handle: {
+    openDay: (name: string) => Promise<void>;
+    exportHtml: () => Promise<void>;
+  }) => void;
 }): JSX.Element {
   const [days, setDays] = createSignal<string[]>([]);
   const [pages, setPages] = createSignal<Record<string, PageDto>>({});
   const [loading, setLoading] = createSignal(false);
   const [done, setDone] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const [exportBusy, setExportBusy] = createSignal(false);
+  const [menuDay, setMenuDay] = createSignal<string | null>(null);
+  const [printOnly, setPrintOnly] = createSignal<string | null>(null);
 
   // поколение загрузки: защита от гонки reload'ов (старт + graph-changed
   // от watcher'а) — устаревший reload не должен дописывать свои дни
@@ -146,7 +154,39 @@ export function JournalTape(props: {
       if (my === openDayEpoch) setError(String(e));
     }
   };
-  props.ref?.({ openDay });
+
+  const exportPages = async (selected: PageDto[]) => {
+    if (selected.length === 0 || exportBusy()) return;
+    setExportBusy(true);
+    setError(null);
+    try {
+      const saved = await savePages(selected);
+      if (saved) props.onToast?.(`HTML сохранён: ${saved}`);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setExportBusy(false);
+    }
+  };
+  const exportHtml = async () => {
+    const loaded = days().flatMap((name) => {
+      const current = pages()[name];
+      return current ? [current] : [];
+    });
+    await exportPages(loaded);
+  };
+  const printDay = (name: string) => {
+    setPrintOnly(name);
+    const cleanup = () => setPrintOnly(null);
+    window.addEventListener("afterprint", cleanup, { once: true });
+    try {
+      window.print();
+    } finally {
+      window.removeEventListener("afterprint", cleanup);
+      cleanup();
+    }
+  };
+  props.ref?.({ openDay, exportHtml });
 
   const onStatusChange = async (uuid: string, marker: string): Promise<string> => {
     try {
@@ -310,8 +350,50 @@ export function JournalTape(props: {
       </Show>
       <For each={days()}>
         {(name) => (
-          <section class="day" data-journal-day={name}>
-            <h2 class="day-title">{formatJournalName(name)}</h2>
+          <section
+            class="day"
+            classList={{ "print-only": printOnly() === name }}
+            data-journal-day={name}
+          >
+            <h2 class="day-title">
+              <span>{formatJournalName(name)}</span>
+              <button
+                class="star-btn page-menu-btn print-hidden"
+                title="Действия со днём"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuDay(menuDay() === name ? null : name);
+                }}
+              >
+                ⋯
+              </button>
+              <Show when={menuDay() === name}>
+                <>
+                  <div class="menu-backdrop" onClick={() => setMenuDay(null)} />
+                  <div class="block-menu ctx-menu day-menu" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      class="page-menu-item"
+                      disabled={exportBusy()}
+                      onClick={() => {
+                        setMenuDay(null);
+                        void exportPages([pages()[name]]);
+                      }}
+                    >
+                      {exportBusy() ? "Экспорт…" : "Экспорт в HTML"}
+                    </button>
+                    <button
+                      class="page-menu-item"
+                      onClick={() => {
+                        setMenuDay(null);
+                        printDay(name);
+                      }}
+                    >
+                      Печать
+                    </button>
+                  </div>
+                </>
+              </Show>
+            </h2>
             <Show when={pages()[name]} fallback={<div class="placeholder">…</div>}>
               {(page) => (
                 <>

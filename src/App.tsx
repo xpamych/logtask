@@ -36,7 +36,7 @@ import { GraphView } from "~/components/graph/GraphView";
 import { GraphSettings } from "~/components/graph/GraphSettings";
 import { LocalGraph } from "~/components/graph/LocalGraph";
 import { todayJournalName } from "~/lib/text";
-import { COMMAND_DEFINITIONS } from "~/lib/commands";
+import { COMMAND_DEFINITIONS, pageActionAvailable } from "~/lib/commands";
 import { activeModalContext, pushModalContext } from "~/lib/modalState";
 import { commandForContext, effectiveShortcuts, formatShortcut, normalizeShortcut, shouldHandleGlobalShortcut } from "~/lib/shortcuts";
 import { homeViewFromSetting } from "~/lib/homeView";
@@ -349,7 +349,16 @@ const App: Component = () => {
   const showSettingsView = (section: SettingsSection) =>
     navigate({ kind: "settings", section });
 
+  const pageCommandsAvailable = () => pageActionAvailable({
+    current: current(),
+    settings: settingsSection() !== null,
+    graph: showGraph(),
+    tasks: showTasks(),
+    pages: showAllPages(),
+  });
+
   const runGlobalCommand = (id: string) => {
+    if ((id === "exportHtml" || id === "printPage") && !pageCommandsAvailable()) return;
     if ((id === "newTask" || id === "today") && (starting() || !summary()?.root)) {
       showToast("Сначала выберите или дождитесь загрузки графа");
       return;
@@ -377,6 +386,12 @@ const App: Component = () => {
       case "help":
         setHelpOpen((open) => !open);
         break;
+      case "exportHtml":
+        void (current() ? pageViewRef : journalTapeRef)?.exportHtml();
+        break;
+      case "printPage":
+        window.print();
+        break;
     }
   };
 
@@ -396,7 +411,9 @@ const App: Component = () => {
         id: command.id,
         label: command.label,
         shortcut: formatShortcut(effective[command.id], navigator.platform.includes("Mac")),
-        enabled: true,
+        enabled: command.id !== "exportHtml" && command.id !== "printPage"
+          ? true
+          : pageCommandsAvailable(),
         run: () => runGlobalCommand(command.id),
       }),
     );
@@ -709,7 +726,11 @@ const App: Component = () => {
       : `${sidebarCollapsed() ? 0 : sidebarW()}px ${sidebarCollapsed() ? 0 : 5}px 1fr ` +
         `${panelCollapsed() ? 0 : 5}px ${panelCollapsed() ? 0 : panelW()}px`;
 
-  let journalTapeRef: { openDay: (name: string) => Promise<void> } | undefined;
+  let journalTapeRef: {
+    openDay: (name: string) => Promise<void>;
+    exportHtml: () => Promise<void>;
+  } | undefined;
+  let pageViewRef: { exportHtml: () => Promise<void> } | undefined;
 
   return (
     <Show when={!starting()} fallback={<div class="placeholder">Загрузка графа…</div>}>
@@ -813,7 +834,15 @@ const App: Component = () => {
                           fallback={
                             <Show
                               when={showAllPages()}
-                              fallback={<JournalTape ref={(handle) => (journalTapeRef = handle)} refreshKey={refreshKey()} onOpenPage={openPage} settings={settings()} />}
+                              fallback={
+                                <JournalTape
+                                  ref={(handle) => (journalTapeRef = handle)}
+                                  refreshKey={refreshKey()}
+                                  onOpenPage={openPage}
+                                  settings={settings()}
+                                  onToast={showToast}
+                                />
+                              }
                             >
                               <AllPages
                                 pages={pages()}
@@ -852,8 +881,10 @@ const App: Component = () => {
                 >
                   {(name) => (
                     <PageView
+                      ref={(handle) => (pageViewRef = handle)}
                       name={name()}
                       onOpenPage={openPage}
+                      onToast={showToast}
                       refreshKey={refreshKey()}
                       focusUuid={focusUuid()}
                       settings={settings()}

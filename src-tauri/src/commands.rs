@@ -1844,6 +1844,38 @@ pub async fn pick_graph_dir(
     Ok(result.map(|f| f.to_string()))
 }
 
+fn write_html_export(path: &std::path::Path, html: &str) -> std::io::Result<()> {
+    crate::core::fswrite::atomic_write_bytes(path, html.as_bytes())
+}
+
+/// Сохраняет автономный HTML в выбранный пользователем файл.
+#[tauri::command]
+pub async fn export_html_save(
+    app: tauri::AppHandle,
+    suggested_name: String,
+    html: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title("Экспорт страницы в HTML")
+        .set_file_name(suggested_name)
+        .add_filter("HTML", &["html"])
+        .save_file(move |file| {
+            let _ = tx.send(file);
+        });
+    let file = rx.recv().map_err(|e| format!("ошибка диалога: {e}"))?;
+    let Some(file) = file else {
+        return Ok(None);
+    };
+    let path = file.to_string();
+    write_html_export(std::path::Path::new(&path), &html)
+        .map_err(|e| format!("не удалось сохранить HTML: {e}"))?;
+    Ok(Some(path))
+}
+
 /// Создаёт пустую структуру графа с нуля (journals/ + pages/)
 /// в выбранной папке. Существующие файлы не трогаются.
 #[tauri::command]
@@ -2785,5 +2817,22 @@ mod tests {
         let current = std::path::PathBuf::from("/graph-b");
         assert!(super::ensure_settings_graph_root(&current, "/graph-a").is_err());
         assert!(super::ensure_settings_graph_root(&current, "/graph-b").is_ok());
+    }
+
+    #[test]
+    fn html_export_writes_utf8_and_replaces_existing_file() {
+        let dir = std::env::temp_dir().join("logtask_html_export_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("Страница.html");
+        std::fs::write(&path, "старый").unwrap();
+
+        super::write_html_export(&path, "<h1>Новый текст</h1>").unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "<h1>Новый текст</h1>"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

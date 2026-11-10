@@ -131,6 +131,7 @@ pub fn run() {
             commands::web_title,
             commands::open_external,
             commands::pick_graph_dir,
+            commands::export_html_save,
             commands::graph_create,
             commands::graph_needs_scaffold,
             commands::integrations_states,

@@ -640,6 +640,11 @@ export async function assetDataUrl(path: string): Promise<string> {
   return invoke<string>("asset_data_url", { path });
 }
 
+/** Сохраняет HTML через нативный диалог; null — пользователь отменил выбор */
+export async function exportHtmlSave(suggestedName: string, html: string): Promise<string | null> {
+  return invoke<string | null>("export_html_save", { suggestedName, html });
+}
+
 /** Отладка: писать сообщение фронта в лог приложения */
 export async function logFrontend(msg: string): Promise<void> {
   return invoke<void>("log_frontend", { msg });

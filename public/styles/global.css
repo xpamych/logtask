@@ -3022,3 +3022,111 @@ textarea.push-body {
     min-height: 40px;
   }
 }
+
+.day-title {
+  position: relative;
+}
+
+.day-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 190px;
+  padding: 4px;
+}
+
+@page {
+  margin: 15mm;
+}
+
+@media print {
+  :root,
+  body,
+  body.theme-dark,
+  body.theme-light,
+  .shell,
+  .app,
+  .center-content,
+  .journal,
+  .day,
+  .block,
+  .block-text {
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  .topbar,
+  .sidebar,
+  .taskpanel,
+  .panel-resizer,
+  .mobile-sidebar-slot,
+  .mobile-backdrop,
+  .page-menu-btn,
+  .block-menu,
+  .menu-backdrop,
+  .block-actions,
+  .block-edit,
+  .composer-row,
+  .placeholder-btn,
+  .backlinks,
+  .tape-sentinel,
+  .toast,
+  .modal-backdrop,
+  .error {
+    display: none !important;
+  }
+
+  .shell,
+  .app,
+  .center-content,
+  .center-content > *,
+  .journal {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+  }
+
+  .journal {
+    padding: 0 !important;
+  }
+
+  .day {
+    break-after: page;
+  }
+
+  .journal > .day:last-of-type {
+    break-after: auto;
+  }
+
+  .journal:has(.print-only) > .day:not(.print-only) {
+    display: none !important;
+  }
+
+  .block,
+  .code-block,
+  pre {
+    break-inside: avoid;
+  }
+
+  .block-text,
+  .md-line {
+    overflow-wrap: anywhere;
+  }
+
+  .md-image,
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .wikilink,
+  .hashtag,
+  .extlink {
+    color: #000 !important;
+  }
+}
