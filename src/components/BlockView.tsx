@@ -403,7 +403,7 @@ export function BlockView(props: {
             ref={(view) => { editorView = view ?? undefined; }}
             initialValue={draft()}
             initialAnchor={editAnchor()}
-            mode="live"
+            mode={props.settings?.editorMode ?? "live"}
             onDraft={(text) => {
               setDraft(text);
               void autocomplete.onInput(text, editorView?.state.selection.main.from ?? 0);

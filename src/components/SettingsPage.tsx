@@ -88,6 +88,18 @@ export function SettingsPage(props: {
         </label>
 
         <label class="settings-row">
+          <span class="settings-label">Режим редактора</span>
+          <select
+            class="settings-select"
+            value={props.settings.editorMode}
+            onChange={(e) => patch({ editorMode: e.currentTarget.value as "live" | "source" }, { immediate: true })}
+          >
+            <option value="live">Live Preview</option>
+            <option value="source">Source</option>
+          </select>
+        </label>
+
+        <label class="settings-row">
           <span class="settings-label">Первый день недели</span>
           <select
             class="settings-select"

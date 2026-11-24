@@ -131,6 +131,9 @@ pub struct Settings {
     /// домашний вид: "journal" | "tasks" | "pages" | "graph" (кнопка ⌂ и старт приложения)
     #[serde(default = "default_home_view")]
     pub home_view: String,
+    /// режим редактора: "live" | "source"
+    #[serde(default = "default_editor_mode")]
+    pub editor_mode: String,
     /// статусы канбана: набор/цвета/порядок
     #[serde(default = "default_statuses")]
     pub statuses: Vec<StatusConfig>,
@@ -170,6 +173,10 @@ fn default_taskpanel_width() -> u32 {
 
 fn default_home_view() -> String {
     "journal".to_string()
+}
+
+fn default_editor_mode() -> String {
+    "live".to_string()
 }
 
 fn default_close_to_tray() -> bool {
@@ -244,6 +251,7 @@ impl Default for Settings {
             close_to_tray: default_close_to_tray(),
             show_calendar: default_show_calendar(),
             home_view: default_home_view(),
+            editor_mode: default_editor_mode(),
             statuses: default_statuses(),
             integrations: Default::default(),
             graph_view: Default::default(),
@@ -414,6 +422,7 @@ mod tests {
         let s = load(&dir).unwrap();
         assert_eq!(s.theme, "system");
         assert_eq!(s.sidebar_width, 240);
+        assert_eq!(s.editor_mode, "live");
     }
 
     #[test]

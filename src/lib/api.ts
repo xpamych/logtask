@@ -425,6 +425,7 @@ export interface Settings {
   closeToTray: boolean;
   showCalendar: boolean;
   homeView: string;
+  editorMode: "live" | "source";
   statuses: StatusConfig[];
   integrations: IntegrationsConfig;
   graphView: GraphViewSettings;

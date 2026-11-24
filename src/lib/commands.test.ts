@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { pageActionAvailable } from "./commands.ts";
+import { COMMAND_DEFINITIONS, pageActionAvailable } from "./commands.ts";
 
 const journal = { current: null, settings: false, graph: false, tasks: false, pages: false };
+
+test("переключение режима редактора зарегистрировано с свободным сочетанием", () => {
+  const command = COMMAND_DEFINITIONS.find((item) => item.id === "toggleEditorMode");
+  assert.equal(command?.defaultShortcut, "mod+e");
+  assert.equal(COMMAND_DEFINITIONS.filter((item) => item.defaultShortcut === "mod+e").length, 1);
+});
 
 test("экспорт и печать доступны на странице и в журнале", () => {
   assert.equal(pageActionAvailable(journal), true);

@@ -27,6 +27,7 @@ export const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   { id: "help", label: "Горячие клавиши", context: "global", defaultShortcut: "f1" },
   { id: "exportHtml", label: "Экспорт в HTML", context: "global", defaultShortcut: null },
   { id: "printPage", label: "Печать", context: "global", defaultShortcut: null },
+  { id: "toggleEditorMode", label: "Переключить Live Preview / Source", context: "global", defaultShortcut: "mod+e" },
   { id: "taskNext", label: "Следующая задача", context: "taskList", defaultShortcut: "j" },
   { id: "taskPrevious", label: "Предыдущая задача", context: "taskList", defaultShortcut: "k" },
   { id: "taskOpen", label: "Открыть источник задачи", context: "taskList", defaultShortcut: "enter" },
