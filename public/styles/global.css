@@ -1401,7 +1401,7 @@ button.backlink:hover {
 
 .block-fold {
   position: absolute;
-  right: 4px;
+  left: -16px;
   top: 0;
   min-width: 24px;
   min-height: 24px;
