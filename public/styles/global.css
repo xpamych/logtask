@@ -1432,7 +1432,7 @@ button.backlink:hover {
 .block-tree-link {
   position: absolute;
   left: 40px;
-  top: -18px;
+  top: -32px;
   overflow: visible;
   color: var(--fg-muted);
   opacity: 0.45;
