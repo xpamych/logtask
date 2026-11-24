@@ -39,8 +39,7 @@ export function BlockTreeLinks(props: {
       setLinks(Object.entries(parents).flatMap(([uuid, parentUuid]) => {
         const parent = point(parentUuid);
         const child = point(uuid);
-        const clearance = Object.values(parents).includes(uuid) ? 24 : 0;
-        return parent && child ? [{ uuid, d: treeLinkPath(parent, child, clearance) }] : [];
+        return parent && child ? [{ uuid, d: treeLinkPath(parent, child) }] : [];
       }));
     });
   });
