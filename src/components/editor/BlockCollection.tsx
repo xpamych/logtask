@@ -7,6 +7,7 @@ import type { BlockSelectionState } from "~/lib/blockSelection";
 import { blockCollectionKeyAllowed, hasBlockChildren, toggleCollapsed, visibleBlockUuids } from "~/lib/blockTree";
 import { editingBlock } from "~/lib/editState";
 import { BlockView } from "../BlockView";
+import { BlockTreeLinks } from "./BlockTreeLinks";
 
 export function BlockCollection(props: {
   containerId: string;
@@ -21,6 +22,7 @@ export function BlockCollection(props: {
 }): JSX.Element {
   const [selection, setSelection] = createSignal<BlockSelectionState | null>(null);
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
+  const [hoveredUuid, setHoveredUuid] = createSignal<string | null>(null);
   let container: HTMLDivElement | undefined;
   const visible = () => visibleBlockUuids(props.blocks, collapsed());
   const selected = () => selectedBlockUuids(selection(), visible());
@@ -89,7 +91,15 @@ export function BlockCollection(props: {
     }
   };
   return (
-    <div ref={container} class="block-collection" tabindex={-1} onKeyDown={onKeyDown}>
+    <div
+      ref={container}
+      class="block-collection"
+      tabindex={-1}
+      onKeyDown={onKeyDown}
+      onMouseOver={(event) => setHoveredUuid((event.target as Element).closest(".block")?.getAttribute("data-uuid") ?? null)}
+      onMouseLeave={() => setHoveredUuid(null)}
+    >
+      <BlockTreeLinks container={container} blocks={props.blocks} hoveredUuid={hoveredUuid()} version={collapsed()} />
       <For each={props.blocks.filter((block) => visible().includes(block.uuid))}>
         {(block) => (
           <BlockView

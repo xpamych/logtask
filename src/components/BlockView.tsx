@@ -402,11 +402,6 @@ export function BlockView(props: {
       onKeyDown={onBlockKeyDown}
       onContextMenu={onContextMenu}
     >
-      <Show when={b.indent > 0}>
-        <svg class="block-tree-link" width="28" height="46" viewBox="0 0 28 46" fill="none" aria-hidden="true">
-          <path d="M2 0 V27 Q2 39 14 39 H17" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </Show>
       <span class="block-fold-slot">
         <Show when={props.hasChildren}>
           <button
