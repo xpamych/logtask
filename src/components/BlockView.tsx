@@ -401,15 +401,17 @@ export function BlockView(props: {
       onKeyDown={onBlockKeyDown}
       onContextMenu={onContextMenu}
     >
-      <Show when={props.hasChildren}>
-        <button
-          type="button"
-          class="block-fold print-hidden"
-          aria-label={props.collapsed ? "Развернуть вложенные блоки" : "Свернуть вложенные блоки"}
-          aria-expanded={!props.collapsed}
-          onClick={(event) => { event.stopPropagation(); props.onToggleFold?.(); }}
-        >{props.collapsed ? "▸" : "▾"}</button>
-      </Show>
+      <span class="block-fold-slot">
+        <Show when={props.hasChildren}>
+          <button
+            type="button"
+            class="block-fold print-hidden"
+            aria-label={props.collapsed ? "Развернуть вложенные блоки" : "Свернуть вложенные блоки"}
+            aria-expanded={!props.collapsed}
+            onClick={(event) => { event.stopPropagation(); props.onToggleFold?.(); }}
+          >{props.collapsed ? "▸" : "▾"}</button>
+        </Show>
+      </span>
       <StatusPrioDot
         status={b.status}
         priority={b.priority}
