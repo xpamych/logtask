@@ -36,6 +36,9 @@ fn normalized(graph: &Graph, ids: &[Uuid]) -> io::Result<(String, Vec<Uuid>)> {
     }
     let page = &graph.pages[page_name.as_ref().unwrap()];
     let selected: HashSet<Uuid> = ids.iter().copied().collect();
+    if selected.len() != ids.len() {
+        return Err(invalid("повторяющиеся uuid"));
+    }
     let mut roots = Vec::new();
     for id in &page.order {
         if !selected.contains(id) {
@@ -208,22 +211,28 @@ impl Graph {
             BatchOperation::Move { direction } => {
                 let ordered: Vec<_> = if direction > 0 { roots.iter().rev().copied().collect() } else { roots.clone() };
                 let mut changed = false;
+                let mut valid = true;
                 for id in ordered {
-                    changed |= move_one(&mut working, &page_name, id, direction);
+                    let applied = move_one(&mut working, &page_name, id, direction);
+                    changed |= applied;
+                    valid &= applied;
                 }
-                changed
+                changed && valid
             }
             BatchOperation::Indent { direction } => {
                 let ordered: Vec<_> = if direction > 0 { roots.clone() } else { roots.iter().rev().copied().collect() };
                 let mut changed = false;
+                let mut valid = true;
                 for id in ordered {
-                    changed |= if direction > 0 {
+                    let applied = if direction > 0 {
                         indent_one(&mut working, &page_name, id)
                     } else {
                         outdent_one(&mut working, &page_name, id)
                     };
+                    changed |= applied;
+                    valid &= applied;
                 }
-                changed
+                changed && valid
             }
         };
         if !changed {

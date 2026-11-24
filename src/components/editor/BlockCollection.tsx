@@ -4,7 +4,8 @@ import type { BlockDto, Settings } from "~/lib/api";
 import { blocksBatchApply, blocksMarkdownGet } from "~/lib/api";
 import { pruneBlockSelection, selectBlock, selectedBlockUuids, extendBlockSelection } from "~/lib/blockSelection";
 import type { BlockSelectionState } from "~/lib/blockSelection";
-import { hasBlockChildren, toggleCollapsed, visibleBlockUuids } from "~/lib/blockTree";
+import { blockCollectionKeyAllowed, hasBlockChildren, toggleCollapsed, visibleBlockUuids } from "~/lib/blockTree";
+import { editingBlock } from "~/lib/editState";
 import { BlockView } from "../BlockView";
 
 export function BlockCollection(props: {
@@ -62,7 +63,7 @@ export function BlockCollection(props: {
     }
   };
   const onKeyDown = (event: KeyboardEvent) => {
-    if (!selection() || event.isComposing) return;
+    if (!selection() || event.isComposing || !blockCollectionKeyAllowed(editingBlock() !== null)) return;
     const mod = event.ctrlKey || event.metaKey;
     if (event.shiftKey && !mod && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault();
@@ -107,6 +108,7 @@ export function BlockCollection(props: {
             onSelect={(uuid, extend) => select(uuid, extend)}
             onSelectAll={selectAll}
             onCancelEdit={(uuid) => select(uuid)}
+            onBeginEdit={() => setSelection(null)}
           />
         )}
       </For>

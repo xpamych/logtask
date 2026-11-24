@@ -92,3 +92,29 @@ fn mixed_pages_and_external_edit_are_atomic() {
     assert!(contents(&graph).contains(&"A"));
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn duplicate_ids_are_rejected_without_mutation() {
+    let (mut graph, dir, file) = graph("duplicates");
+    let a = id(&graph, "A");
+    assert!(graph.apply_block_batch(&[a, a], BatchOperation::Delete, &dir).is_err());
+    assert!(graph.blocks_markdown(&[a, a]).is_err());
+    assert_eq!(fs::read_to_string(file).unwrap(), SOURCE);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn partially_valid_group_operations_are_noop() {
+    for (name, operation, first, second) in [
+        ("move_up", BatchOperation::Move { direction: -1 }, "A", "B"),
+        ("move_down", BatchOperation::Move { direction: 1 }, "C", "D"),
+        ("indent", BatchOperation::Indent { direction: 1 }, "A", "B"),
+        ("outdent", BatchOperation::Indent { direction: -1 }, "A", "B"),
+    ] {
+        let (mut graph, dir, file) = graph(name);
+        let result = graph.apply_block_batch(&[id(&graph, first), id(&graph, second)], operation, &dir).unwrap();
+        assert_eq!(result, None, "{name}");
+        assert_eq!(fs::read_to_string(&file).unwrap(), SOURCE, "{name}");
+        let _ = fs::remove_dir_all(dir);
+    }
+}

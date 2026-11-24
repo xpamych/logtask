@@ -1,5 +1,9 @@
 import type { BlockDto } from "./api";
 
+export function blockCollectionKeyAllowed(editing: boolean): boolean {
+  return !editing;
+}
+
 export function visibleBlockUuids(
   blocks: BlockDto[],
   collapsed: ReadonlySet<string>,

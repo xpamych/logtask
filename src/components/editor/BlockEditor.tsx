@@ -26,7 +26,7 @@ export function BlockEditor(props: {
   let view: EditorView | undefined;
   onMount(() => {
     const run = (event: KeyboardEvent): boolean => {
-      if (!view) return false;
+      if (!view || event.isComposing || event.keyCode === 229) return false;
       if (props.onKeyDown?.(event)) return true;
       const command = classifyEditorKey(event, {
         value: view.state.doc.toString(),

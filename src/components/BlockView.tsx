@@ -2,7 +2,7 @@ import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { createStore } from "solid-js/store";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
-import { editorSource, persistedSource } from "~/lib/text";
+import { clickCaretPosition, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
 import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
 import type { TextInputAdapter } from "~/lib/pasteImage";
 import type { EditorView } from "@codemirror/view";
@@ -53,6 +53,7 @@ export function BlockView(props: {
   collapsed?: boolean;
   onToggleFold?: () => void;
   onSelect?: (uuid: string, extend: boolean) => void;
+  onBeginEdit?: () => void;
 }): JSX.Element {
   const [b, setB] = createStore<BlockDto>(props.block);
   const onOpen = props.onOpenPage;
@@ -98,8 +99,26 @@ export function BlockView(props: {
     }
   };
 
-  const startEdit = () => {
-    setEditAnchor(0);
+  const startEdit = (event?: MouseEvent) => {
+    props.onBeginEdit?.();
+    let anchor = 0;
+    if (event) {
+      const container = event.currentTarget as HTMLElement;
+      const selection = window.getSelection();
+      if (selection?.anchorNode && container.contains(selection.anchorNode)) {
+        const range = document.createRange();
+        range.selectNodeContents(container);
+        range.setEnd(selection.anchorNode, selection.anchorOffset);
+        const visibleOffset = range.toString().length;
+        const labels = Object.fromEntries(
+          Array.from(container.querySelectorAll<HTMLElement>(".block-ref[data-uuid]"))
+            .map((element) => [element.dataset.uuid!, element.textContent ?? ""]),
+        );
+        const mapped = renderSourceMap(b.content, labels)[Math.min(visibleOffset, renderSourceMap(b.content, labels).length - 1)] ?? 0;
+        anchor = clickCaretPosition(mapped, visibleOffset, container.textContent?.length ?? 0, editorSource(b.source).length);
+      }
+    }
+    setEditAnchor(anchor);
     setDraft(editorSource(b.source));
     setEditing(true);
     setEditingBlock(b.uuid);

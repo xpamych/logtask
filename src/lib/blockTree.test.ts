@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasBlockChildren, toggleCollapsed, visibleBlockUuids } from "./blockTree.ts";
+import { blockCollectionKeyAllowed, hasBlockChildren, toggleCollapsed, visibleBlockUuids } from "./blockTree.ts";
 import type { BlockDto } from "./api.ts";
 
 const block = (uuid: string, indent: number): BlockDto => ({
@@ -24,4 +24,9 @@ test("fold переключается без мутации прежнего н�
   assert.equal(toggleCollapsed(collapsed, "a").size, 0);
   assert.equal(hasBlockChildren(blocks, "a1"), true);
   assert.equal(hasBlockChildren(blocks, "b"), false);
+});
+
+test("клавиши активного текстового редактора не становятся блочными командами", () => {
+  assert.equal(blockCollectionKeyAllowed(true), false);
+  assert.equal(blockCollectionKeyAllowed(false), true);
 });
