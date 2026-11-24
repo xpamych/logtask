@@ -60,14 +60,16 @@ export function BlockEditor(props: {
         selection: { anchor: Math.min(props.initialAnchor, props.initialValue.length) },
         extensions: [
           history(),
-          keymap.of([...defaultKeymap, ...historyKeymap]),
+          keymap.of([{ any: (target, event) => {
+            if (target !== view) return false;
+            return run(event);
+          } }, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({ "aria-label": "Текст блока" }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) props.onDraft(update.state.doc.toString());
           }),
           EditorView.domEventHandlers({
-            keydown: (event) => { run(event); },
             blur: () => props.onSave(view?.state.doc.toString() ?? ""),
             paste: (event) => props.onPaste?.(event),
           }),
