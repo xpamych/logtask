@@ -778,7 +778,7 @@ impl Graph {
 
     /// Общий пролог операций над одной страницей: страница блока, пути,
     /// проверка mtime (защита от перезаписи чужих правок).
-    fn page_io(
+    pub(crate) fn page_io(
         &self,
         id: &Uuid,
         root: &Path,
@@ -800,7 +800,7 @@ impl Graph {
     }
 
     /// Сериализация и запись страницы после мутации + переиндексация
-    fn write_page(
+    pub(crate) fn write_page(
         &mut self,
         page_name: &str,
         kind: super::model::PageKind,
