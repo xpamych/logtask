@@ -33,3 +33,9 @@ test("Mod+A выделяет блоки, а IME не вызывает струк
   assert.equal(classifyEditorKey(key("Escape"), context), "cancel");
   assert.equal(classifyEditorKey(key("ArrowUp", { shiftKey: true }), context), null);
 });
+
+test("split использует актуальный документ, включая ещё не сохранённый ввод", async () => {
+  const { splitEditorSource } = await import("../components/editor/editorCommands.ts");
+  assert.deepEqual(splitEditorSource("до ввода\nпосле ввода", 8, 8), { before: "до ввода", after: "\nпосле ввода" });
+  assert.deepEqual(splitEditorSource("абв", 1, 2), { before: "а", after: "в" });
+});

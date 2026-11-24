@@ -154,11 +154,10 @@ export function BlockView(props: {
     onCleanup(() => unlisten?.());
   });
 
-  const save = async () => {
-    // Enter прячет textarea → WebKit шлёт blur → повторный save: пропускаем
+  const save = async (currentText?: string) => {
     if (saving()) return;
     if (editorView) await waitForImagePaste(inputAdapter);
-    const text = draft().trim();
+    const text = (currentText ?? editorView?.state.doc.toString() ?? draft()).trim();
     if (!text || text === editorSource(b.source).trim()) {
       stopEdit();
       return;
@@ -258,8 +257,8 @@ export function BlockView(props: {
   /// Enter в редакторе (как в Logseq): текущий черновик делится по курсору —
   /// текст до курсора остаётся в блоке, текст после уходит в новый блок ниже;
   /// редактирование продолжается уже в новом блоке (курсор в начале)
-  const splitBlock = async (start: number, end: number) => {
-    const text = draft();
+  const splitBlock = async (currentText: string, start: number, end: number) => {
+    const text = currentText;
     const before = persistedSource(text.slice(0, start));
     const after = persistedSource(text.slice(end));
     try {
@@ -407,7 +406,7 @@ export function BlockView(props: {
           fallback={
             <span class="block-text" onClick={(event) => {
               if (event.shiftKey) props.onSelect?.(b.uuid, true);
-              else startEdit();
+              else startEdit(event);
             }}>
               <RichText text={b.content} onOpenPage={onOpen} />
               <Show when={b.extra.length > 0}>
@@ -427,9 +426,9 @@ export function BlockView(props: {
               setDraft(text);
               void autocomplete.onInput(text, editorView?.state.selection.main.from ?? 0);
             }}
-            onSave={() => void save()}
+            onSave={(text) => void save(text)}
             onCancel={() => void cancel()}
-            onSplit={(start, end) => void splitBlock(start, end)}
+            onSplit={(text, start, end) => void splitBlock(text, start, end)}
             onIndent={(out, at) => void moveIndent(out, at)}
             onMerge={(direction) => {
               if (direction < 0) {

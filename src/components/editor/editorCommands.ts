@@ -14,6 +14,10 @@ export interface EditorKeyContext {
   selectionEnd: number;
 }
 
+export function splitEditorSource(text: string, start: number, end: number): { before: string; after: string } {
+  return { before: text.slice(0, start), after: text.slice(end) };
+}
+
 export type EditorCommand =
   | "split" | "save" | "cancel" | "indent" | "outdent" | "selectAllBlocks"
   | "mergeUp" | "mergeDown" | "navigateUp" | "navigateDown";

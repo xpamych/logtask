@@ -10,9 +10,9 @@ export function BlockEditor(props: {
   initialAnchor: number;
   mode: "live" | "source";
   onDraft: (text: string) => void;
-  onSave: () => void;
+  onSave: (text: string) => void;
   onCancel: () => void;
-  onSplit: (start: number, end: number) => void;
+  onSplit: (text: string, start: number, end: number) => void;
   onIndent: (out: boolean, at: number) => void;
   onMerge: (direction: -1 | 1) => void;
   onNavigate: (direction: -1 | 1) => boolean;
@@ -38,10 +38,12 @@ export function BlockEditor(props: {
         return props.onNavigate(command === "navigateUp" ? -1 : 1);
       }
       event.preventDefault();
+      event.stopPropagation();
       const selection = view.state.selection.main;
+      const text = view.state.doc.toString();
       switch (command) {
-        case "split": props.onSplit(selection.from, selection.to); break;
-        case "save": props.onSave(); break;
+        case "split": props.onSplit(text, selection.from, selection.to); break;
+        case "save": props.onSave(text); break;
         case "cancel": props.onCancel(); break;
         case "indent": props.onIndent(false, selection.from); break;
         case "outdent": props.onIndent(true, selection.from); break;
@@ -58,17 +60,15 @@ export function BlockEditor(props: {
         selection: { anchor: Math.min(props.initialAnchor, props.initialValue.length) },
         extensions: [
           history(),
-          keymap.of([{ any: (target, event) => {
-            if (target !== view) return false;
-            return run(event);
-          } }, ...defaultKeymap, ...historyKeymap]),
+          keymap.of([...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({ "aria-label": "Текст блока" }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) props.onDraft(update.state.doc.toString());
           }),
           EditorView.domEventHandlers({
-            blur: () => props.onSave(),
+            keydown: (event) => { run(event); },
+            blur: () => props.onSave(view?.state.doc.toString() ?? ""),
             paste: (event) => props.onPaste?.(event),
           }),
         ],
