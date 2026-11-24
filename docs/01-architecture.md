@@ -109,7 +109,9 @@ backlinks или round-trip.
 - Сохранённые запросы: `queries_list`, `queries_save`, `import_logseq_queries`
 - Правки: `task_set_status`, `task_set_quadrant`, `task_set_priority`,
   `block_update_text`, `block_delete`, `block_create` (при добавлении первой
-  записи создаёт отсутствующую обычную страницу), `block_set_prop`
+  записи создаёт отсутствующую обычную страницу), `block_set_prop`,
+  `blocks_batch_apply` (атомарные delete/move/indent/outdent выбранных
+  поддеревьев одной страницы), `blocks_markdown_get` (clipboard Markdown)
 - CLOCK: `clock_start`, `clock_stop`
 - Интеграции: `integrations_states`, `integrations_set_secret`,
   `integrations_test`, `integrations_sync`
@@ -153,7 +155,7 @@ credentials, размер запроса ограничен 4 КиБ, тайма
 ## Файлы состояния приложения
 - `<граф>/.logtask/settings.json` — настройки графа (`settings.rs`):
   `theme` (dark|light), `fontScale` (0.85…1.4), `weekStart` (0|1),
-  `showCalendar` (мини-календарь в левой панели),
+  `showCalendar` (мини-календарь в левой панели), `editorMode` (`live`|`source`),
   `kanbanLimit`, `statuses` (маркер/label/цвет/visible/shortcut, порядок
   канбана), `graphView` (фильтры, цветовые группы, отображение, физика и
   локальная глубина визуального графа).
@@ -171,7 +173,8 @@ credentials, размер запроса ограничен 4 КиБ, тайма
 - старт → интерактивное окно: **<300 мс**
 - построение индекса: **<100 мс** на текущем графе (release-замер 50 мс;
   debug — 218 мс, поэтому dev-режим заметно медленнее)
-- набор текста: без IPC — `<textarea>`, запись по Enter/blur
+- набор текста: без IPC — CodeMirror 6 в активном блоке, запись по Enter/blur;
+  нередактируемые блоки рендерятся JSX
 - лента журнала: подгрузка предыдущих дней по 5 за раз
 - переключение статуса/перетаскивание в матрице: одна IPC-команда —
   перезапись страницы + полная переиндексация графа (~72 мс на текущем
