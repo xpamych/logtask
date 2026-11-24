@@ -17,6 +17,8 @@ export function BlockEditor(props: {
   onMerge: (direction: -1 | 1) => void;
   onNavigate: (direction: -1 | 1) => boolean;
   onSelectAll: () => void;
+  onPaste?: (event: ClipboardEvent) => void;
+  onKeyDown?: (event: KeyboardEvent) => boolean;
   ref?: (view: EditorView | null) => void;
 }): JSX.Element {
   void props.mode;
@@ -25,6 +27,7 @@ export function BlockEditor(props: {
   onMount(() => {
     const run = (event: KeyboardEvent): boolean => {
       if (!view) return false;
+      if (props.onKeyDown?.(event)) return true;
       const command = classifyEditorKey(event, {
         value: view.state.doc.toString(),
         selectionStart: view.state.selection.main.from,
@@ -64,7 +67,10 @@ export function BlockEditor(props: {
           EditorView.updateListener.of((update) => {
             if (update.docChanged) props.onDraft(update.state.doc.toString());
           }),
-          EditorView.domEventHandlers({ blur: () => props.onSave() }),
+          EditorView.domEventHandlers({
+            blur: () => props.onSave(),
+            paste: (event) => props.onPaste?.(event),
+          }),
         ],
       }),
     });

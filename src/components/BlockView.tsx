@@ -2,9 +2,11 @@ import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { createStore } from "solid-js/store";
 import { editingBlock, pendingEdit, setEditingBlock, setPendingEdit } from "~/lib/editState";
-import { clickCaretPosition, editorSource, persistedSource, renderSourceMap } from "~/lib/text";
+import { editorSource, persistedSource } from "~/lib/text";
 import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
-import { fitTextarea, setTextareaValue } from "~/lib/textarea";
+import type { TextInputAdapter } from "~/lib/pasteImage";
+import type { EditorView } from "@codemirror/view";
+import { BlockEditor } from "./editor/BlockEditor";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot } from "./StatusPrioDot";
@@ -44,36 +46,42 @@ export function BlockView(props: {
    *  возвращает false, если соседа нет */
   onNavigate?: (uuid: string, dir: -1 | 1) => boolean;
   settings?: Settings | null;
+  onSelectAll?: () => void;
+  onCancelEdit?: (uuid: string) => void;
 }): JSX.Element {
   const [b, setB] = createStore<BlockDto>(props.block);
   const onOpen = props.onOpenPage;
 
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal("");
+  const [editAnchor, setEditAnchor] = createSignal(0);
   const [menu, setMenu] = createSignal<{ x: number; y: number } | null>(null);
   const [saving, setSaving] = createSignal(false);
-  let textareaEl: HTMLTextAreaElement | undefined;
+  let editorView: EditorView | undefined;
+  const inputAdapter: TextInputAdapter = {
+    get value() { return editorView?.state.doc.toString() ?? draft(); },
+    get selectionStart() { return editorView?.state.selection.main.from ?? 0; },
+    get selectionEnd() { return editorView?.state.selection.main.to ?? 0; },
+  };
   const [pasteError, setPasteError] = createSignal<string | null>(null);
   const [pasteBusy, setPasteBusy] = createSignal(false);
   const autocomplete = createAutocomplete(
     ({ text, caret }) => {
       setDraft(text);
       queueMicrotask(() => {
-        if (!textareaEl) return;
-        textareaEl.focus();
-        setTextareaValue(textareaEl, text);
-        textareaEl.setSelectionRange(caret, caret);
+        if (!editorView) return;
+        editorView.focus();
+        editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: text }, selection: { anchor: caret } });
       });
     },
     setPasteError,
   );
 
   const onImagePaste = async (e: ClipboardEvent) => {
-    const el = textareaEl;
-    if (!el) return;
+    if (!editorView) return;
     setPasteError(null);
     setPasteBusy(true);
-    const result = await pasteImage(e, el, assetSave, clipboardAssetSave);
+    const result = await pasteImage(e, inputAdapter, assetSave, clipboardAssetSave);
     setPasteBusy(false);
     if (result.error) {
       setPasteError(result.error);
@@ -81,126 +89,15 @@ export function BlockView(props: {
     }
     if (result.text !== undefined && result.caret !== undefined) {
       setDraft(result.text);
-      queueMicrotask(() => {
-        setTextareaValue(el, result.text!);
-        el.setSelectionRange(result.caret!, result.caret!);
-        fitTextarea(el);
-      });
+      editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: result.text! }, selection: { anchor: result.caret! } });
     }
   };
 
-  const onEditInput = async (e: HTMLTextAreaElement) => {
-    setDraft(e.value);
-    fitTextarea(e);
-    await autocomplete.onInput(e.value, e.selectionStart);
-  };
-
-  /** длина текста (в символах) от начала root до DOM-точки (node, offset) */
-  const domOffset = (root: HTMLElement, node: Node, offset: number): number => {
-    const r = document.createRange();
-    r.selectNodeContents(root);
-    r.setEnd(node, offset);
-    return r.toString().length;
-  };
-
-  /** позиция каретки в extra-строках → смещение в editorSource(b.source): в исходнике
-   *  у extra-строк есть отступы, а между ними — строки свойств/логбука;
-   *  каждую extra-строку матчим по тексту к её строке исходника */
-  const extraToSource = (off: number, labels: Record<string, string>): number => {
-    const joined = b.extra.join("\n");
-    const map = renderSourceMap(joined, labels);
-    const pos = map[Math.min(off, map.length - 1)];
-    const lines = joined.split("\n");
-    let lineIdx = 0;
-    let col = pos;
-    let acc = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (pos <= acc + lines[i].length) {
-        lineIdx = i;
-        col = Math.min(pos - acc, lines[i].length);
-        break;
-      }
-      acc += lines[i].length + 1;
-      lineIdx = i;
-      col = lines[i].length;
-    }
-    // ищем строку исходника, соответствующую extra[lineIdx]: пропускаем
-    // свойства/логбук/пустые, у Raw-строк в исходнике есть префикс-отступ
-    const srcLines = editorSource(b.source).split("\n");
-    let extraIdx = 0;
-    let lineStart = srcLines[0].length + 1;
-    for (let j = 1; j < srcLines.length; j++) {
-      const l = srcLines[j];
-      const t = l.trimStart();
-      const structural =
-        t === "" ||
-        t.startsWith(":LOGBOOK:") ||
-        t.startsWith(":END:") ||
-        t.startsWith("CLOCK:") ||
-        /^[^\s:]+::/.test(t);
-      if (!structural && l.endsWith(b.extra[extraIdx])) {
-        if (extraIdx === lineIdx) {
-          const indentLen = l.length - b.extra[extraIdx].length;
-          return lineStart + indentLen + col;
-        }
-        extraIdx++;
-      }
-      lineStart += l.length + 1;
-    }
-    return editorSource(b.source).length;
-  };
-
-  /** DOM-каретка после клика → смещение в редактируемом исходнике блока */
-  const caretToSource = (container: HTMLElement, node: Node, offset: number): number => {
-    // edit_source = [приоритет "[#X] "] + content + продолжения
-    const prioLen = /^\[#.\]\s*/.exec(editorSource(b.source))?.[0].length ?? 0;
-    const labels = Object.fromEntries(
-      Array.from(container.querySelectorAll<HTMLElement>(".block-ref[data-uuid]"))
-        .map((el) => [el.dataset.uuid!, el.textContent ?? ""]),
-    );
-    const anchorEl =
-      node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
-    const extraEl = container.querySelector(".block-extra");
-    if (extraEl && anchorEl && extraEl.contains(anchorEl)) {
-      return extraToSource(domOffset(extraEl as HTMLElement, node, offset), labels);
-    }
-    const map = renderSourceMap(b.content, labels);
-    const off = Math.min(domOffset(container, node, offset), map.length - 1);
-    return prioLen + map[off];
-  };
-
-  const startEdit = (e?: MouseEvent) => {
-    // клик по тексту: браузер сам ставит DOM-каретку в точный символ —
-    // читаем её ДО того, как редактор подменит разметку
-    let clickPos: number | null = null;
-    if (e) {
-      const container = e.currentTarget as HTMLElement;
-      const sel = window.getSelection();
-      if (sel?.anchorNode && container.contains(sel.anchorNode)) {
-        const visibleOffset = domOffset(container, sel.anchorNode, sel.anchorOffset);
-        clickPos = clickCaretPosition(
-          caretToSource(container, sel.anchorNode, sel.anchorOffset),
-          visibleOffset,
-          container.textContent?.length ?? 0,
-          editorSource(b.source).length,
-        );
-      }
-    }
-    // редактор правит блок целиком (как в Logseq): контент + продолжения
+  const startEdit = () => {
+    setEditAnchor(0);
     setDraft(editorSource(b.source));
     setEditing(true);
     setEditingBlock(b.uuid);
-    queueMicrotask(() => {
-      const el = textareaEl;
-      if (!el) return;
-      el.focus();
-      fitTextarea(el);
-      // фокус ставит каретку в конец текста и ускролливает большой блок —
-      // возвращаем скролл в начало; курсор — в точку клика (или в начало)
-      const pos = Math.min(clickPos ?? 0, el.value.length);
-      el.setSelectionRange(pos, pos);
-      el.scrollTop = 0;
-    });
   };
 
   /// выход из режима редактирования: сброс локального и общего состояния
@@ -224,7 +121,7 @@ export function BlockView(props: {
         const { listen } = await import("@tauri-apps/api/event");
         unlisten = await listen("editor-shift-tab", () => {
           if (!editing() || editingBlock() !== b.uuid) return;
-          void moveIndent(true, textareaEl?.selectionStart ?? 0);
+          void moveIndent(true, editorView?.state.selection.main.from ?? 0);
         });
       } catch {
         /* вне Tauri */
@@ -236,7 +133,7 @@ export function BlockView(props: {
   const save = async () => {
     // Enter прячет textarea → WebKit шлёт blur → повторный save: пропускаем
     if (saving()) return;
-    if (textareaEl) await waitForImagePaste(textareaEl);
+    if (editorView) await waitForImagePaste(inputAdapter);
     const text = draft().trim();
     if (!text || text === editorSource(b.source).trim()) {
       stopEdit();
@@ -255,9 +152,10 @@ export function BlockView(props: {
   };
 
   const cancel = async () => {
-    if (textareaEl) await waitForImagePaste(textareaEl);
+    if (editorView) await waitForImagePaste(inputAdapter);
     stopEdit();
     setDraft(editorSource(b.source));
+    props.onCancelEdit?.(b.uuid);
   };
 
   // вход в редактирование по сигналу через pendingEdit: продолжение после
@@ -268,22 +166,17 @@ export function BlockView(props: {
     const pending = pendingEdit();
     if (!pending || pending.uuid !== b.uuid || editing()) return;
     setPendingEdit(null);
+    const lines = editorSource(b.source).split("\n");
+    let pos: number;
+    if (pending.atLine !== undefined || pending.minusLines !== undefined) {
+      const idx = pending.atLine ?? lines.length - (pending.minusLines ?? 0);
+      const clamped = Math.min(Math.max(0, idx), lines.length - 1);
+      pos = lines.slice(0, clamped).reduce((s, l) => s + l.length + 1, 0);
+    } else {
+      pos = Math.min(pending.at ?? 0, editorSource(b.source).length);
+    }
     startEdit();
-    queueMicrotask(() => {
-      const el = textareaEl;
-      if (!el) return;
-      const lines = el.value.split("\n");
-      let pos: number;
-      if (pending.atLine !== undefined || pending.minusLines !== undefined) {
-        // курсор в начало строки стыка (склейка теперь многострочная)
-        const idx = pending.atLine ?? lines.length - (pending.minusLines ?? 0);
-        const clamped = Math.min(Math.max(0, idx), lines.length - 1);
-        pos = lines.slice(0, clamped).reduce((s, l) => s + l.length + 1, 0);
-      } else {
-        pos = Math.min(pending.at ?? 0, el.value.length);
-      }
-      el.setSelectionRange(pos, pos);
-    });
+    setEditAnchor(pos);
   });
 
   /// Backspace в самом начале блока: склеивание с вышестоящим (как в Logseq).
@@ -354,78 +247,6 @@ export function BlockView(props: {
       }
     } catch (e) {
       console.error("разбиение блока:", e);
-    }
-  };
-
-  const onKeyDown = (e: KeyboardEvent) => {
-    // IME-композиция: Enter подтверждает ввод, а не сохранение
-    if (e.isComposing) return;
-    // навигация по автодополнению
-    if (autocomplete.open && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) {
-      void autocomplete.onKeyDown(e);
-      return;
-    }
-    // Tab / Shift+Tab — вложенность блока (текст не меняется, курсор на месте)
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const el = e.currentTarget as HTMLTextAreaElement;
-      void moveIndent(e.shiftKey, el.selectionStart);
-      return;
-    }
-    // Стрелка вверх на первой строке / вниз на последней — переход
-    // в соседний блок (в конец предыдущего / начало следующего), как в Logseq
-    if (
-      (e.key === "ArrowUp" || e.key === "ArrowDown") &&
-      !e.shiftKey &&
-      !e.ctrlKey &&
-      !e.altKey &&
-      !e.metaKey &&
-      props.onNavigate
-    ) {
-      const el = e.currentTarget as HTMLTextAreaElement;
-      const atFirstLine = !el.value.slice(0, el.selectionStart).includes("\n");
-      const atLastLine = !el.value.slice(el.selectionEnd).includes("\n");
-      const dir = e.key === "ArrowUp" ? -1 : 1;
-      if ((e.key === "ArrowUp" ? atFirstLine : atLastLine)) {
-        if (props.onNavigate(b.uuid, dir)) {
-          e.preventDefault();
-          void save();
-          return;
-        }
-      }
-    }
-    // Backspace в позиции 0 (ничего не выделено) — склеивание с блоком выше;
-    // Delete в конце текста — приклеить нижестоящий блок к текущему
-    if (e.key === "Backspace" || e.key === "Delete") {
-      const el = e.currentTarget as HTMLTextAreaElement;
-      if (e.key === "Backspace" && el.selectionStart === 0 && el.selectionEnd === 0) {
-        e.preventDefault();
-        if (!props.firstBlock) void mergeUp();
-        return;
-      }
-      if (
-        e.key === "Delete" &&
-        el.selectionStart === el.value.length &&
-        el.selectionEnd === el.value.length
-      ) {
-        e.preventDefault();
-        void mergeDown();
-        return;
-      }
-    }
-    // Enter — новый блок ниже (с разбиением текста по курсору),
-    // mod+Enter — сохранить, Escape — отмена
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      e.stopPropagation();
-      void save();
-    } else if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      const el = e.currentTarget as HTMLTextAreaElement;
-      void splitBlock(el.selectionStart, el.selectionEnd);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      cancel();
     }
   };
 
@@ -561,19 +382,39 @@ export function BlockView(props: {
             </span>
           }
         >
-          <textarea
-            ref={textareaEl}
-            class="block-edit"
-            value={draft()}
-            disabled={saving() || pasteBusy()}
-            onInput={(e) => void onEditInput(e.currentTarget)}
-            onKeyDown={onKeyDown}
-            onPaste={(e) => void onImagePaste(e)}
-            onBlur={() => void save()}
-            aria-expanded={autocomplete.open}
-            aria-controls={`block-autocomplete-${b.uuid}`}
-            aria-activedescendant={autocomplete.open ? `block-autocomplete-${b.uuid}-${autocomplete.activeIndex}` : undefined}
-            rows={1}
+          <BlockEditor
+            ref={(view) => { editorView = view ?? undefined; }}
+            initialValue={draft()}
+            initialAnchor={editAnchor()}
+            mode="live"
+            onDraft={(text) => {
+              setDraft(text);
+              void autocomplete.onInput(text, editorView?.state.selection.main.from ?? 0);
+            }}
+            onSave={() => void save()}
+            onCancel={() => void cancel()}
+            onSplit={(start, end) => void splitBlock(start, end)}
+            onIndent={(out, at) => void moveIndent(out, at)}
+            onMerge={(direction) => {
+              if (direction < 0) {
+                if (!props.firstBlock) void mergeUp();
+              } else void mergeDown();
+            }}
+            onNavigate={(direction) => {
+              if (props.onNavigate?.(b.uuid, direction)) {
+                void save();
+                return true;
+              }
+              return false;
+            }}
+            onSelectAll={() => props.onSelectAll?.()}
+            onPaste={(event) => void onImagePaste(event)}
+            onKeyDown={(event) => {
+              if (!autocomplete.open || !["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) return false;
+              event.preventDefault();
+              void autocomplete.onKeyDown(event);
+              return true;
+            }}
           />
           <Show when={pasteBusy()}><div class="muted">Сохранение изображения…</div></Show>
           <Show when={pasteError()}>{(message) => <div class="error">{message()}</div>}</Show>

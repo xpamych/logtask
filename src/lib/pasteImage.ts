@@ -1,6 +1,12 @@
 export type AssetSave = (data: number[], mime: string) => Promise<string>;
 
-const pending = new WeakMap<HTMLTextAreaElement, Promise<unknown>>();
+export interface TextInputAdapter {
+  readonly value: string;
+  readonly selectionStart: number;
+  readonly selectionEnd: number;
+}
+
+const pending = new WeakMap<object, Promise<unknown>>();
 
 const SUPPORTED_MIME = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/x-qt-image"]);
 
@@ -18,7 +24,7 @@ export function insertAtCursor(
 
 export function pasteImage(
   e: ClipboardEvent,
-  textarea: HTMLTextAreaElement,
+  textarea: TextInputAdapter,
   save: AssetSave,
   nativeSave?: () => Promise<string | null>,
 ): Promise<{ handled: boolean; text?: string; caret?: number; error?: string }> {
@@ -56,6 +62,6 @@ export function pasteImage(
   return operation;
 }
 
-export async function waitForImagePaste(textarea: HTMLTextAreaElement): Promise<void> {
+export async function waitForImagePaste(textarea: TextInputAdapter): Promise<void> {
   await pending.get(textarea);
 }

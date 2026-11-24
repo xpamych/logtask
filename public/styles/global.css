@@ -1379,6 +1379,33 @@ button.backlink:hover {
   outline: none;
 }
 
+.block-cm .cm-editor {
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+}
+
+.block-cm .cm-content {
+  padding: 2px 0;
+  font: inherit;
+  caret-color: var(--fg);
+}
+
+.block-cm .cm-line {
+  padding: 0;
+}
+
+.block-cm .cm-editor.cm-focused {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.block-cm .cm-scroller {
+  overflow: visible;
+  font: inherit;
+  line-height: inherit;
+}
+
 .block-menu {
   position: absolute;
   right: 2px;
