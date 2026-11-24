@@ -1379,6 +1379,36 @@ button.backlink:hover {
   outline: none;
 }
 
+.block-collection:focus {
+  outline: none;
+}
+
+.block-selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 4px;
+}
+
+.block-fold {
+  position: absolute;
+  left: 0;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.block {
+  position: relative;
+}
+
+.block[data-uuid] .block-content {
+  border-left: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  padding-left: 4px;
+}
+
 .block-cm .cm-editor {
   background: transparent;
   color: var(--fg);

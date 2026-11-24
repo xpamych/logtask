@@ -20,7 +20,7 @@ import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState
 import { PageLoadGuard } from "~/lib/pageLoad";
 import { IconStar } from "~/components/icons";
 import { savePages } from "~/lib/exportActions";
-import { BlockView } from "./BlockView";
+import { BlockCollection } from "./editor/BlockCollection";
 import { RichText } from "./RichText";
 
 export function PageView(props: {
@@ -419,20 +419,17 @@ export function PageView(props: {
                 <RichText text={p().preamble.join("\n")} onOpenPage={props.onOpenPage} />
               </div>
             </Show>
-            <For each={p().blocks}>
-              {(block, index) => (
-                <BlockView
-                  block={block}
-                  firstBlock={index() === 0}
-                  onOpenPage={props.onOpenPage}
-                  onChanged={guardedLoad}
-                  onStatusChange={onStatusChange}
-                  onDelete={onDelete}
-                  onNavigate={onBlockNavigate}
-                  settings={props.settings}
-                />
-              )}
-            </For>
+            <BlockCollection
+              containerId={p().name}
+              blocks={p().blocks}
+              onOpenPage={props.onOpenPage}
+              onChanged={guardedLoad}
+              onStatusChange={onStatusChange}
+              onDelete={onDelete}
+              onNavigate={onBlockNavigate}
+              settings={props.settings}
+              onError={setError}
+            />
             <Show
               when={composing()}
               fallback={

@@ -48,6 +48,11 @@ export function BlockView(props: {
   settings?: Settings | null;
   onSelectAll?: () => void;
   onCancelEdit?: (uuid: string) => void;
+  selected?: boolean;
+  hasChildren?: boolean;
+  collapsed?: boolean;
+  onToggleFold?: () => void;
+  onSelect?: (uuid: string, extend: boolean) => void;
 }): JSX.Element {
   const [b, setB] = createStore<BlockDto>(props.block);
   const onOpen = props.onOpenPage;
@@ -351,13 +356,22 @@ export function BlockView(props: {
   return (
     <div
       class="block"
-      classList={{ "block-task": b.task }}
+      classList={{ "block-task": b.task, "block-selected": props.selected ?? false }}
       data-uuid={b.uuid || undefined}
       style={{ "padding-left": `${10 + b.indent * 22}px` }}
       tabindex={-1}
       onKeyDown={onBlockKeyDown}
       onContextMenu={onContextMenu}
     >
+      <Show when={props.hasChildren}>
+        <button
+          type="button"
+          class="block-fold print-hidden"
+          aria-label={props.collapsed ? "Развернуть вложенные блоки" : "Свернуть вложенные блоки"}
+          aria-expanded={!props.collapsed}
+          onClick={(event) => { event.stopPropagation(); props.onToggleFold?.(); }}
+        >{props.collapsed ? "▸" : "▾"}</button>
+      </Show>
       <StatusPrioDot
         status={b.status}
         priority={b.priority}
@@ -372,7 +386,10 @@ export function BlockView(props: {
         <Show
           when={editing()}
           fallback={
-            <span class="block-text" onClick={startEdit}>
+            <span class="block-text" onClick={(event) => {
+              if (event.shiftKey) props.onSelect?.(b.uuid, true);
+              else startEdit();
+            }}>
               <RichText text={b.content} onOpenPage={onOpen} />
               <Show when={b.extra.length > 0}>
                 <span class="block-extra">

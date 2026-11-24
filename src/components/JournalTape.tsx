@@ -17,7 +17,7 @@ import { backlinksRefreshToken, visibleJournalsAfterRefresh } from "~/lib/journa
 import { composerMarker } from "~/lib/composer";
 import { findJournalDay } from "~/lib/journalOpen";
 import { savePages } from "~/lib/exportActions";
-import { BlockView } from "./BlockView";
+import { BlockCollection } from "./editor/BlockCollection";
 import { Autocomplete, createAutocomplete } from "./Autocomplete";
 import { RichText } from "./RichText";
 
@@ -397,20 +397,17 @@ export function JournalTape(props: {
             <Show when={pages()[name]} fallback={<div class="placeholder">…</div>}>
               {(page) => (
                 <>
-                  <For each={tapeBlocks(page())}>
-                    {(block, index) => (
-                      <BlockView
-                        block={block}
-                        firstBlock={index() === 0}
-                        onOpenPage={props.onOpenPage}
-                        onChanged={guardedReload}
-                        onStatusChange={onStatusChange}
-                        onDelete={onDelete}
-                        onNavigate={onBlockNavigate}
-                        settings={props.settings}
-                      />
-                    )}
-                  </For>
+                  <BlockCollection
+                    containerId={name}
+                    blocks={tapeBlocks(page())}
+                    onOpenPage={props.onOpenPage}
+                    onChanged={guardedReload}
+                    onStatusChange={onStatusChange}
+                    onDelete={onDelete}
+                    onNavigate={onBlockNavigate}
+                    settings={props.settings}
+                    onError={setError}
+                  />
                   <Show
                     when={composerDay() === name}
                     fallback={
