@@ -1432,12 +1432,18 @@ button.backlink:hover {
 .block-tree-link {
   position: absolute;
   left: 40px;
-  top: -24px;
+  top: -18px;
   overflow: visible;
-  color: var(--accent);
-  opacity: 0.8;
+  color: var(--fg-muted);
+  opacity: 0.45;
   pointer-events: none;
   z-index: 1;
+  transition: color 120ms ease, opacity 120ms ease;
+}
+
+.block:hover > .block-tree-link {
+  color: var(--accent);
+  opacity: 0.8;
 }
 
 .block-cm .cm-editor {
