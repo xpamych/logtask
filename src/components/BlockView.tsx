@@ -403,8 +403,8 @@ export function BlockView(props: {
       onContextMenu={onContextMenu}
     >
       <Show when={b.indent > 0}>
-        <svg class="block-tree-link" width="28" height="62" viewBox="0 0 28 62" fill="none" aria-hidden="true">
-          <path d="M2 0 V38 Q2 50 14 50 H26" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+        <svg class="block-tree-link" width="28" height="46" viewBox="0 0 28 46" fill="none" aria-hidden="true">
+          <path d="M2 0 V22 Q2 34 14 34 H24" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </Show>
       <span class="block-fold-slot">
