@@ -1379,6 +1379,10 @@ button.backlink:hover {
   outline: none;
 }
 
+.block-collection {
+  padding-left: 24px;
+}
+
 .block-collection:focus {
   outline: none;
 }
