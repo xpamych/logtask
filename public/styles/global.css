@@ -1429,23 +1429,15 @@ button.backlink:hover {
   padding-left: 4px;
 }
 
-.block[data-indent]:not([data-indent="0"])::before {
-  content: "";
+.block-tree-link {
   position: absolute;
-  left: -14px;
-  top: -3px;
-  bottom: -3px;
-  border-left: 1px solid color-mix(in srgb, var(--fg-muted) 35%, transparent);
-  border-radius: 1px;
-}
-
-.block[data-indent]:not([data-indent="0"])::after {
-  content: "";
-  position: absolute;
-  left: -14px;
-  top: 14px;
-  width: 11px;
-  border-top: 1px solid color-mix(in srgb, var(--fg-muted) 35%, transparent);
+  left: 40px;
+  top: -24px;
+  overflow: visible;
+  color: var(--accent);
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .block-cm .cm-editor {
