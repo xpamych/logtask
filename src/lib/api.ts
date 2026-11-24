@@ -339,6 +339,22 @@ export async function blockDelete(uuid: string): Promise<string> {
   return invoke<string>("block_delete", { uuid });
 }
 
+export type BlocksBatchOperation =
+  | { kind: "delete" }
+  | { kind: "move"; direction: -1 | 1 }
+  | { kind: "indent"; direction: -1 | 1 };
+
+export async function blocksBatchApply(
+  uuids: string[],
+  operation: BlocksBatchOperation,
+): Promise<boolean> {
+  return invoke<boolean>("blocks_batch_apply", { uuids, operation });
+}
+
+export async function blocksMarkdownGet(uuids: string[]): Promise<string> {
+  return invoke<string>("blocks_markdown_get", { uuids });
+}
+
 export interface MergeResult {
   page: string;
   uuid: string;

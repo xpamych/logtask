@@ -1251,6 +1251,57 @@ pub async fn block_update_text(
     Ok(page)
 }
 
+#[derive(serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum BlocksBatchOperationDto {
+    Delete,
+    Move { direction: i8 },
+    Indent { direction: i8 },
+}
+
+fn parse_block_ids(uuids: &[String]) -> Result<Vec<uuid::Uuid>, String> {
+    uuids
+        .iter()
+        .map(|uuid| uuid::Uuid::parse_str(uuid).map_err(|e| format!("невалидный uuid: {e}")))
+        .collect()
+}
+
+#[tauri::command]
+pub async fn blocks_batch_apply(
+    uuids: Vec<String>,
+    operation: BlocksBatchOperationDto,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    let ids = parse_block_ids(&uuids)?;
+    let operation = match operation {
+        BlocksBatchOperationDto::Delete => crate::core::block_batch::BatchOperation::Delete,
+        BlocksBatchOperationDto::Move { direction } => crate::core::block_batch::BatchOperation::Move { direction },
+        BlocksBatchOperationDto::Indent { direction } => crate::core::block_batch::BatchOperation::Indent { direction },
+    };
+    let changed = {
+        let mut graph = state.graph.write();
+        let graph = graph.as_mut().ok_or("граф не загружен")?;
+        graph.apply_block_batch(&ids, operation, &root).map_err(|e| format!("ошибка записи: {e}"))?.is_some()
+    };
+    if changed {
+        crate::watcher::reindex_and_emit(&app);
+    }
+    Ok(changed)
+}
+
+#[tauri::command]
+pub async fn blocks_markdown_get(
+    uuids: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let ids = parse_block_ids(&uuids)?;
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    graph.blocks_markdown(&ids)
+}
+
 /// Удаляет блок и его поддерево
 #[tauri::command]
 pub async fn block_delete(

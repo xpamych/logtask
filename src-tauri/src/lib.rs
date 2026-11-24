@@ -109,6 +109,8 @@ pub fn run() {
             commands::task_set_quadrant,
             commands::block_update_text,
             commands::block_delete,
+            commands::blocks_batch_apply,
+            commands::blocks_markdown_get,
             commands::block_merge_up,
             commands::block_merge_down,
             commands::block_indent,
