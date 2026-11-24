@@ -92,3 +92,23 @@ fn outdent_top_level_is_noop() {
     assert!(g.outdent_block(&id, &dir).unwrap().is_none());
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn indent_with_source_preserves_current_draft() {
+    let (dir, mut g) = graph_with("draft", "- первая\n- старая\n");
+    let id = block_id(&g, "Тест", "старая");
+    g.indent_block_with_source(&id, "новая несохранённая", &dir).unwrap();
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(text, "- первая\n\t- новая несохранённая\n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn outdent_with_source_preserves_current_draft() {
+    let (dir, mut g) = graph_with("draft_out", "- родитель\n\t- старая\n");
+    let id = block_id(&g, "Тест", "старая");
+    g.outdent_block_with_source(&id, "новая несохранённая", &dir).unwrap();
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(text, "- родитель\n- новая несохранённая\n");
+    let _ = fs::remove_dir_all(&dir);
+}

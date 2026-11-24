@@ -1359,8 +1359,10 @@ async fn merge_cmd(
             ("up", None) => graph.merge_block_up(&id, &root),
             ("down", Some(source)) => graph.merge_block_down_with_source(&id, source, &root),
             ("down", None) => graph.merge_block_down(&id, &root),
-            ("indent", _) => graph.indent_block(&id, &root),
-            ("outdent", _) => graph.outdent_block(&id, &root),
+            ("indent", Some(source)) => graph.indent_block_with_source(&id, source, &root),
+            ("indent", None) => graph.indent_block(&id, &root),
+            ("outdent", Some(source)) => graph.outdent_block_with_source(&id, source, &root),
+            ("outdent", None) => graph.outdent_block(&id, &root),
             (other, _) => return Err(format!("неизвестная операция: {other}")),
         };
         r.map_err(|e| format!("ошибка записи: {e}"))?
@@ -1418,20 +1420,22 @@ pub async fn block_merge_down(
 #[tauri::command]
 pub async fn block_indent(
     uuid: String,
+    source: Option<String>,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
-    merge_cmd(uuid, "indent", None, app, state).await
+    merge_cmd(uuid, "indent", source, app, state).await
 }
 
 /// Shift+Tab: блок поднимается на уровень родителя.
 #[tauri::command]
 pub async fn block_outdent(
     uuid: String,
+    source: Option<String>,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
-    merge_cmd(uuid, "outdent", None, app, state).await
+    merge_cmd(uuid, "outdent", source, app, state).await
 }
 
 /// Enter в редакторе: разбивает блок на два по позиции курсора —
@@ -1443,6 +1447,7 @@ pub async fn block_split(
     uuid: String,
     before: String,
     after: String,
+    as_child: Option<bool>,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<MergeResultDto>, String> {
@@ -1455,8 +1460,11 @@ pub async fn block_split(
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
-        graph
-            .split_block(&id, &before, &after, &root)
+        if as_child == Some(true) {
+            graph.split_block_as_child(&id, &before, &after, &root)
+        } else {
+            graph.split_block(&id, &before, &after, &root)
+        }
             .map_err(|e| format!("ошибка записи: {e}"))?
     };
 

@@ -826,9 +826,30 @@ impl Graph {
         id: &Uuid,
         root: &Path,
     ) -> std::io::Result<Option<(String, usize)>> {
+        self.indent_block_impl(id, None, root)
+    }
+
+    pub fn indent_block_with_source(
+        &mut self,
+        id: &Uuid,
+        source: &str,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
+        self.indent_block_impl(id, Some(source), root)
+    }
+
+    fn indent_block_impl(
+        &mut self,
+        id: &Uuid,
+        source: Option<&str>,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
         let Some((page_name, kind, rel_path, abs)) = self.page_io(id, root)? else {
             return Ok(None);
         };
+        if let Some(source) = source {
+            self.blocks.get_mut(id).expect("блок").set_source(source);
+        }
 
         let (parent, old_indent_str) = {
             let b = &self.blocks[id];
@@ -916,9 +937,30 @@ impl Graph {
         id: &Uuid,
         root: &Path,
     ) -> std::io::Result<Option<(String, usize)>> {
+        self.outdent_block_impl(id, None, root)
+    }
+
+    pub fn outdent_block_with_source(
+        &mut self,
+        id: &Uuid,
+        source: &str,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
+        self.outdent_block_impl(id, Some(source), root)
+    }
+
+    fn outdent_block_impl(
+        &mut self,
+        id: &Uuid,
+        source: Option<&str>,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
         let Some((page_name, kind, rel_path, abs)) = self.page_io(id, root)? else {
             return Ok(None);
         };
+        if let Some(source) = source {
+            self.blocks.get_mut(id).expect("блок").set_source(source);
+        }
 
         let Some(parent) = self.blocks[id].parent else {
             return Ok(None);
@@ -1016,6 +1058,27 @@ impl Graph {
         after: &str,
         root: &Path,
     ) -> std::io::Result<Option<(String, usize)>> {
+        self.split_block_impl(id, before, after, false, root)
+    }
+
+    pub fn split_block_as_child(
+        &mut self,
+        id: &Uuid,
+        before: &str,
+        after: &str,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
+        self.split_block_impl(id, before, after, true, root)
+    }
+
+    fn split_block_impl(
+        &mut self,
+        id: &Uuid,
+        before: &str,
+        after: &str,
+        as_child: bool,
+        root: &Path,
+    ) -> std::io::Result<Option<(String, usize)>> {
         let Some((page_name, kind, rel_path, abs)) = self.page_io(id, root)? else {
             return Ok(None);
         };
@@ -1029,18 +1092,22 @@ impl Graph {
         self.blocks.get_mut(id).expect("блок").set_source(before);
 
         // новый блок-сосед с текстом после курсора
-        let mut nb = super::serializer::new_block(String::new(), indent);
-        nb.raw.indent_str = indent_str;
+        let mut nb = super::serializer::new_block(String::new(), if as_child { indent + 1 } else { indent });
+        nb.raw.indent_str = if as_child { format!("{indent_str}\t") } else { indent_str };
         nb.status = None;
         nb.raw.marker_str = String::new();
         nb.set_source(after);
-        nb.parent = parent;
+        nb.parent = if as_child { Some(*id) } else { parent };
         let new_id = nb.id.expect("свежий uuid");
         self.block_page.insert(new_id, page_name.clone());
         self.blocks.insert(new_id, nb);
 
-        // соседи: сразу после текущего блока
-        match parent {
+        // развёрнутый родитель получает новый первый дочерний блок;
+        // в остальных случаях создаётся сосед сразу после текущего
+        if as_child {
+            self.blocks.get_mut(id).expect("parent").children.insert(0, new_id);
+        } else {
+            match parent {
             Some(p) => {
                 let ch = &mut self.blocks.get_mut(&p).expect("parent").children;
                 let i = ch.iter().position(|x| x == id).expect("блок у родителя");
@@ -1051,14 +1118,17 @@ impl Graph {
                 let i = roots.iter().position(|x| x == id).expect("блок в roots");
                 roots.insert(i + 1, new_id);
             }
+            }
         }
 
         // порядок документа: сразу после поддерева текущего блока
         let order = &self.pages[&page_name].order;
         let pos = order.iter().position(|x| x == id).expect("блок на месте");
         let mut end = pos + 1;
-        while end < order.len() && self.blocks[&order[end]].indent > indent {
-            end += 1;
+        if !as_child {
+            while end < order.len() && self.blocks[&order[end]].indent > indent {
+                end += 1;
+            }
         }
         self.pages
             .get_mut(&page_name)

@@ -1,5 +1,9 @@
 import type { BlockDto } from "./api";
 
+export function enterCreatesChild(hasChildren: boolean, collapsed: boolean): boolean {
+  return hasChildren && !collapsed;
+}
+
 export function blockCollectionKeyAllowed(editing: boolean): boolean {
   return !editing;
 }

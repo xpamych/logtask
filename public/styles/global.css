@@ -1426,8 +1426,7 @@ button.backlink:hover {
 }
 
 .block-cm .cm-editor.cm-focused {
-  outline: 1px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .block-cm .cm-scroller {

@@ -371,13 +371,13 @@ export async function blockMergeDown(uuid: string, source: string): Promise<Merg
 }
 
 /** Tab: сделать блок ребёнком предыдущего соседа */
-export async function blockIndent(uuid: string): Promise<MergeResult | null> {
-  return invoke<MergeResult | null>("block_indent", { uuid });
+export async function blockIndent(uuid: string, source?: string): Promise<MergeResult | null> {
+  return invoke<MergeResult | null>("block_indent", { uuid, source: source ?? null });
 }
 
 /** Shift+Tab: поднять блок на уровень родителя */
-export async function blockOutdent(uuid: string): Promise<MergeResult | null> {
-  return invoke<MergeResult | null>("block_outdent", { uuid });
+export async function blockOutdent(uuid: string, source?: string): Promise<MergeResult | null> {
+  return invoke<MergeResult | null>("block_outdent", { uuid, source: source ?? null });
 }
 
 /** Enter: разбить блок на два по курсору; возвращает uuid нового блока */
@@ -385,8 +385,9 @@ export async function blockSplit(
   uuid: string,
   before: string,
   after: string,
+  asChild?: boolean,
 ): Promise<MergeResult | null> {
-  return invoke<MergeResult | null>("block_split", { uuid, before, after });
+  return invoke<MergeResult | null>("block_split", { uuid, before, after, asChild: asChild ?? false });
 }
 
 export async function blockCreate(

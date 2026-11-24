@@ -30,3 +30,10 @@ test("клавиши активного текстового редактора 
   assert.equal(blockCollectionKeyAllowed(true), false);
   assert.equal(blockCollectionKeyAllowed(false), true);
 });
+
+test("Enter у развёрнутого родителя создаёт ребёнка, иначе соседа", async () => {
+  const { enterCreatesChild } = await import("./blockTree.ts");
+  assert.equal(enterCreatesChild(true, false), true);
+  assert.equal(enterCreatesChild(true, true), false);
+  assert.equal(enterCreatesChild(false, false), false);
+});

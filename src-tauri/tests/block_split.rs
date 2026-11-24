@@ -133,3 +133,15 @@ fn split_nested_block_keeps_indent() {
     let after = fs::read_to_string(&file).unwrap();
     assert_eq!(after, "- родитель\n\t- вложенный\n\t- текст\n");
 }
+
+#[test]
+fn split_expanded_parent_creates_first_child() {
+    let (dir, file) = setup("logtask_split_child", "- родитель\n\t- старший ребёнок\n- сосед\n");
+    let mut graph = Graph::default();
+    graph.index_dir(&dir).unwrap();
+    let id = graph.pages["2026_10_07"].order[0];
+    let (_, pos) = graph.split_block_as_child(&id, "родитель", "", &dir).unwrap().unwrap();
+    assert_eq!(pos, 1);
+    assert_eq!(fs::read_to_string(file).unwrap(), "- родитель\n\t- \n\t- старший ребёнок\n- сосед\n");
+    let _ = fs::remove_dir_all(dir);
+}

@@ -8,6 +8,7 @@ import type { TextInputAdapter } from "~/lib/pasteImage";
 import type { EditorView } from "@codemirror/view";
 import { BlockEditor } from "./editor/BlockEditor";
 import { canSaveBlock } from "./editor/editorCommands";
+import { enterCreatesChild } from "~/lib/blockTree";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot } from "./StatusPrioDot";
@@ -146,7 +147,7 @@ export function BlockView(props: {
         const { listen } = await import("@tauri-apps/api/event");
         unlisten = await listen("editor-shift-tab", () => {
           if (!editing() || editingBlock() !== b.uuid) return;
-          void moveIndent(true, editorView?.state.selection.main.from ?? 0);
+          void moveIndent(true, editorView?.state.selection.main.from ?? 0, editorView?.state.doc.toString() ?? draft());
         });
       } catch {
         /* вне Tauri */
@@ -241,17 +242,28 @@ export function BlockView(props: {
   };
 
   /// Tab / Shift+Tab: вложенность блока (как в Logseq), курсор на месте
-  const moveIndent = async (out: boolean, at: number) => {
+  const moveIndent = async (out: boolean, at: number, currentText: string) => {
+    setSaving(true);
+    stopEdit();
     try {
-      const res = out ? await blockOutdent(b.uuid) : await blockIndent(b.uuid);
+      const source = persistedSource(currentText);
+      const res = out ? await blockOutdent(b.uuid, source) : await blockIndent(b.uuid, source);
       if (res) {
         setEditingBlock(res.uuid);
         setPendingEdit({ uuid: res.uuid, at });
         props.onChanged?.();
+      } else {
+        setDraft(currentText);
+        setEditing(true);
+        setEditingBlock(b.uuid);
       }
-      // первый сосед/верхний уровень — некуда, остаёмся как есть
     } catch (e) {
+      setDraft(currentText);
+      setEditing(true);
+      setEditingBlock(b.uuid);
       console.error("смена вложенности:", e);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -265,7 +277,7 @@ export function BlockView(props: {
     setSaving(true);
     stopEdit();
     try {
-      const res = await blockSplit(b.uuid, before, after);
+      const res = await blockSplit(b.uuid, before, after, enterCreatesChild(props.hasChildren ?? false, props.collapsed ?? false));
       if (res) {
         setEditingBlock(res.uuid);
         setPendingEdit({ uuid: res.uuid, at: 0 });
@@ -437,7 +449,7 @@ export function BlockView(props: {
             onSave={(text) => void save(text)}
             onCancel={() => void cancel()}
             onSplit={(text, start, end) => void splitBlock(text, start, end)}
-            onIndent={(out, at) => void moveIndent(out, at)}
+            onIndent={(out, at, text) => void moveIndent(out, at, text)}
             onMerge={(direction) => {
               if (direction < 0) {
                 if (!props.firstBlock) void mergeUp();

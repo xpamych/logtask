@@ -13,7 +13,7 @@ export function BlockEditor(props: {
   onSave: (text: string) => void;
   onCancel: () => void;
   onSplit: (text: string, start: number, end: number) => void;
-  onIndent: (out: boolean, at: number) => void;
+  onIndent: (out: boolean, at: number, text: string) => void;
   onMerge: (direction: -1 | 1) => void;
   onNavigate: (direction: -1 | 1) => boolean;
   onSelectAll: () => void;
@@ -45,8 +45,8 @@ export function BlockEditor(props: {
         case "split": props.onSplit(text, selection.from, selection.to); break;
         case "save": props.onSave(text); break;
         case "cancel": props.onCancel(); break;
-        case "indent": props.onIndent(false, selection.from); break;
-        case "outdent": props.onIndent(true, selection.from); break;
+        case "indent": props.onIndent(false, selection.from, text); break;
+        case "outdent": props.onIndent(true, selection.from, text); break;
         case "selectAllBlocks": props.onSelectAll(); break;
         case "mergeUp": props.onMerge(-1); break;
         case "mergeDown": props.onMerge(1); break;
