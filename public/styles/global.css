@@ -1389,7 +1389,8 @@ button.backlink:hover {
 }
 
 .block-fold {
-  position: static;
+  position: absolute;
+  left: -24px;
   flex: none;
   min-width: 24px;
   min-height: 24px;
