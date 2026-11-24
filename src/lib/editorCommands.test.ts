@@ -39,3 +39,10 @@ test("split использует актуальный документ, вклю
   assert.deepEqual(splitEditorSource("до ввода\nпосле ввода", 8, 8), { before: "до ввода", after: "\nпосле ввода" });
   assert.deepEqual(splitEditorSource("абв", 1, 2), { before: "а", after: "в" });
 });
+
+test("blur старого редактора не сохраняется во время split", async () => {
+  const { canSaveBlock } = await import("../components/editor/editorCommands.ts");
+  assert.equal(canSaveBlock({ saving: false, editing: true }), true);
+  assert.equal(canSaveBlock({ saving: true, editing: false }), false);
+  assert.equal(canSaveBlock({ saving: false, editing: false }), false);
+});

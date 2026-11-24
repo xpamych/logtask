@@ -7,6 +7,7 @@ import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
 import type { TextInputAdapter } from "~/lib/pasteImage";
 import type { EditorView } from "@codemirror/view";
 import { BlockEditor } from "./editor/BlockEditor";
+import { canSaveBlock } from "./editor/editorCommands";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
 import { StatusPrioDot } from "./StatusPrioDot";
@@ -155,7 +156,7 @@ export function BlockView(props: {
   });
 
   const save = async (currentText?: string) => {
-    if (saving()) return;
+    if (!canSaveBlock({ saving: saving(), editing: editing() })) return;
     if (editorView) await waitForImagePaste(inputAdapter);
     const text = (currentText ?? editorView?.state.doc.toString() ?? draft()).trim();
     if (!text || text === editorSource(b.source).trim()) {
@@ -261,6 +262,8 @@ export function BlockView(props: {
     const text = currentText;
     const before = persistedSource(text.slice(0, start));
     const after = persistedSource(text.slice(end));
+    setSaving(true);
+    stopEdit();
     try {
       const res = await blockSplit(b.uuid, before, after);
       if (res) {
@@ -269,7 +272,12 @@ export function BlockView(props: {
         props.onChanged?.();
       }
     } catch (e) {
+      setDraft(text);
+      setEditing(true);
+      setEditingBlock(b.uuid);
       console.error("разбиение блока:", e);
+    } finally {
+      setSaving(false);
     }
   };
 

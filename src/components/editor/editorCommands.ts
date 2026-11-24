@@ -14,6 +14,10 @@ export interface EditorKeyContext {
   selectionEnd: number;
 }
 
+export function canSaveBlock(state: { saving: boolean; editing: boolean }): boolean {
+  return state.editing && !state.saving;
+}
+
 export function splitEditorSource(text: string, start: number, end: number): { before: string; after: string } {
   return { before: text.slice(0, start), after: text.slice(end) };
 }
