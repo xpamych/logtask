@@ -6,7 +6,7 @@ import { blockParentUuids, treeLinkPath } from "~/lib/blockTreeLinks";
 export function BlockTreeLinks(props: {
   container?: HTMLDivElement;
   blocks: BlockDto[];
-  hoveredUuid: string | null;
+  activeUuids: ReadonlySet<string>;
   version: unknown;
 }): JSX.Element {
   const [links, setLinks] = createSignal<{ uuid: string; d: string }[]>([]);
@@ -39,14 +39,15 @@ export function BlockTreeLinks(props: {
       setLinks(Object.entries(parents).flatMap(([uuid, parentUuid]) => {
         const parent = point(parentUuid);
         const child = point(uuid);
-        return parent && child ? [{ uuid, d: treeLinkPath(parent, child) }] : [];
+        const clearance = Object.values(parents).includes(uuid) ? 24 : 0;
+        return parent && child ? [{ uuid, d: treeLinkPath(parent, child, clearance) }] : [];
       }));
     });
   });
   return (
     <svg class="block-tree-links" aria-hidden="true">
       <For each={links()}>
-        {(link) => <path classList={{ active: props.hoveredUuid === link.uuid }} d={link.d} />}
+        {(link) => <path classList={{ active: props.activeUuids.has(link.uuid) }} d={link.d} />}
       </For>
     </svg>
   );

@@ -1458,6 +1458,13 @@ button.backlink:hover {
   opacity: 0.85;
 }
 
+.block-tree-active > .status-prio-ring .status-prio-dot,
+.block-tree-active > .status-prio-dot {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
 .block-cm .cm-editor {
   background: transparent;
   color: var(--fg);

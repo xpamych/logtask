@@ -8,6 +8,7 @@ import { blockCollectionKeyAllowed, hasBlockChildren, toggleCollapsed, visibleBl
 import { editingBlock } from "~/lib/editState";
 import { BlockView } from "../BlockView";
 import { BlockTreeLinks } from "./BlockTreeLinks";
+import { treeActiveUuids } from "~/lib/blockTreeLinks";
 
 export function BlockCollection(props: {
   containerId: string;
@@ -26,6 +27,7 @@ export function BlockCollection(props: {
   let container: HTMLDivElement | undefined;
   const visible = () => visibleBlockUuids(props.blocks, collapsed());
   const selected = () => selectedBlockUuids(selection(), visible());
+  const treeActive = () => treeActiveUuids(props.blocks, hoveredUuid());
   const focusContainer = () => queueMicrotask(() => container?.focus());
   const select = (uuid: string, extend = false) => {
     setSelection((current) => extend
@@ -99,7 +101,7 @@ export function BlockCollection(props: {
       onMouseOver={(event) => setHoveredUuid((event.target as Element).closest(".block")?.getAttribute("data-uuid") ?? null)}
       onMouseLeave={() => setHoveredUuid(null)}
     >
-      <BlockTreeLinks container={container} blocks={props.blocks} hoveredUuid={hoveredUuid()} version={collapsed()} />
+      <BlockTreeLinks container={container} blocks={props.blocks} activeUuids={treeActive()} version={collapsed()} />
       <For each={props.blocks.filter((block) => visible().includes(block.uuid))}>
         {(block) => (
           <BlockView
@@ -112,6 +114,7 @@ export function BlockCollection(props: {
             onNavigate={props.onNavigate}
             settings={props.settings}
             selected={selected().includes(block.uuid)}
+            treeActive={treeActive().has(block.uuid)}
             hasChildren={hasBlockChildren(props.blocks, block.uuid)}
             collapsed={collapsed().has(block.uuid)}
             onToggleFold={() => setCollapsed(toggleCollapsed(collapsed(), block.uuid))}
