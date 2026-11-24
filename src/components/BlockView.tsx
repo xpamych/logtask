@@ -396,6 +396,7 @@ export function BlockView(props: {
       class="block"
       classList={{ "block-task": b.task, "block-selected": props.selected ?? false }}
       data-uuid={b.uuid || undefined}
+      data-indent={b.indent}
       style={{ "padding-left": `${10 + b.indent * 22}px` }}
       tabindex={-1}
       onKeyDown={onBlockKeyDown}
@@ -409,7 +410,7 @@ export function BlockView(props: {
             aria-label={props.collapsed ? "Развернуть вложенные блоки" : "Свернуть вложенные блоки"}
             aria-expanded={!props.collapsed}
             onClick={(event) => { event.stopPropagation(); props.onToggleFold?.(); }}
-          >{props.collapsed ? "▸" : "▾"}</button>
+          ><svg class="block-fold-icon" classList={{ collapsed: props.collapsed ?? false }} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
         </Show>
       </span>
       <StatusPrioDot
