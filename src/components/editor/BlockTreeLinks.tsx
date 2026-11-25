@@ -47,7 +47,10 @@ export function BlockTreeLinks(props: {
   return (
     <svg class="block-tree-links" aria-hidden="true">
       <For each={links()}>
-        {(link) => <path classList={{ active: props.activeUuids.has(link.uuid) }} d={link.d} />}
+        {(link) => <path d={link.d} />}
+      </For>
+      <For each={links().filter((link) => props.activeUuids.has(link.uuid))}>
+        {(link) => <path class="active" d={link.d} />}
       </For>
     </svg>
   );
