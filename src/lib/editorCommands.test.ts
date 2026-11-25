@@ -47,9 +47,9 @@ test("blur старого редактора не сохраняется во в
   assert.equal(canSaveBlock({ saving: false, editing: false }), false);
 });
 
-test("повторный Mod+A в течение секунды переходит от текста к блоку", async () => {
+test("повторный Mod+A переходит от текста к блоку без ограничения по времени", async () => {
   const { selectAllAction } = await import("../components/editor/editorCommands.ts");
   assert.equal(selectAllAction(0, 1000), "text");
   assert.equal(selectAllAction(1000, 1700), "block");
-  assert.equal(selectAllAction(1000, 2500), "text");
+  assert.equal(selectAllAction(1000, 2500), "block");
 });

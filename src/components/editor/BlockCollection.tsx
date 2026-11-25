@@ -45,6 +45,7 @@ export function BlockCollection(props: {
     const current = selection();
     if (current) {
       const selectedIds = selectedBlockUuids(current, ids);
+      if (selectedIds.length === ids.length) return;
       const parent = selectedIds.length === 1
         ? blockParentUuids(props.blocks)[current.focusUuid]
         : null;
@@ -97,7 +98,7 @@ export function BlockCollection(props: {
       const target = ids[index + (event.key === "ArrowUp" ? -1 : 1)];
       if (target) setSelection(extendBlockSelection(current, ids, target));
     } else if (mod && event.key.toLowerCase() === "a") {
-      event.preventDefault(); selectAll();
+      event.preventDefault(); event.stopPropagation(); selectAll();
     } else if (mod && event.key.toLowerCase() === "c") {
       event.preventDefault(); void copy();
     } else if (mod && event.key.toLowerCase() === "x") {
@@ -109,6 +110,9 @@ export function BlockCollection(props: {
     } else if (event.key === "Tab") {
       event.preventDefault(); void apply({ kind: "indent", direction: event.shiftKey ? -1 : 1 });
     } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      window.getSelection()?.removeAllRanges();
       setSelection(null);
     }
   };
