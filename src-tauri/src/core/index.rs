@@ -677,17 +677,23 @@ impl Graph {
             {
                 prev.raw.trailing.pop();
             }
-            let text = if line.starts_with("- ") {
-                format!("\\{line}")
-            } else {
-                line
-            };
-            prev.raw.trailing.push(Trailing::Raw {
-                indent: cur_indent_str.clone(),
-                text,
-            });
+            let empty = line.trim().is_empty()
+                && cur_trailing.iter().all(|item| matches!(item, Trailing::Blank));
+            if !empty {
+                let text = if line.starts_with("- ") {
+                    format!("\\{line}")
+                } else {
+                    line
+                };
+                prev.raw.trailing.push(Trailing::Raw {
+                    indent: cur_indent_str.clone(),
+                    text,
+                });
+            }
             // остальные trailing-строки склеиваемого дописываются следом
-            prev.raw.trailing.extend(cur_trailing);
+            if !empty {
+                prev.raw.trailing.extend(cur_trailing);
+            }
             prev.children.extend(cur_children.iter().copied());
         }
 

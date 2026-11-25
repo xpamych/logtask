@@ -275,7 +275,7 @@ fn merge_empty_draft_does_not_restore_deleted_text() {
     g.merge_block_up_with_source(&id, "", &dir).unwrap();
 
     let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
-    assert_eq!(text, "- Первый\n\n- Третий\n", "файл:\n{text}");
+    assert_eq!(text, "- Первый\n- Третий\n", "файл:\n{text}");
     assert!(!text.contains("Второй"));
     let _ = fs::remove_dir_all(&dir);
 }
@@ -291,5 +291,15 @@ fn merge_first_block_with_source_is_noop_in_memory_and_on_disk() {
     assert_eq!(g.blocks[&id].content, "Первый");
     let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
     assert_eq!(text, "- Первый\n- Второй\n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn merge_empty_block_deletes_it_without_blank_line() {
+    let (dir, mut g) = graph_with("empty_backspace", "- первая\n- \n\t- вложенная\n- третья\n");
+    let id = g.pages["Тест"].order[1];
+    g.merge_block_up_with_source(&id, "", &dir).unwrap();
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(text, "- первая\n\t- вложенная\n- третья\n", "файл:\n{text}");
     let _ = fs::remove_dir_all(&dir);
 }

@@ -14,7 +14,7 @@ export function BlockEditor(props: {
   onCancel: () => void;
   onSplit: (text: string, start: number, end: number) => void;
   onIndent: (out: boolean, at: number, text: string) => void;
-  onMerge: (direction: -1 | 1) => void;
+  onMerge: (direction: -1 | 1, text: string) => void;
   onNavigate: (direction: -1 | 1) => boolean;
   onSelectAll: () => void;
   onPaste?: (event: ClipboardEvent) => void;
@@ -48,8 +48,8 @@ export function BlockEditor(props: {
         case "indent": props.onIndent(false, selection.from, text); break;
         case "outdent": props.onIndent(true, selection.from, text); break;
         case "selectAllBlocks": props.onSelectAll(); break;
-        case "mergeUp": props.onMerge(-1); break;
-        case "mergeDown": props.onMerge(1); break;
+        case "mergeUp": props.onMerge(-1, text); break;
+        case "mergeDown": props.onMerge(1, text); break;
       }
       return true;
     };

@@ -209,37 +209,54 @@ export function BlockView(props: {
   /// Backspace в самом начале блока: склеивание с вышестоящим (как в Logseq).
   /// Редактирование продолжается уже в склеенном блоке (новый uuid),
   /// курсор — в точке стыка
-  const mergeUp = async () => {
-    // строки черновика: первая станет отдельной строкой после вышестоящего
-    // блока, за ней — trailing; стык = начало строки «curLines-я с конца»
-    const curLines = draft().split("\n").length;
+  const mergeUp = async (currentText: string) => {
+    const curLines = currentText.split("\n").length;
+    setSaving(true);
+    stopEdit();
     try {
-      const res = await blockMergeUp(b.uuid, persistedSource(draft()));
+      const res = await blockMergeUp(b.uuid, persistedSource(currentText));
       if (res) {
         setEditingBlock(res.uuid);
         setPendingEdit({ uuid: res.uuid, minusLines: curLines });
         props.onChanged?.();
+      } else {
+        setDraft(currentText);
+        setEditing(true);
+        setEditingBlock(b.uuid);
       }
-      // первый блок страницы — не с кем, остаёмся в редактировании
     } catch (e) {
+      setDraft(currentText);
+      setEditing(true);
+      setEditingBlock(b.uuid);
       console.error("склеивание блока:", e);
+    } finally {
+      setSaving(false);
     }
   };
 
   /// Delete в конце блока: нижестоящий приклеивается к текущему
-  const mergeDown = async () => {
-    // стык = первая строка, которую добавит нижестоящий блок
-    const atLine = draft().split("\n").length;
+  const mergeDown = async (currentText: string) => {
+    const atLine = currentText.split("\n").length;
+    setSaving(true);
+    stopEdit();
     try {
-      const res = await blockMergeDown(b.uuid, persistedSource(draft()));
+      const res = await blockMergeDown(b.uuid, persistedSource(currentText));
       if (res) {
         setEditingBlock(res.uuid);
         setPendingEdit({ uuid: res.uuid, atLine });
         props.onChanged?.();
+      } else {
+        setDraft(currentText);
+        setEditing(true);
+        setEditingBlock(b.uuid);
       }
-      // последний блок — не с кем, остаёмся в редактировании
     } catch (e) {
+      setDraft(currentText);
+      setEditing(true);
+      setEditingBlock(b.uuid);
       console.error("склеивание с нижестоящим:", e);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -455,10 +472,10 @@ export function BlockView(props: {
             onCancel={() => void cancel()}
             onSplit={(text, start, end) => void splitBlock(text, start, end)}
             onIndent={(out, at, text) => void moveIndent(out, at, text)}
-            onMerge={(direction) => {
+            onMerge={(direction, text) => {
               if (direction < 0) {
-                if (!props.firstBlock) void mergeUp();
-              } else void mergeDown();
+                if (!props.firstBlock) void mergeUp(text);
+              } else void mergeDown(text);
             }}
             onNavigate={(direction) => {
               if (props.onNavigate?.(b.uuid, direction)) {
