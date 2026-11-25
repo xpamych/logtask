@@ -473,9 +473,8 @@ export function BlockView(props: {
             onSplit={(text, start, end) => void splitBlock(text, start, end)}
             onIndent={(out, at, text) => void moveIndent(out, at, text)}
             onMerge={(direction, text) => {
-              if (direction < 0) {
-                if (!props.firstBlock) void mergeUp(text);
-              } else void mergeDown(text);
+              if (direction < 0) void mergeUp(text);
+              else void mergeDown(text);
             }}
             onNavigate={(direction) => {
               if (props.onNavigate?.(b.uuid, direction)) {

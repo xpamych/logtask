@@ -623,6 +623,11 @@ impl Graph {
             return Ok(None);
         };
         if pos == 0 {
+            if page.order.len() == 1 && source.is_some_and(|text| !text.trim().is_empty()) {
+                self.blocks.get_mut(id).expect("блок").set_source("");
+                self.write_page(&page_name, kind, rel_path, abs)?;
+                return Ok(Some((page_name, 0)));
+            }
             return Ok(None); // первому блоку не с кем склеиваться
         }
         let prev_id = page.order[pos - 1];

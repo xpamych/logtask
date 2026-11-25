@@ -303,3 +303,23 @@ fn merge_empty_block_deletes_it_without_blank_line() {
     assert_eq!(text, "- первая\n\t- вложенная\n- третья\n", "файл:\n{text}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn merge_single_block_clears_content_but_keeps_page() {
+    let (dir, mut g) = graph_with("single_content", "- единственный текст\n");
+    let id = g.pages["Тест"].order[0];
+    let result = g.merge_block_up_with_source(&id, "единственный текст", &dir).unwrap();
+    assert_eq!(result.map(|(_, pos)| pos), Some(0));
+    let text = fs::read_to_string(dir.join("pages/Тест.md")).unwrap();
+    assert_eq!(text, "- \n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn merge_single_empty_block_is_noop() {
+    let (dir, mut g) = graph_with("single_empty", "- \n");
+    let id = g.pages["Тест"].order[0];
+    let result = g.merge_block_up_with_source(&id, "", &dir).unwrap();
+    assert_eq!(result, None);
+    let _ = fs::remove_dir_all(&dir);
+}
