@@ -26,6 +26,9 @@ pub struct AppState {
     pub favicons: RwLock<std::collections::HashMap<String, String>>,
     /// кэш заголовков веб-страниц (url → <title>)
     pub webtitles: RwLock<std::collections::HashMap<String, String>>,
+    /// снимки графа для отмены операций редактора; только в памяти
+    pub edit_history: Mutex<Vec<Graph>>,
+    pub edit_redo: Mutex<Vec<Graph>>,
 }
 
 impl Default for AppState {
@@ -43,6 +46,8 @@ impl Default for AppState {
             journal_task: Mutex::new(None),
             favicons: RwLock::new(std::collections::HashMap::new()),
             webtitles: RwLock::new(std::collections::HashMap::new()),
+            edit_history: Mutex::new(Vec::new()),
+            edit_redo: Mutex::new(Vec::new()),
         }
     }
 }

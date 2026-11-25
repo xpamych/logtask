@@ -112,7 +112,8 @@ backlinks или round-trip.
   записи создаёт отсутствующую обычную страницу), `block_set_prop`,
   `blocks_batch_apply` (атомарные delete/move/indent/outdent выбранных
   поддеревьев одной страницы), `blocks_markdown_get` (clipboard Markdown),
-  `clipboard_text_write` (нативная запись текста в системный буфер обмена)
+  `clipboard_text_write` (нативная запись текста в системный буфер обмена),
+  `edit_undo`/`edit_redo` (до 50 in-memory снимков операций редактора)
 - CLOCK: `clock_start`, `clock_stop`
 - Интеграции: `integrations_states`, `integrations_set_secret`,
   `integrations_test`, `integrations_sync`

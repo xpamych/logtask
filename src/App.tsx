@@ -12,6 +12,8 @@ import {
   pageList,
   pickGraphDir,
   settingsGet,
+  editRedo,
+  editUndo,
   settingsSave,
   trayReady,
   visualGraphLayoutSave,
@@ -306,6 +308,20 @@ const App: Component = () => {
     };
     window.addEventListener("keydown", onQuit);
     onCleanup(() => window.removeEventListener("keydown", onQuit));
+  });
+
+  onMount(() => {
+    const onUndo = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.code !== "KeyZ" || event.isComposing) return;
+      if ((event.target as Element | null)?.closest?.(".cm-editor, input, textarea, [contenteditable=true]")) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void (event.shiftKey ? editRedo() : editUndo()).then((changed) => {
+        if (!changed) showToast("Нет операций для отмены");
+      }).catch((error) => showToast(String(error)));
+    };
+    window.addEventListener("keydown", onUndo, true);
+    onCleanup(() => window.removeEventListener("keydown", onUndo, true));
   });
 
   onMount(() => {

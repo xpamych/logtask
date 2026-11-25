@@ -154,6 +154,8 @@ pub async fn graph_load(
     }
 
     let mut graph = Graph::default();
+    state.edit_history.lock().clear();
+    state.edit_redo.lock().clear();
     let root_path = std::path::Path::new(&root);
     let mut stats: IndexStats = graph
         .index_dir(root_path)
@@ -265,6 +267,8 @@ pub fn graph_close(state: tauri::State<'_, AppState>) {
         handle.abort();
     }
     *state.watcher.write() = None;
+    state.edit_history.lock().clear();
+    state.edit_redo.lock().clear();
     *state.graph.write() = None;
     *state.root.write() = None;
 }
@@ -1229,6 +1233,66 @@ pub fn clipboard_text_write(text: String) -> Result<(), String> {
         .map_err(|e| format!("не удалось записать текст в буфер обмена: {e}"))
 }
 
+fn edit_snapshot(state: &AppState) -> Option<crate::core::model::Graph> {
+    state.graph.read().clone()
+}
+
+fn push_edit_snapshot(state: &AppState, snapshot: Option<crate::core::model::Graph>) {
+    let Some(snapshot) = snapshot else { return };
+    let mut history = state.edit_history.lock();
+    if history.len() >= 50 { history.remove(0); }
+    history.push(snapshot);
+    drop(history);
+    state.edit_redo.lock().clear();
+}
+
+fn restore_edit_snapshot(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    undo: bool,
+) -> Result<bool, String> {
+    let current = state.graph.read().clone().ok_or("граф не загружен")?;
+    let target = if undo { state.edit_history.lock().pop() } else { state.edit_redo.lock().pop() };
+    let Some(target) = target else { return Ok(false) };
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    let names: std::collections::HashSet<String> = current.pages.keys().chain(target.pages.keys()).cloned().collect();
+    let mut changed = Vec::new();
+    for name in names {
+        let before = current.pages.get(&name).map(|page| crate::core::serializer::serialize_page(page, &current.blocks));
+        let after = target.pages.get(&name).map(|page| crate::core::serializer::serialize_page(page, &target.blocks));
+        if before == after { continue; }
+        let page = current.pages.get(&name).or_else(|| target.pages.get(&name)).unwrap();
+        if current.pages.contains_key(&name) != target.pages.contains_key(&name) {
+            return Err("отмена создания или удаления страницы пока не поддерживается".into());
+        }
+        let rel = page.path.clone().unwrap_or_else(|| crate::core::index::default_rel_path(&page.name, page.kind));
+        let abs = root.join(&rel);
+        if let Some(known) = current.pages.get(&name).and_then(|current_page| current_page.mtime) {
+            let actual = std::fs::metadata(&abs).and_then(|meta| meta.modified()).map_err(|e| format!("проверка файла: {e}"))?;
+            if actual != known {
+                return Err("файл изменён другим приложением — отмена остановлена".into());
+            }
+        }
+        changed.push((abs, after.unwrap_or_default()));
+    }
+    for (abs, text) in changed {
+        crate::core::fswrite::atomic_write(&abs, &text).map_err(|e| format!("ошибка отмены: {e}"))?;
+    }
+    if undo { state.edit_redo.lock().push(current); } else { state.edit_history.lock().push(current); }
+    crate::watcher::reindex_and_emit(app);
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn edit_undo(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    restore_edit_snapshot(&app, &state, true)
+}
+
+#[tauri::command]
+pub async fn edit_redo(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    restore_edit_snapshot(&app, &state, false)
+}
+
 /// Меняет текст блока (редактирование в UI)
 #[tauri::command]
 pub async fn block_update_text(
@@ -1241,6 +1305,7 @@ pub async fn block_update_text(
     let root = root.ok_or("граф не загружен")?;
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
 
+    let before = edit_snapshot(&state);
     let page = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
@@ -1254,6 +1319,7 @@ pub async fn block_update_text(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
+    push_edit_snapshot(&state, before);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -1287,12 +1353,14 @@ pub async fn blocks_batch_apply(
         BlocksBatchOperationDto::Move { direction } => crate::core::block_batch::BatchOperation::Move { direction },
         BlocksBatchOperationDto::Indent { direction } => crate::core::block_batch::BatchOperation::Indent { direction },
     };
+    let before = edit_snapshot(&state);
     let changed = {
         let mut graph = state.graph.write();
         let graph = graph.as_mut().ok_or("граф не загружен")?;
         graph.apply_block_batch(&ids, operation, &root).map_err(|e| format!("ошибка записи: {e}"))?.is_some()
     };
     if changed {
+        push_edit_snapshot(&state, before);
         crate::watcher::reindex_and_emit(&app);
     }
     Ok(changed)
@@ -1320,6 +1388,7 @@ pub async fn block_delete(
     let root = root.ok_or("граф не загружен")?;
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
 
+    let before = edit_snapshot(&state);
     let page = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
@@ -1333,6 +1402,7 @@ pub async fn block_delete(
     let Some(page) = page else {
         return Err("блок не найден в графе".into());
     };
+    push_edit_snapshot(&state, before);
     crate::watcher::reindex_and_emit(&app);
     Ok(page)
 }
@@ -1356,6 +1426,7 @@ async fn merge_cmd(
     let root = root.ok_or("граф не загружен")?;
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
 
+    let before = edit_snapshot(&state);
     let res = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
@@ -1378,6 +1449,7 @@ async fn merge_cmd(
     let Some((page, pos)) = res else {
         return Ok(None);
     };
+    push_edit_snapshot(&state, before);
     // полная переиндексация пересоздаёт uuid — находим финальный uuid
     // выжившего блока по его позиции уже в новом графе
     crate::watcher::reindex_and_emit(&app);
@@ -1462,6 +1534,7 @@ pub async fn block_split(
     let root = root.ok_or("граф не загружен")?;
     let id = uuid::Uuid::parse_str(&uuid).map_err(|e| format!("невалидный uuid: {e}"))?;
 
+    let snapshot = edit_snapshot(&state);
     let res = {
         let mut graph = state.graph.write();
         let Some(graph) = graph.as_mut() else {
@@ -1478,6 +1551,7 @@ pub async fn block_split(
     let Some((page, pos)) = res else {
         return Ok(None);
     };
+    push_edit_snapshot(&state, snapshot);
     crate::watcher::reindex_and_emit(&app);
     let fresh_uuid = {
         let graph = state.graph.read();

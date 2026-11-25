@@ -112,6 +112,8 @@ pub fn run() {
             commands::blocks_batch_apply,
             commands::blocks_markdown_get,
             commands::clipboard_text_write,
+            commands::edit_undo,
+            commands::edit_redo,
             commands::block_merge_up,
             commands::block_merge_down,
             commands::block_indent,

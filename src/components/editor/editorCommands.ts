@@ -29,7 +29,29 @@ export function splitEditorSource(text: string, start: number, end: number): { b
 
 export type EditorCommand =
   | "split" | "save" | "cancel" | "indent" | "outdent" | "selectAllBlocks"
-  | "mergeUp" | "mergeDown" | "navigateUp" | "navigateDown";
+  | "mergeUp" | "mergeDown" | "navigateUp" | "navigateDown"
+  | "bold" | "italic" | "strike" | "highlight" | "undo" | "redo";
+
+export function toggleInlineMarkup(
+  text: string,
+  start: number,
+  end: number,
+  marker: string,
+): { text: string; start: number; end: number } {
+  const selected = text.slice(start, end);
+  if (text.slice(start - marker.length, start) === marker && text.slice(end, end + marker.length) === marker) {
+    return {
+      text: text.slice(0, start - marker.length) + selected + text.slice(end + marker.length),
+      start: start - marker.length,
+      end: end - marker.length,
+    };
+  }
+  return {
+    text: text.slice(0, start) + marker + selected + marker + text.slice(end),
+    start: start + marker.length,
+    end: end + marker.length,
+  };
+}
 
 export function classifyEditorKey(
   event: EditorKeyEvent,
@@ -38,6 +60,11 @@ export function classifyEditorKey(
   if (event.isComposing || event.keyCode === 229) return null;
   const mod = event.ctrlKey || event.metaKey;
   if (mod && (event.code === "KeyA" || event.key.toLowerCase() === "a")) return "selectAllBlocks";
+  if (mod && event.code === "KeyZ") return event.shiftKey ? "redo" : "undo";
+  if (mod && event.code === "KeyB") return "bold";
+  if (mod && event.code === "KeyI") return "italic";
+  if (mod && event.shiftKey && event.code === "KeyS") return "strike";
+  if (mod && event.shiftKey && event.code === "KeyH") return "highlight";
   if (event.key === "Escape") return "cancel";
   if (event.key === "Tab") return event.shiftKey ? "outdent" : "indent";
   if (event.key === "Enter" && !event.shiftKey) return mod ? "save" : "split";

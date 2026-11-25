@@ -359,6 +359,14 @@ export async function clipboardTextWrite(text: string): Promise<void> {
   return invoke<void>("clipboard_text_write", { text });
 }
 
+export async function editUndo(): Promise<boolean> {
+  return invoke<boolean>("edit_undo");
+}
+
+export async function editRedo(): Promise<boolean> {
+  return invoke<boolean>("edit_redo");
+}
+
 export interface MergeResult {
   page: string;
   uuid: string;

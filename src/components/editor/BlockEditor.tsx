@@ -1,9 +1,10 @@
 import { onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, redo as redoCm, undo as undoCm } from "@codemirror/commands";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { classifyEditorKey, selectAllAction } from "./editorCommands";
+import { editRedo, editUndo } from "~/lib/api";
+import { classifyEditorKey, selectAllAction, toggleInlineMarkup } from "./editorCommands";
 
 export function BlockEditor(props: {
   initialValue: string;
@@ -63,6 +64,20 @@ export function BlockEditor(props: {
         }
         case "mergeUp": props.onMerge(-1, text); break;
         case "mergeDown": props.onMerge(1, text); break;
+        case "undo": if (!undoCm(view)) void editUndo(); break;
+        case "redo": if (!redoCm(view)) void editRedo(); break;
+        case "bold":
+        case "italic":
+        case "strike":
+        case "highlight": {
+          const marker = command === "bold" ? "**" : command === "italic" ? "*" : command === "strike" ? "~~" : "^^";
+          const next = toggleInlineMarkup(text, selection.from, selection.to, marker);
+          view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: next.text },
+            selection: { anchor: next.start, head: next.end },
+          });
+          break;
+        }
       }
       return true;
     };
@@ -93,15 +108,18 @@ export function BlockEditor(props: {
       }),
     });
     props.ref?.(view);
-    const captureSelectAll = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || (event.code !== "KeyA" && event.key.toLowerCase() !== "a") || event.isComposing || event.keyCode === 229) return;
+    const captureEditorCommand = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.isComposing || event.keyCode === 229) return;
+      const allowed = event.code === "KeyA" || event.code === "KeyZ" || event.code === "KeyB" || event.code === "KeyI" ||
+        (event.shiftKey && (event.code === "KeyS" || event.code === "KeyH"));
+      if (!allowed) return;
       if (run(event)) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }
     };
-    view.dom.addEventListener("keydown", captureSelectAll, true);
-    onCleanup(() => view?.dom.removeEventListener("keydown", captureSelectAll, true));
+    view.dom.addEventListener("keydown", captureEditorCommand, true);
+    onCleanup(() => view?.dom.removeEventListener("keydown", captureEditorCommand, true));
     view.focus();
   });
   onCleanup(() => {

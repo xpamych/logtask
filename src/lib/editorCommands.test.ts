@@ -54,3 +54,21 @@ test("повторный Mod+A переходит от текста к блок�
   assert.equal(selectAllAction(1000, 1700), "block");
   assert.equal(selectAllAction(1000, 2500), "block");
 });
+
+test("форматирование оборачивает и разворачивает выделенный текст", async () => {
+  const { toggleInlineMarkup } = await import("../components/editor/editorCommands.ts");
+  assert.deepEqual(toggleInlineMarkup("абв", 0, 3, "**"), { text: "**абв**", start: 2, end: 5 });
+  assert.deepEqual(toggleInlineMarkup("**абв**", 2, 5, "**"), { text: "абв", start: 0, end: 3 });
+});
+
+test("команды форматирования и undo не зависят от раскладки", async () => {
+  const { classifyEditorKey } = await import("../components/editor/editorCommands.ts");
+  const base = { value: "текст", selectionStart: 0, selectionEnd: 5 };
+  const event = (code: string, shiftKey = false) => ({ key: "я", code, ctrlKey: true, metaKey: false, altKey: false, shiftKey, isComposing: false, keyCode: 0 });
+  assert.equal(classifyEditorKey(event("KeyB"), base), "bold");
+  assert.equal(classifyEditorKey(event("KeyI"), base), "italic");
+  assert.equal(classifyEditorKey(event("KeyS", true), base), "strike");
+  assert.equal(classifyEditorKey(event("KeyH", true), base), "highlight");
+  assert.equal(classifyEditorKey(event("KeyZ"), base), "undo");
+  assert.equal(classifyEditorKey(event("KeyZ", true), base), "redo");
+});
