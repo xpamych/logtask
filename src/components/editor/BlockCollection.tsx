@@ -2,13 +2,13 @@ import { For, createEffect, createMemo, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { BlockDto, Settings } from "~/lib/api";
 import { blocksBatchApply, blocksMarkdownGet } from "~/lib/api";
-import { pruneBlockSelection, selectBlock, selectedBlockUuids, extendBlockSelection } from "~/lib/blockSelection";
+import { blockDragStarted, pruneBlockSelection, selectBlock, selectedBlockUuids, extendBlockSelection } from "~/lib/blockSelection";
 import type { BlockSelectionState } from "~/lib/blockSelection";
 import { blockChildrenSet, blockCollectionKeyAllowed, toggleCollapsed, visibleBlockUuids } from "~/lib/blockTree";
 import { editingBlock } from "~/lib/editState";
 import { BlockView } from "../BlockView";
 import { BlockTreeLinks } from "./BlockTreeLinks";
-import { treeActiveUuids } from "~/lib/blockTreeLinks";
+import { treeActiveUuids, blockParentUuids } from "~/lib/blockTreeLinks";
 
 export function BlockCollection(props: {
   containerId: string;
@@ -39,9 +39,25 @@ export function BlockCollection(props: {
       : selectBlock(current, props.containerId, uuid));
     focusContainer();
   };
-  const selectAll = () => {
+  const selectAll = (uuid?: string) => {
     const ids = visible();
     if (!ids.length) return;
+    const current = selection();
+    if (current) {
+      const selectedIds = selectedBlockUuids(current, ids);
+      const parent = selectedIds.length === 1
+        ? blockParentUuids(props.blocks)[current.focusUuid]
+        : null;
+      if (parent && ids.includes(parent)) {
+        setSelection(selectBlock(current, props.containerId, parent));
+        focusContainer();
+        return;
+      }
+    } else if (uuid) {
+      setSelection(selectBlock(null, props.containerId, uuid));
+      focusContainer();
+      return;
+    }
     setSelection({ containerId: props.containerId, anchorUuid: ids[0], focusUuid: ids[ids.length - 1] });
     focusContainer();
   };
@@ -96,12 +112,42 @@ export function BlockCollection(props: {
       setSelection(null);
     }
   };
+  let pointerStart: { uuid: string; x: number; y: number } | null = null;
+  let draggingSelection = false;
+  const blockUuidAt = (target: EventTarget | null) =>
+    (target as Element | null)?.closest?.(".block")?.getAttribute("data-uuid") ?? null;
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || editingBlock() !== null) return;
+    const uuid = blockUuidAt(event.target);
+    if (uuid) pointerStart = { uuid, x: event.clientX, y: event.clientY };
+  };
+  const onPointerMove = (event: PointerEvent) => {
+    if (!pointerStart || (event.buttons & 1) === 0) return;
+    if (!draggingSelection && !blockDragStarted(pointerStart, { x: event.clientX, y: event.clientY })) return;
+    const target = blockUuidAt(event.target);
+    if (!target) return;
+    event.preventDefault();
+    if (!draggingSelection) {
+      draggingSelection = true;
+      select(pointerStart.uuid);
+    }
+    setSelection((current) => extendBlockSelection(current, visible(), target));
+  };
+  const onPointerUp = (event: PointerEvent) => {
+    if (draggingSelection) event.preventDefault();
+    draggingSelection = false;
+    pointerStart = null;
+  };
   return (
     <div
       ref={container}
       class="block-collection"
       tabindex={-1}
       onKeyDown={onKeyDown}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
       onMouseOver={(event) => setHoveredUuid((event.target as Element).closest(".block")?.getAttribute("data-uuid") ?? null)}
       onMouseLeave={() => setHoveredUuid(null)}
     >

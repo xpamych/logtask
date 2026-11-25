@@ -47,7 +47,13 @@ export function BlockEditor(props: {
         case "cancel": props.onCancel(); break;
         case "indent": props.onIndent(false, selection.from, text); break;
         case "outdent": props.onIndent(true, selection.from, text); break;
-        case "selectAllBlocks": props.onSelectAll(); break;
+        case "selectAllBlocks":
+          if (selection.from !== 0 || selection.to !== view.state.doc.length) {
+            view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+          } else {
+            props.onSelectAll();
+          }
+          break;
         case "mergeUp": props.onMerge(-1, text); break;
         case "mergeDown": props.onMerge(1, text); break;
       }

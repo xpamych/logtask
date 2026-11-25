@@ -48,7 +48,7 @@ export function BlockView(props: {
    *  возвращает false, если соседа нет */
   onNavigate?: (uuid: string, dir: -1 | 1) => boolean;
   settings?: Settings | null;
-  onSelectAll?: () => void;
+  onSelectAll?: (uuid: string) => void;
   onCancelEdit?: (uuid: string) => void;
   selected?: boolean;
   hasChildren?: boolean;
@@ -483,7 +483,7 @@ export function BlockView(props: {
               }
               return false;
             }}
-            onSelectAll={() => props.onSelectAll?.()}
+            onSelectAll={() => props.onSelectAll?.(b.uuid)}
             onPaste={(event) => void onImagePaste(event)}
             onKeyDown={(event) => {
               if (!autocomplete.open || !["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) return false;

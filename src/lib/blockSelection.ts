@@ -1,3 +1,10 @@
+export function blockDragStarted(
+  start: { x: number; y: number },
+  current: { x: number; y: number },
+): boolean {
+  return Math.hypot(current.x - start.x, current.y - start.y) >= 6;
+}
+
 export interface BlockSelectionState {
   containerId: string;
   anchorUuid: string;

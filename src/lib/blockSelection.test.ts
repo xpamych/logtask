@@ -20,3 +20,9 @@ test("обновление графа удаляет отсутствующие 
   assert.equal(pruneBlockSelection(selected, ["a"]), null);
   assert.equal(pruneBlockSelection(null, []), null);
 });
+
+test("блочное протягивание начинается только после порога движения", async () => {
+  const { blockDragStarted } = await import("./blockSelection.ts");
+  assert.equal(blockDragStarted({ x: 10, y: 10 }, { x: 13, y: 13 }), false);
+  assert.equal(blockDragStarted({ x: 10, y: 10 }, { x: 18, y: 18 }), true);
+});
