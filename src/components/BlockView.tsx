@@ -413,8 +413,8 @@ export function BlockView(props: {
         onPriority={(p) => void onPriority(p)}
         onMenu={(pos) => setMenu(pos)}
       />
-      <span class="block-fold-slot">
-        <Show when={props.hasChildren}>
+      <Show when={props.hasChildren}>
+        <span class="block-fold-slot">
           <button
             type="button"
             class="block-fold print-hidden"
@@ -422,8 +422,8 @@ export function BlockView(props: {
             aria-expanded={!props.collapsed}
             onClick={(event) => { event.stopPropagation(); props.onToggleFold?.(); }}
           ><svg class="block-fold-icon" classList={{ collapsed: props.collapsed ?? false }} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
-        </Show>
-      </span>
+        </span>
+      </Show>
       <div class="block-content">
         <Show
           when={editing()}
