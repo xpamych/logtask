@@ -6,6 +6,7 @@ export interface EditorKeyEvent {
   shiftKey: boolean;
   isComposing: boolean;
   keyCode: number;
+  code?: string;
 }
 
 export interface EditorKeyContext {
@@ -36,7 +37,7 @@ export function classifyEditorKey(
 ): EditorCommand | null {
   if (event.isComposing || event.keyCode === 229) return null;
   const mod = event.ctrlKey || event.metaKey;
-  if (mod && event.key.toLowerCase() === "a") return "selectAllBlocks";
+  if (mod && (event.code === "KeyA" || event.key.toLowerCase() === "a")) return "selectAllBlocks";
   if (event.key === "Escape") return "cancel";
   if (event.key === "Tab") return event.shiftKey ? "outdent" : "indent";
   if (event.key === "Enter" && !event.shiftKey) return mod ? "save" : "split";

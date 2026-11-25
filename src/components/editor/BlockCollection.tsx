@@ -67,7 +67,7 @@ export function BlockCollection(props: {
     const onSelectionKey = (event: KeyboardEvent) => {
       if (!selection()) return;
       const mod = event.ctrlKey || event.metaKey;
-      if (mod && event.key.toLowerCase() === "a") {
+      if (mod && (event.code === "KeyA" || event.key.toLowerCase() === "a")) {
         event.preventDefault();
         event.stopImmediatePropagation();
         selectAll();
@@ -116,11 +116,11 @@ export function BlockCollection(props: {
       const index = ids.indexOf(current.focusUuid);
       const target = ids[index + (event.key === "ArrowUp" ? -1 : 1)];
       if (target) setSelection(extendBlockSelection(current, ids, target));
-    } else if (mod && event.key.toLowerCase() === "a") {
+    } else if (mod && (event.code === "KeyA" || event.key.toLowerCase() === "a")) {
       event.preventDefault(); event.stopPropagation(); selectAll();
-    } else if (mod && event.key.toLowerCase() === "c") {
+    } else if (mod && (event.code === "KeyC" || event.key.toLowerCase() === "c")) {
       event.preventDefault(); void copy();
-    } else if (mod && event.key.toLowerCase() === "x") {
+    } else if (mod && (event.code === "KeyX" || event.key.toLowerCase() === "x")) {
       event.preventDefault(); void copy().then((ok) => { if (ok) void apply({ kind: "delete" }); });
     } else if (event.key === "Backspace" || event.key === "Delete") {
       event.preventDefault(); void apply({ kind: "delete" }, true);

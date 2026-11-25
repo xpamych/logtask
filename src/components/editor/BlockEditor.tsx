@@ -94,7 +94,7 @@ export function BlockEditor(props: {
     });
     props.ref?.(view);
     const captureSelectAll = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a" || event.isComposing || event.keyCode === 229) return;
+      if (!(event.ctrlKey || event.metaKey) || (event.code !== "KeyA" && event.key.toLowerCase() !== "a") || event.isComposing || event.keyCode === 229) return;
       if (run(event)) {
         event.preventDefault();
         event.stopImmediatePropagation();

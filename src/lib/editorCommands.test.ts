@@ -28,6 +28,7 @@ test("outliner-команды учитывают позицию каретки",
 test("Mod+A выделяет блоки, а IME не вызывает структурные команды", () => {
   assert.equal(classifyEditorKey(key("a", { ctrlKey: true }), context), "selectAllBlocks");
   assert.equal(classifyEditorKey(key("a", { metaKey: true }), context), "selectAllBlocks");
+  assert.equal(classifyEditorKey(key("ф", { ctrlKey: true, code: "KeyA" }), context), "selectAllBlocks");
   assert.equal(classifyEditorKey(key("Enter", { isComposing: true }), context), null);
   assert.equal(classifyEditorKey(key("Enter", { keyCode: 229 }), context), null);
   assert.equal(classifyEditorKey(key("Escape"), context), "cancel");
