@@ -1,3 +1,14 @@
+export function subtreeSelectionRange(
+  blocks: { uuid: string; indent: number }[],
+  uuid: string,
+): [string, string] | null {
+  const start = blocks.findIndex((block) => block.uuid === uuid);
+  if (start < 0) return null;
+  let end = start;
+  while (end + 1 < blocks.length && blocks[end + 1].indent > blocks[start].indent) end++;
+  return [uuid, blocks[end].uuid];
+}
+
 export function blockDragStarted(
   start: { x: number; y: number },
   current: { x: number; y: number },

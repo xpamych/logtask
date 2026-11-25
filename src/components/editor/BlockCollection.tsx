@@ -2,7 +2,7 @@ import { For, createEffect, createMemo, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { BlockDto, Settings } from "~/lib/api";
 import { blocksBatchApply, blocksMarkdownGet } from "~/lib/api";
-import { blockDragStarted, pruneBlockSelection, selectBlock, selectedBlockUuids, extendBlockSelection } from "~/lib/blockSelection";
+import { blockDragStarted, pruneBlockSelection, selectBlock, selectedBlockUuids, extendBlockSelection, subtreeSelectionRange } from "~/lib/blockSelection";
 import type { BlockSelectionState } from "~/lib/blockSelection";
 import { blockChildrenSet, blockCollectionKeyAllowed, toggleCollapsed, visibleBlockUuids } from "~/lib/blockTree";
 import { editingBlock } from "~/lib/editState";
@@ -50,7 +50,10 @@ export function BlockCollection(props: {
         ? blockParentUuids(props.blocks)[current.focusUuid]
         : null;
       if (parent && ids.includes(parent)) {
-        setSelection(selectBlock(current, props.containerId, parent));
+        const range = subtreeSelectionRange(visibleBlocks(), parent);
+        setSelection(range && ids.includes(range[1])
+          ? { containerId: props.containerId, anchorUuid: range[0], focusUuid: range[1] }
+          : selectBlock(current, props.containerId, parent));
         focusContainer();
         return;
       }

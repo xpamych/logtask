@@ -26,3 +26,14 @@ test("блочное протягивание начинается только 
   assert.equal(blockDragStarted({ x: 10, y: 10 }, { x: 13, y: 13 }), false);
   assert.equal(blockDragStarted({ x: 10, y: 10 }, { x: 18, y: 18 }), true);
 });
+
+test("при переходе к родителю выделяется всё его поддерево", async () => {
+  const { subtreeSelectionRange } = await import("./blockSelection.ts");
+  const blocks = [
+    { uuid: "root", indent: 0 }, { uuid: "parent", indent: 1 },
+    { uuid: "child", indent: 2 }, { uuid: "grandchild", indent: 3 },
+    { uuid: "next", indent: 0 },
+  ];
+  assert.deepEqual(subtreeSelectionRange(blocks, "parent"), ["parent", "grandchild"]);
+  assert.deepEqual(subtreeSelectionRange(blocks, "next"), ["next", "next"]);
+});
