@@ -26,19 +26,20 @@ export function BlockTreeLinks(props: {
       if (!container) return;
       const parents = blockParentUuids(props.blocks);
       const root = container.getBoundingClientRect();
-      const point = (uuid: string) => {
-        const circle = container.querySelector<HTMLElement>(`:scope > .block[data-uuid="${uuid}"] .status-prio-dot`);
-        if (!circle) return null;
+      const points = new Map<string, { x: number; y: number; radius: number }>();
+      container.querySelectorAll<HTMLElement>(":scope > .block[data-uuid]").forEach((block) => {
+        const circle = block.querySelector<HTMLElement>(".status-prio-dot");
+        if (!circle) return;
         const rect = circle.getBoundingClientRect();
-        return {
+        points.set(block.dataset.uuid!, {
           x: rect.left - root.left + rect.width / 2,
           y: rect.top - root.top + rect.height / 2,
           radius: rect.width / 2,
-        };
-      };
+        });
+      });
       setLinks(Object.entries(parents).flatMap(([uuid, parentUuid]) => {
-        const parent = point(parentUuid);
-        const child = point(uuid);
+        const parent = points.get(parentUuid);
+        const child = points.get(uuid);
         return parent && child ? [{ uuid, d: treeLinkPath(parent, child) }] : [];
       }));
     });

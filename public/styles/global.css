@@ -1379,6 +1379,11 @@ button.backlink:hover {
   outline: none;
 }
 
+.block-deferred {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 28px;
+}
+
 .block-collection:focus {
   outline: none;
 }

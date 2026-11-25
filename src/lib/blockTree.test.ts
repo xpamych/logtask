@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { blockCollectionKeyAllowed, hasBlockChildren, toggleCollapsed, visibleBlockUuids } from "./blockTree.ts";
+import { blockChildrenSet, blockCollectionKeyAllowed, hasBlockChildren, toggleCollapsed, visibleBlockUuids } from "./blockTree.ts";
 import type { BlockDto } from "./api.ts";
 
 const block = (uuid: string, indent: number): BlockDto => ({
@@ -36,4 +36,8 @@ test("Enter у развёрнутого родителя создаёт ребё
   assert.equal(enterCreatesChild(true, false), true);
   assert.equal(enterCreatesChild(true, true), false);
   assert.equal(enterCreatesChild(false, false), false);
+});
+
+test("множество родителей вычисляется за один проход", () => {
+  assert.deepEqual([...blockChildrenSet(blocks)].sort(), ["a", "a1"]);
 });

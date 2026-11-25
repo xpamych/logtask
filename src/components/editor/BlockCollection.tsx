@@ -1,10 +1,10 @@
-import { For, createEffect, createSignal } from "solid-js";
+import { For, createEffect, createMemo, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { BlockDto, Settings } from "~/lib/api";
 import { blocksBatchApply, blocksMarkdownGet } from "~/lib/api";
 import { pruneBlockSelection, selectBlock, selectedBlockUuids, extendBlockSelection } from "~/lib/blockSelection";
 import type { BlockSelectionState } from "~/lib/blockSelection";
-import { blockCollectionKeyAllowed, hasBlockChildren, toggleCollapsed, visibleBlockUuids } from "~/lib/blockTree";
+import { blockChildrenSet, blockCollectionKeyAllowed, toggleCollapsed, visibleBlockUuids } from "~/lib/blockTree";
 import { editingBlock } from "~/lib/editState";
 import { BlockView } from "../BlockView";
 import { BlockTreeLinks } from "./BlockTreeLinks";
@@ -25,9 +25,13 @@ export function BlockCollection(props: {
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
   const [hoveredUuid, setHoveredUuid] = createSignal<string | null>(null);
   let container: HTMLDivElement | undefined;
-  const visible = () => visibleBlockUuids(props.blocks, collapsed());
-  const selected = () => selectedBlockUuids(selection(), visible());
-  const treeActive = () => treeActiveUuids(props.blocks, hoveredUuid());
+  const visible = createMemo(() => visibleBlockUuids(props.blocks, collapsed()));
+  const visibleSet = createMemo(() => new Set(visible()));
+  const visibleBlocks = createMemo(() => props.blocks.filter((block) => visibleSet().has(block.uuid)));
+  const selected = createMemo(() => selectedBlockUuids(selection(), visible()));
+  const selectedSet = createMemo(() => new Set(selected()));
+  const treeActive = createMemo(() => treeActiveUuids(props.blocks, hoveredUuid()));
+  const childrenSet = createMemo(() => blockChildrenSet(props.blocks));
   const focusContainer = () => queueMicrotask(() => container?.focus());
   const select = (uuid: string, extend = false) => {
     setSelection((current) => extend
@@ -102,10 +106,11 @@ export function BlockCollection(props: {
       onMouseLeave={() => setHoveredUuid(null)}
     >
       <BlockTreeLinks container={container} blocks={props.blocks} activeUuids={treeActive()} version={collapsed()} />
-      <For each={props.blocks.filter((block) => visible().includes(block.uuid))}>
-        {(block) => (
+      <For each={visibleBlocks()}>
+        {(block, index) => (
           <BlockView
             block={block}
+            deferred={index() > 50}
             firstBlock={props.blocks[0]?.uuid === block.uuid}
             onOpenPage={props.onOpenPage}
             onChanged={props.onChanged}
@@ -113,9 +118,9 @@ export function BlockCollection(props: {
             onDelete={props.onDelete}
             onNavigate={props.onNavigate}
             settings={props.settings}
-            selected={selected().includes(block.uuid)}
+            selected={selectedSet().has(block.uuid)}
             treeActive={treeActive().has(block.uuid)}
-            hasChildren={hasBlockChildren(props.blocks, block.uuid)}
+            hasChildren={childrenSet().has(block.uuid)}
             collapsed={collapsed().has(block.uuid)}
             onToggleFold={() => setCollapsed(toggleCollapsed(collapsed(), block.uuid))}
             onSelect={(uuid, extend) => select(uuid, extend)}

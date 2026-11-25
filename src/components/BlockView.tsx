@@ -57,6 +57,7 @@ export function BlockView(props: {
   onSelect?: (uuid: string, extend: boolean) => void;
   onBeginEdit?: () => void;
   treeActive?: boolean;
+  deferred?: boolean;
 }): JSX.Element {
   const [b, setB] = createStore<BlockDto>(props.block);
   const onOpen = props.onOpenPage;
@@ -395,7 +396,7 @@ export function BlockView(props: {
   return (
     <div
       class="block"
-      classList={{ "block-task": b.task, "block-selected": props.selected ?? false, "block-tree-active": props.treeActive ?? false }}
+      classList={{ "block-task": b.task, "block-selected": props.selected ?? false, "block-tree-active": props.treeActive ?? false, "block-deferred": props.deferred ?? false }}
       data-uuid={b.uuid || undefined}
       data-indent={b.indent}
       style={{ "padding-left": `${10 + b.indent * 22}px` }}

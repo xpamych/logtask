@@ -32,6 +32,14 @@ export function toggleCollapsed(collapsed: ReadonlySet<string>, uuid: string): S
   return next;
 }
 
+export function blockChildrenSet(blocks: BlockDto[]): Set<string> {
+  const parents = new Set<string>();
+  for (let index = 0; index < blocks.length - 1; index++) {
+    if (blocks[index + 1].indent > blocks[index].indent) parents.add(blocks[index].uuid);
+  }
+  return parents;
+}
+
 export function hasBlockChildren(blocks: BlockDto[], uuid: string): boolean {
   const index = blocks.findIndex((block) => block.uuid === uuid);
   return index >= 0 && blocks[index + 1]?.indent > blocks[index].indent;
