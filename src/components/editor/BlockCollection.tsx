@@ -46,9 +46,7 @@ export function BlockCollection(props: {
     if (current) {
       const selectedIds = selectedBlockUuids(current, ids);
       if (selectedIds.length === ids.length) return;
-      const parent = selectedIds.length === 1
-        ? blockParentUuids(props.blocks)[current.focusUuid]
-        : null;
+      const parent = blockParentUuids(props.blocks)[current.anchorUuid] ?? null;
       if (parent && ids.includes(parent)) {
         const range = subtreeSelectionRange(visibleBlocks(), parent);
         setSelection(range && ids.includes(range[1])
