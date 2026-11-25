@@ -1,4 +1,4 @@
-import { For, createEffect, createMemo, createSignal } from "solid-js";
+import { For, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { BlockDto, Settings } from "~/lib/api";
 import { blocksBatchApply, blocksMarkdownGet } from "~/lib/api";
@@ -63,6 +63,24 @@ export function BlockCollection(props: {
     setSelection({ containerId: props.containerId, anchorUuid: ids[0], focusUuid: ids[ids.length - 1] });
     focusContainer();
   };
+  onMount(() => {
+    const onSelectionKey = (event: KeyboardEvent) => {
+      if (!selection()) return;
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        selectAll();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        window.getSelection()?.removeAllRanges();
+        setSelection(null);
+      }
+    };
+    window.addEventListener("keydown", onSelectionKey, true);
+    onCleanup(() => window.removeEventListener("keydown", onSelectionKey, true));
+  });
   createEffect(() => {
     setSelection(pruneBlockSelection(selection(), visible()));
   });
