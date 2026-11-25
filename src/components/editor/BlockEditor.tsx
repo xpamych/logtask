@@ -93,6 +93,15 @@ export function BlockEditor(props: {
       }),
     });
     props.ref?.(view);
+    const captureSelectAll = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a" || event.isComposing || event.keyCode === 229) return;
+      if (run(event)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    view.dom.addEventListener("keydown", captureSelectAll, true);
+    onCleanup(() => view?.dom.removeEventListener("keydown", captureSelectAll, true));
     view.focus();
   });
   onCleanup(() => {
