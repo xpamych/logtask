@@ -3,7 +3,6 @@ import type { JSX } from "solid-js";
 import type { BacklinkDto, PageDto, Settings } from "~/lib/api";
 import {
   backlinksGet,
-  blockCreate,
   blockDelete,
   journalList,
   journalPrev,
@@ -11,14 +10,13 @@ import {
   taskSetStatus,
 } from "~/lib/api";
 import { formatJournalName, journalLogseqTitle, todayJournalName } from "~/lib/text";
-import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { backlinksRefreshToken, visibleJournalsAfterRefresh } from "~/lib/journalRefresh";
 import { composerMarker } from "~/lib/composer";
 import { findJournalDay } from "~/lib/journalOpen";
 import { savePages } from "~/lib/exportActions";
 import { BlockCollection } from "./editor/BlockCollection";
-import { Autocomplete, createAutocomplete } from "./Autocomplete";
+import { BlockComposer } from "./editor/BlockComposer";
 import { RichText } from "./RichText";
 
 const PAGE_SIZE = 5;
@@ -234,69 +232,9 @@ export function JournalTape(props: {
   // на «В этот день записей нет», Enter/blur сохраняет, Escape отменяет
   const [composerDay, setComposerDay] = createSignal<string | null>(null);
   const [composerKind, setComposerKind] = createSignal<"TODO" | null>(null);
-  let composerEl: HTMLTextAreaElement | undefined;
-  const autocomplete = createAutocomplete(
-    ({ text, caret }) => {
-      queueMicrotask(() => {
-        if (!composerEl) return;
-        composerEl.focus();
-        setTextareaValue(composerEl, text);
-        composerEl.setSelectionRange(caret, caret);
-      });
-    },
-    setError,
-  );
-
   const openComposer = (day: string, kind: "command" | "plain" = "plain") => {
     setComposerDay(day);
     setComposerKind(composerMarker(kind));
-    queueMicrotask(() => {
-      if (!composerEl) return;
-      composerEl.focus();
-      fitTextarea(composerEl);
-    });
-  };
-
-  // keepOpen (Enter): запись сохраняется, редактор очищается и остаётся
-  // открытым для следующей; blur/Escape закрывают редактор
-  const submitComposer = async (keepOpen: boolean) => {
-    const day = composerDay();
-    if (!day) return;
-    const text = (composerEl?.value ?? "").trim();
-    if (!text) {
-      setComposerDay(null);
-      setComposerKind(null);
-      return;
-    }
-    try {
-      await blockCreate(day, text, composerKind());
-      await reload();
-      if (keepOpen && composerEl) {
-        setTextareaValue(composerEl, "");
-        composerEl.focus();
-      } else {
-        setComposerDay(null);
-        setComposerKind(null);
-      }
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const onComposerKeyDown = (e: KeyboardEvent) => {
-    if (e.isComposing) return;
-    if (autocomplete.open && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) {
-      void autocomplete.onKeyDown(e);
-      return;
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void submitComposer(true);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setComposerDay(null);
-      setComposerKind(null);
-    }
   };
 
   onMount(reload);
@@ -422,34 +360,16 @@ export function JournalTape(props: {
                       </Show>
                     }
                   >
-                    <div class="block composer-row">
-                      <span class="status-prio-dot empty" />
-                      <div class="block-content">
-                        <textarea
-                          ref={composerEl}
-                          class="block-edit"
-                          placeholder="Новая запись…"
-                          rows={1}
-                          onInput={(e) => {
-                            fitTextarea(e.currentTarget);
-                            void autocomplete.onInput(e.currentTarget.value, e.currentTarget.selectionStart);
-                          }}
-                          onKeyDown={onComposerKeyDown}
-                          onBlur={() => void submitComposer(false)}
-                          aria-expanded={autocomplete.open}
-                          aria-controls="journal-composer-autocomplete"
-                          aria-activedescendant={autocomplete.open ? `journal-composer-autocomplete-${autocomplete.activeIndex}` : undefined}
-                        />
-                        <Show when={autocomplete.open}>
-                          <Autocomplete
-                            id="journal-composer-autocomplete"
-                            items={autocomplete.items}
-                            activeIndex={autocomplete.activeIndex}
-                            onAccept={(item) => void autocomplete.accept(item)}
-                          />
-                        </Show>
-                      </div>
-                    </div>
+                    <BlockComposer
+                      page={name}
+                      marker={composerKind()}
+                      onCreated={reload}
+                      onClose={() => {
+                        setComposerDay(null);
+                        setComposerKind(null);
+                      }}
+                      onError={setError}
+                    />
                   </Show>
                   <BacklinksPanel name={name} refreshKey={props.refreshKey} />
                 </>

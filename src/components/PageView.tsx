@@ -3,7 +3,6 @@ import type { JSX } from "solid-js";
 import type { BacklinkDto, PageDto, Settings } from "~/lib/api";
 import {
   backlinksGet,
-  blockCreate,
   blockDelete,
   followLink,
   pageDelete,
@@ -15,12 +14,12 @@ import {
 import { formatJournalName } from "~/lib/text";
 import { splitBacklinks } from "~/lib/backlinks";
 import { focusMatchesPage } from "~/lib/focus";
-import { fitTextarea, setTextareaValue } from "~/lib/textarea";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { PageLoadGuard } from "~/lib/pageLoad";
 import { IconStar } from "~/components/icons";
 import { savePages } from "~/lib/exportActions";
 import { BlockCollection } from "./editor/BlockCollection";
+import { BlockComposer } from "./editor/BlockComposer";
 import { RichText } from "./RichText";
 
 export function PageView(props: {
@@ -46,7 +45,6 @@ export function PageView(props: {
   // инлайн-редактор первой записи на пустой странице: открывается по клику
   // на «Страница пуста», Enter/blur сохраняет, Escape отменяет
   const [composing, setComposing] = createSignal(false);
-  let composerEl: HTMLTextAreaElement | undefined;
   // инлайн-переименование страницы по клику на заголовок
   const [renaming, setRenaming] = createSignal(false);
   const [renameDraft, setRenameDraft] = createSignal("");
@@ -92,47 +90,7 @@ export function PageView(props: {
   let renameInputEl: HTMLInputElement | undefined;
   let mainEl: HTMLElement | undefined;
 
-  const openComposer = () => {
-    setComposing(true);
-    queueMicrotask(() => {
-      if (!composerEl) return;
-      composerEl.focus();
-      fitTextarea(composerEl);
-    });
-  };
-
-  // keepOpen (Enter): блок сохраняется, редактор очищается и остаётся
-  // открытым для следующей записи; blur/Escape закрывают редактор
-  const submitComposer = async (keepOpen: boolean) => {
-    const text = (composerEl?.value ?? "").trim();
-    if (!text) {
-      setComposing(false);
-      return;
-    }
-    try {
-      await blockCreate(props.name, text, null);
-      await load();
-      if (keepOpen && composerEl) {
-        setTextareaValue(composerEl, "");
-        composerEl.focus();
-      } else {
-        setComposing(false);
-      }
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const onComposerKeyDown = (e: KeyboardEvent) => {
-    if (e.isComposing) return;
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void submitComposer(true);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setComposing(false);
-    }
-  };
+  const openComposer = () => setComposing(true);
 
   const startRename = () => {
     setRenameDraft(props.name);
@@ -444,18 +402,13 @@ export function PageView(props: {
                 </Show>
               }
             >
-              <div class="block composer-row">
-                <span class="status-prio-dot empty" />
-                <textarea
-                  ref={composerEl}
-                  class="block-edit"
-                  placeholder="Новая запись…"
-                  rows={1}
-                  onInput={(e) => fitTextarea(e.currentTarget)}
-                  onKeyDown={onComposerKeyDown}
-                  onBlur={() => void submitComposer(false)}
-                />
-              </div>
+              <BlockComposer
+                page={props.name}
+                marker={null}
+                onCreated={load}
+                onClose={() => setComposing(false)}
+                onError={setError}
+              />
             </Show>
           </section>
         )}

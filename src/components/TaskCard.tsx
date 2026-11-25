@@ -23,7 +23,9 @@ import { primaryTaskElement, selectedTaskUuid, setSelectedTaskUuid, visibleTaskU
 import { applyTaskMenuChange } from "~/lib/taskMenuState";
 import { editorSource, persistedSource } from "~/lib/text";
 import { pasteImage, waitForImagePaste } from "~/lib/pasteImage";
-import { fitTextarea, setTextareaValue } from "~/lib/textarea";
+import type { TextInputAdapter } from "~/lib/pasteImage";
+import type { EditorView } from "@codemirror/view";
+import { BlockEditor } from "./editor/BlockEditor";
 import { Autocomplete, createAutocomplete } from "./Autocomplete";
 import { RichText } from "./RichText";
 import { BlockMenu } from "./BlockMenu";
@@ -88,13 +90,17 @@ export function TaskCard(props: {
   const [t, setT] = createStore<TaskDto>(props.task);
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal("");
-  const [saving, setSaving] = createSignal(false);
   const [menuPos, setMenuPos] = createSignal<{ x: number; y: number } | null>(null);
 
   /** открывает контекстное меню в точке клика (прижатие к границам — в BlockMenu) */
   const openMenu = (pos: { x: number; y: number }) => setMenuPos(pos);
   const [showChildren, setShowChildren] = createSignal(false);
-  let textareaEl: HTMLTextAreaElement | undefined;
+  let editorView: EditorView | undefined;
+  const inputAdapter: TextInputAdapter = {
+    get value() { return editorView?.state.doc.toString() ?? draft(); },
+    get selectionStart() { return editorView?.state.selection.main.from ?? 0; },
+    get selectionEnd() { return editorView?.state.selection.main.to ?? 0; },
+  };
   let rootEl: HTMLDivElement | undefined;
   const [pasteError, setPasteError] = createSignal<string | null>(null);
   const [pasteBusy, setPasteBusy] = createSignal(false);
@@ -102,21 +108,19 @@ export function TaskCard(props: {
     ({ text, caret }) => {
       setDraft(text);
       queueMicrotask(() => {
-        if (!textareaEl) return;
-        textareaEl.focus();
-        setTextareaValue(textareaEl, text);
-        textareaEl.setSelectionRange(caret, caret);
+        if (!editorView) return;
+        editorView.focus();
+        editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: text }, selection: { anchor: caret } });
       });
     },
     setPasteError,
   );
 
   const onImagePaste = async (e: ClipboardEvent) => {
-    const el = textareaEl;
-    if (!el) return;
+    if (!editorView) return;
     setPasteError(null);
     setPasteBusy(true);
-    const result = await pasteImage(e, el, assetSave, clipboardAssetSave);
+    const result = await pasteImage(e, inputAdapter, assetSave, clipboardAssetSave);
     setPasteBusy(false);
     if (result.error) {
       setPasteError(result.error);
@@ -124,11 +128,7 @@ export function TaskCard(props: {
     }
     if (result.text !== undefined && result.caret !== undefined) {
       setDraft(result.text);
-      queueMicrotask(() => {
-        el.value = result.text!;
-        el.setSelectionRange(result.caret!, result.caret!);
-        fitTextarea(el);
-      });
+      editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: result.text! }, selection: { anchor: result.caret! } });
     }
   };
 
@@ -160,14 +160,6 @@ export function TaskCard(props: {
     setDraft(editorSource(t.source));
     setEditing(true);
     setEditingBlock(t.uuid);
-    queueMicrotask(() => {
-      const el = textareaEl;
-      if (!el) return;
-      el.focus();
-      fitTextarea(el);
-      el.setSelectionRange(0, 0);
-      el.scrollTop = 0;
-    });
   };
 
   const stopEdit = () => {
@@ -179,28 +171,25 @@ export function TaskCard(props: {
     if (editingBlock() === t.uuid) setEditingBlock(null);
   });
 
-  const saveEdit = async () => {
-    if (saving()) return;
-    if (textareaEl) await waitForImagePaste(textareaEl);
-    const text = draft().trim();
+  const saveEdit = async (currentText?: string) => {
+    if (!editing()) return;
+    if (editorView) await waitForImagePaste(inputAdapter);
+    const text = (currentText ?? editorView?.state.doc.toString() ?? draft()).trim();
     if (!text || text === editorSource(t.source).trim()) {
       stopEdit();
       return;
     }
-    setSaving(true);
     try {
       await blockUpdateText(t.uuid, persistedSource(text));
       stopEdit();
       props.onChanged?.();
     } catch (e) {
       console.error("не удалось сохранить задачу:", e);
-    } finally {
-      setSaving(false);
     }
   };
 
   const cancelEdit = async () => {
-    if (textareaEl) await waitForImagePaste(textareaEl);
+    if (editorView) await waitForImagePaste(inputAdapter);
     stopEdit();
   };
 
@@ -387,34 +376,33 @@ export function TaskCard(props: {
             </div>
           }
         >
-          <textarea
-            ref={textareaEl}
-            class="block-edit task-card-edit"
-            value={draft()}
-            disabled={saving() || pasteBusy()}
-            onInput={(e) => {
-              setDraft(e.currentTarget.value);
-              fitTextarea(e.currentTarget);
-              void autocomplete.onInput(e.currentTarget.value, e.currentTarget.selectionStart);
+          <BlockEditor
+            ref={(view) => { editorView = view ?? undefined; }}
+            initialValue={draft()}
+            initialAnchor={0}
+            mode={props.settings?.editorMode ?? "live"}
+            onDraft={(text) => {
+              setDraft(text);
+              void autocomplete.onInput(text, editorView?.state.selection.main.from ?? 0);
             }}
-            onPaste={(e) => void onImagePaste(e)}
-            onKeyDown={(e) => {
-              if (e.isComposing) return;
-              if (autocomplete.open && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) {
-                void autocomplete.onKeyDown(e);
-              } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                void saveEdit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                void cancelEdit();
-              }
+            onSave={(text) => void saveEdit(text)}
+            onCancel={() => void cancelEdit()}
+            onSplit={(text, start, end) => {
+              const next = text.slice(0, start) + "\n" + text.slice(end);
+              editorView?.dispatch({ changes: { from: start, to: end, insert: "\n" } });
+              setDraft(next);
             }}
-            onBlur={() => void saveEdit()}
-            aria-expanded={autocomplete.open}
-            aria-controls={`task-autocomplete-${t.uuid}`}
-            aria-activedescendant={autocomplete.open ? `task-autocomplete-${t.uuid}-${autocomplete.activeIndex}` : undefined}
-            rows={1}
+            onIndent={() => undefined}
+            onMerge={() => undefined}
+            onNavigate={() => false}
+            onSelectAll={() => undefined}
+            onPaste={(event) => void onImagePaste(event)}
+            onKeyDown={(event) => {
+              if (!autocomplete.open || !["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) return false;
+              event.preventDefault();
+              void autocomplete.onKeyDown(event);
+              return true;
+            }}
           />
           <Show when={pasteBusy()}><div class="muted">Сохранение изображения…</div></Show>
           <Show when={pasteError()}>{(message) => <div class="error">{message()}</div>}</Show>
