@@ -403,6 +403,16 @@ export function BlockView(props: {
       onKeyDown={onBlockKeyDown}
       onContextMenu={onContextMenu}
     >
+      <StatusPrioDot
+        status={b.status}
+        priority={b.priority}
+        urgency={b.urgency}
+        importance={b.importance}
+        settings={props.settings}
+        onStatus={(m) => void onStatus(m)}
+        onPriority={(p) => void onPriority(p)}
+        onMenu={(pos) => setMenu(pos)}
+      />
       <span class="block-fold-slot">
         <Show when={props.hasChildren}>
           <button
@@ -414,16 +424,6 @@ export function BlockView(props: {
           ><svg class="block-fold-icon" classList={{ collapsed: props.collapsed ?? false }} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
         </Show>
       </span>
-      <StatusPrioDot
-        status={b.status}
-        priority={b.priority}
-        urgency={b.urgency}
-        importance={b.importance}
-        settings={props.settings}
-        onStatus={(m) => void onStatus(m)}
-        onPriority={(p) => void onPriority(p)}
-        onMenu={(pos) => setMenu(pos)}
-      />
       <div class="block-content">
         <Show
           when={editing()}
