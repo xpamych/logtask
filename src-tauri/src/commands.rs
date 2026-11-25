@@ -1222,6 +1222,13 @@ fn finish_created_block(state: &AppState, page: &str, position: usize) -> Result
     reindexed_block_uuid(state, page, position)
 }
 
+#[tauri::command]
+pub fn clipboard_text_write(text: String) -> Result<(), String> {
+    arboard::Clipboard::new()
+        .and_then(|mut clipboard| clipboard.set_text(text))
+        .map_err(|e| format!("не удалось записать текст в буфер обмена: {e}"))
+}
+
 /// Меняет текст блока (редактирование в UI)
 #[tauri::command]
 pub async fn block_update_text(

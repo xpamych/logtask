@@ -355,6 +355,10 @@ export async function blocksMarkdownGet(uuids: string[]): Promise<string> {
   return invoke<string>("blocks_markdown_get", { uuids });
 }
 
+export async function clipboardTextWrite(text: string): Promise<void> {
+  return invoke<void>("clipboard_text_write", { text });
+}
+
 export interface MergeResult {
   page: string;
   uuid: string;

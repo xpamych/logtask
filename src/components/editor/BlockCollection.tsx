@@ -1,7 +1,7 @@
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { BlockDto, Settings } from "~/lib/api";
-import { blocksBatchApply, blocksMarkdownGet } from "~/lib/api";
+import { blocksBatchApply, blocksMarkdownGet, clipboardTextWrite } from "~/lib/api";
 import { blockDragStarted, pruneBlockSelection, selectBlock, selectedBlockUuids, extendBlockSelection, subtreeSelectionRange } from "~/lib/blockSelection";
 import type { BlockSelectionState } from "~/lib/blockSelection";
 import { blockChildrenSet, blockCollectionKeyAllowed, toggleCollapsed, visibleBlockUuids } from "~/lib/blockTree";
@@ -76,6 +76,14 @@ export function BlockCollection(props: {
         event.stopImmediatePropagation();
         window.getSelection()?.removeAllRanges();
         setSelection(null);
+      } else if (
+        (mod && ["KeyC", "KeyX"].includes(event.code)) ||
+        event.key === "Backspace" || event.key === "Delete" || event.key === "Tab" ||
+        ((event.shiftKey || mod) && (event.key === "ArrowUp" || event.key === "ArrowDown"))
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onKeyDown(event);
       }
     };
     window.addEventListener("keydown", onSelectionKey, true);
@@ -86,7 +94,12 @@ export function BlockCollection(props: {
   });
   const copy = async (): Promise<boolean> => {
     try {
-      await navigator.clipboard.writeText(await blocksMarkdownGet(selected()));
+      const markdown = await blocksMarkdownGet(selected());
+      try {
+        await navigator.clipboard.writeText(markdown);
+      } catch {
+        await clipboardTextWrite(markdown);
+      }
       return true;
     } catch (error) {
       props.onError?.(String(error));
