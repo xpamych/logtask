@@ -14,6 +14,10 @@ export interface EditorKeyContext {
   selectionEnd: number;
 }
 
+export function selectAllAction(previousAt: number, now: number): "text" | "block" {
+  return previousAt > 0 && now - previousAt <= 1000 ? "block" : "text";
+}
+
 export function canSaveBlock(state: { saving: boolean; editing: boolean }): boolean {
   return state.editing && !state.saving;
 }

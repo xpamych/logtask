@@ -3,7 +3,7 @@ import type { JSX } from "solid-js";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { classifyEditorKey } from "./editorCommands";
+import { classifyEditorKey, selectAllAction } from "./editorCommands";
 
 export function BlockEditor(props: {
   initialValue: string;
@@ -24,6 +24,7 @@ export function BlockEditor(props: {
   void props.mode;
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
+  let lastSelectAllAt = 0;
   onMount(() => {
     const run = (event: KeyboardEvent): boolean => {
       if (!view || event.isComposing || event.keyCode === 229) return false;
@@ -34,6 +35,7 @@ export function BlockEditor(props: {
         selectionEnd: view.state.selection.main.to,
       });
       if (!command) return false;
+      if (command !== "selectAllBlocks") lastSelectAllAt = 0;
       if (command === "navigateUp" || command === "navigateDown") {
         return props.onNavigate(command === "navigateUp" ? -1 : 1);
       }
@@ -47,13 +49,18 @@ export function BlockEditor(props: {
         case "cancel": props.onCancel(); break;
         case "indent": props.onIndent(false, selection.from, text); break;
         case "outdent": props.onIndent(true, selection.from, text); break;
-        case "selectAllBlocks":
-          if (selection.from !== 0 || selection.to !== view.state.doc.length) {
+        case "selectAllBlocks": {
+          const now = performance.now();
+          const action = selectAllAction(lastSelectAllAt, now);
+          lastSelectAllAt = now;
+          if (action === "text") {
             view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
           } else {
+            lastSelectAllAt = 0;
             props.onSelectAll();
           }
           break;
+        }
         case "mergeUp": props.onMerge(-1, text); break;
         case "mergeDown": props.onMerge(1, text); break;
       }
@@ -73,7 +80,10 @@ export function BlockEditor(props: {
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({ "aria-label": "Текст блока" }),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) props.onDraft(update.state.doc.toString());
+            if (update.docChanged) {
+              lastSelectAllAt = 0;
+              props.onDraft(update.state.doc.toString());
+            }
           }),
           EditorView.domEventHandlers({
             blur: () => props.onSave(view?.state.doc.toString() ?? ""),
