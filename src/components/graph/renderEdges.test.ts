@@ -66,8 +66,8 @@ test("прозрачность подписей следует логарифм�
   assert.equal(nodeLabelOpacity(20, 0, 0, false), 0);
 });
 
-test("экранный масштаб hovered-подписи постоянен при отдалении и растёт при приближении", () => {
-  assert.equal(renderEdges.graphLabelScale(0.25, true), 1);
+test("hovered-подпись масштабируется так же, как остальные", () => {
+  assert.equal(renderEdges.graphLabelScale(0.25, true), 0.5);
   assert.equal(renderEdges.graphLabelScale(0.25, false), 0.5);
   assert.equal(renderEdges.graphLabelScale(4, true), 2);
   assert.equal(renderEdges.graphLabelScale(4, false), 2);

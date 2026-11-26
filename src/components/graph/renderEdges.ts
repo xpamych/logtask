@@ -5,8 +5,7 @@ export function indexSceneNodes(nodes: SceneNode[]): Map<string, SceneNode> {
   return new Map(nodes.map((node) => [node.id, node]));
 }
 
-export function graphLabelScale(zoom: number, hovered: boolean): number {
-  if (hovered && zoom < 1) return 1;
+export function graphLabelScale(zoom: number, _hovered: boolean): number {
   return Math.sqrt(zoom);
 }
 
