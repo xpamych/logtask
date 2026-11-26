@@ -47,6 +47,10 @@ export function refreshGuarded(run: () => void): () => void {
     }
   });
   return () => {
+    if (pendingEdit() !== null) {
+      run();
+      return;
+    }
     if (editingBlock() !== null || openBlockMenus() > 0) {
       setPending(true);
     } else {

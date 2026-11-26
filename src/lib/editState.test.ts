@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRoot } from "solid-js";
-import { refreshGuarded, setEditingBlock, trackOpenBlockMenu } from "./editState.ts";
+import { refreshGuarded, setEditingBlock, setPendingEdit, trackOpenBlockMenu } from "./editState.ts";
 
 test("перезагрузка ждёт завершения редактирования карточки", async () => {
   createRoot(async (dispose) => {
@@ -31,6 +31,20 @@ test("перезагрузка ждёт закрытия контекстног�
     closeMenu();
     await Promise.resolve();
     assert.equal(reloads, 1);
+    dispose();
+  });
+});
+
+test("pendingEdit разрешает перезагрузку для монтирования нового блока", async () => {
+  createRoot(async (dispose) => {
+    let reloads = 0;
+    const guardedReload = refreshGuarded(() => reloads++);
+    setPendingEdit({ uuid: "new-block", at: 0 });
+    setEditingBlock("new-block");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    guardedReload();
+    assert.equal(reloads, 1);
+    setPendingEdit(null);
     dispose();
   });
 });
