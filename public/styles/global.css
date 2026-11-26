@@ -1393,6 +1393,10 @@ button.backlink:hover {
   border-radius: 4px;
 }
 
+.block-selected:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 .block-selected ::selection {
   background: transparent;
   color: inherit;
