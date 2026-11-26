@@ -478,6 +478,9 @@ export function BlockView(props: {
             }}
             onNavigate={(direction, text) => {
               if (props.onNavigate?.(b.uuid, direction)) {
+                const source = persistedSource(text);
+                setB("source", source);
+                setB("content", source.split("\n")[0].replace(/^\[#.\]\s*/, ""));
                 void save(text);
                 return true;
               }
