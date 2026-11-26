@@ -262,6 +262,8 @@ export function BlockView(props: {
 
   /// Tab / Shift+Tab: вложенность блока (как в Logseq), курсор на месте
   const moveIndent = async (out: boolean, at: number, currentText: string) => {
+    const previousIndent = b.indent;
+    setB("indent", Math.max(0, previousIndent + (out ? -1 : 1)));
     setSaving(true);
     stopEdit();
     try {
@@ -272,11 +274,13 @@ export function BlockView(props: {
         setPendingEdit({ uuid: res.uuid, at });
         props.onChanged?.();
       } else {
+        setB("indent", previousIndent);
         setDraft(currentText);
         setEditing(true);
         setEditingBlock(b.uuid);
       }
     } catch (e) {
+      setB("indent", previousIndent);
       setDraft(currentText);
       setEditing(true);
       setEditingBlock(b.uuid);
