@@ -476,9 +476,9 @@ export function BlockView(props: {
               if (direction < 0) void mergeUp(text);
               else void mergeDown(text);
             }}
-            onNavigate={(direction) => {
+            onNavigate={(direction, text) => {
               if (props.onNavigate?.(b.uuid, direction)) {
-                void save();
+                void save(text);
                 return true;
               }
               return false;

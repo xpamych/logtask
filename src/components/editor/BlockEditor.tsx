@@ -16,7 +16,7 @@ export function BlockEditor(props: {
   onSplit: (text: string, start: number, end: number) => void;
   onIndent: (out: boolean, at: number, text: string) => void;
   onMerge: (direction: -1 | 1, text: string) => void;
-  onNavigate: (direction: -1 | 1) => boolean;
+  onNavigate: (direction: -1 | 1, text: string) => boolean;
   onSelectAll: () => void;
   onPaste?: (event: ClipboardEvent) => void;
   onKeyDown?: (event: KeyboardEvent) => boolean;
@@ -38,7 +38,7 @@ export function BlockEditor(props: {
       if (!command) return false;
       if (command !== "selectAllBlocks") lastSelectAllAt = 0;
       if (command === "navigateUp" || command === "navigateDown") {
-        return props.onNavigate(command === "navigateUp" ? -1 : 1);
+        return props.onNavigate(command === "navigateUp" ? -1 : 1, view.state.doc.toString());
       }
       event.preventDefault();
       event.stopPropagation();
