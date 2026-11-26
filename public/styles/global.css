@@ -1393,6 +1393,11 @@ button.backlink:hover {
   border-radius: 4px;
 }
 
+.block-selected ::selection {
+  background: transparent;
+  color: inherit;
+}
+
 .block-fold-slot {
   display: inline-flex;
   align-self: flex-start;
