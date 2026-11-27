@@ -205,6 +205,23 @@ export async function pageList(): Promise<string[]> {
   return invoke<string[]>("page_list");
 }
 
+export interface PageTreeDto {
+  pages: string[];
+  directories: string[];
+}
+
+export async function pageTree(): Promise<PageTreeDto> {
+  return invoke<PageTreeDto>("page_tree");
+}
+
+export async function pageDirectoryCreate(directory: string): Promise<void> {
+  await invoke<void>("page_directory_create", { directory });
+}
+
+export async function pagePathGet(name: string): Promise<string> {
+  return invoke<string>("page_path_get", { name });
+}
+
 /** Переименовать страницу: файл + ссылки на неё во всём графе */
 export async function pageRename(oldName: string, newName: string): Promise<void> {
   return invoke<void>("page_rename", { oldName, newName });
@@ -220,9 +237,9 @@ export async function pageDelete(name: string): Promise<void> {
   return invoke<void>("page_delete", { name });
 }
 
-/** Создать пустую страницу (pages/<name>.md); если уже есть — вернуть существующую */
-export async function pageCreate(name: string): Promise<PageDto> {
-  return invoke<PageDto>("page_create", { name });
+/** Создать пустую страницу в pages/<directory>/<name>.md */
+export async function pageCreate(name: string, directory = ""): Promise<PageDto> {
+  return invoke<PageDto>("page_create", { name, directory });
 }
 
 export interface TaskDto {

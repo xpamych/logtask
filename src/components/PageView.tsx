@@ -16,6 +16,7 @@ import { splitBacklinks } from "~/lib/backlinks";
 import { focusMatchesPage } from "~/lib/focus";
 import { refreshGuarded, setEditingBlock, setPendingEdit } from "~/lib/editState";
 import { PageLoadGuard } from "~/lib/pageLoad";
+import { pageNameStem } from "~/lib/pageTree";
 import { IconStar } from "~/components/icons";
 import { savePages } from "~/lib/exportActions";
 import { BlockCollection } from "./editor/BlockCollection";
@@ -93,7 +94,7 @@ export function PageView(props: {
   const openComposer = () => setComposing(true);
 
   const startRename = () => {
-    setRenameDraft(props.name);
+    setRenameDraft(pageNameStem(props.name));
     setRenaming(true);
     renameCancel = false;
     queueMicrotask(() => {
@@ -104,7 +105,7 @@ export function PageView(props: {
 
   const commitRename = async () => {
     const newName = renameDraft().trim();
-    if (!newName || newName === props.name) {
+    if (!newName || newName === pageNameStem(props.name)) {
       setRenaming(false);
       return;
     }
@@ -113,7 +114,8 @@ export function PageView(props: {
     try {
       await pageRename(props.name, newName);
       setRenaming(false);
-      props.onRename?.(newName);
+      const parent = props.name.split("/").slice(0, -1).join("/");
+      props.onRename?.(parent ? `${parent}/${newName}` : newName);
     } catch (e) {
       // остаёмся в режиме редактирования, ошибка видна сверху
       setError(String(e));

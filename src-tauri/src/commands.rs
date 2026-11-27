@@ -310,9 +310,12 @@ fn prev_journals_slice(journals: &[String], before: &str, n: usize) -> Vec<Strin
 /// Возвращает страницу (журнал или обычную) с блоками
 #[tauri::command]
 pub async fn page_get(name: String, state: tauri::State<'_, AppState>) -> Result<PageDto, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
-    page_get_impl(graph, &name)
+    let local = crate::core::page_names::local_page_name(&root, &name)
+        .ok_or_else(|| "не удалось определить имя графа".to_string())?;
+    page_get_impl(graph, &root, &local)
 }
 
 /// Резолвит [[ссылку]] / #тег / путь — возвращает страницу-цель если существует
@@ -321,12 +324,11 @@ pub fn follow_link(
     target: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<PageDto>, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
-    Ok(graph
-        .pages
-        .get(&target)
-        .and_then(|_| page_get_impl(graph, &target).ok()))
+    Ok(crate::core::page_names::resolve_local_page_name(graph, &root, &target)
+        .and_then(|local| page_get_impl(graph, &root, &local).ok()))
 }
 
 /// Поиск по блокам и страницам
@@ -335,6 +337,7 @@ pub async fn search(
     query: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<SearchHit>, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
     let query = query.trim();
@@ -347,8 +350,8 @@ pub async fn search(
         .filter(|n| n.to_lowercase().contains(&query.to_lowercase()))
         .map(|n| SearchHit {
             kind: "page".into(),
-            page: n.clone(),
-            text: n.clone(),
+            page: external_page_name(graph, &root, n),
+            text: external_page_name(graph, &root, n),
         })
         .take(20)
         .collect();
@@ -357,7 +360,7 @@ pub async fn search(
         .into_iter()
         .map(|(id, text)| SearchHit {
             kind: "block".into(),
-            page: graph.page_of_block(&id),
+            page: external_page_name(graph, &root, &graph.page_of_block(&id)),
             text,
         })
         .collect();
@@ -428,6 +431,7 @@ pub fn block_refs_search(
     limit: usize,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<BlockRefSearchHit>, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
     Ok(graph
@@ -435,7 +439,7 @@ pub fn block_refs_search(
         .into_iter()
         .map(|hit| BlockRefSearchHit {
             uuid: hit.block_id.to_string(),
-            page: hit.page,
+            page: external_page_name(graph, &root, &hit.page),
             text: hit.text,
         })
         .collect())
@@ -475,7 +479,15 @@ pub async fn block_ref_create(
     })
 }
 
-fn page_get_impl(graph: &Graph, name: &str) -> Result<PageDto, String> {
+fn external_page_name(graph: &Graph, root: &std::path::Path, local: &str) -> String {
+    match graph.pages.get(local).map(|page| page.kind) {
+        Some(PageKind::Page) => crate::core::page_names::canonical_page_name(root, local)
+            .unwrap_or_else(|_| local.to_string()),
+        _ => local.to_string(),
+    }
+}
+
+fn page_get_impl(graph: &Graph, root: &std::path::Path, name: &str) -> Result<PageDto, String> {
     let page = graph
         .pages
         .get(name)
@@ -487,7 +499,7 @@ fn page_get_impl(graph: &Graph, name: &str) -> Result<PageDto, String> {
         .map(BlockDto::from)
         .collect();
     Ok(PageDto {
-        name: page.name.clone(),
+        name: external_page_name(graph, root, &page.name),
         kind: match page.kind {
             PageKind::Journal => "journal".into(),
             PageKind::Page => "page".into(),
@@ -526,7 +538,7 @@ pub struct BacklinkDto {
     pub status: Option<String>,
 }
 
-fn backlink_dtos(graph: &Graph, name: &str) -> Vec<BacklinkDto> {
+fn backlink_dtos(graph: &Graph, root: &std::path::Path, name: &str) -> Vec<BacklinkDto> {
     let mut seen = std::collections::HashSet::new();
     graph
         .backlinks_of(name)
@@ -535,7 +547,7 @@ fn backlink_dtos(graph: &Graph, name: &str) -> Vec<BacklinkDto> {
         .filter_map(|(id, page)| {
             graph.blocks.get(&id).map(|b| BacklinkDto {
                 uuid: id,
-                page,
+                page: external_page_name(graph, root, &page),
                 text: b.content.trim_end().chars().take(120).collect(),
                 task: b.is_task(),
                 status: b.status.map(|s| s.to_marker().to_string()),
@@ -550,9 +562,12 @@ pub fn backlinks_get(
     name: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<BacklinkDto>, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
-    Ok(backlink_dtos(graph, &name))
+    let local = crate::core::page_names::local_page_name(&root, &name)
+        .ok_or_else(|| "не удалось определить имя графа".to_string())?;
+    Ok(backlink_dtos(graph, &root, &local))
 }
 
 /// Путь к графу по умолчанию: переменная окружения LOGTASK_GRAPH,
@@ -570,16 +585,57 @@ pub fn default_graph_path() -> Option<String> {
 /// Список всех страниц (для сайдбара), отсортированный
 #[tauri::command]
 pub fn page_list(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
     let mut names: Vec<String> = graph
         .pages
-        .keys()
-        .filter(|n| !is_journal_name(n))
-        .cloned()
+        .iter()
+        .filter(|(_, page)| page.kind == PageKind::Page)
+        .map(|(name, _)| external_page_name(graph, &root, name))
         .collect();
     names.sort();
     Ok(names)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PageTreeDto {
+    pub pages: Vec<String>,
+    pub directories: Vec<String>,
+}
+
+#[tauri::command]
+pub fn page_tree(state: tauri::State<'_, AppState>) -> Result<PageTreeDto, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    let graph = state.graph.read();
+    let graph = graph.as_ref().ok_or("граф не загружен")?;
+    let mut pages: Vec<String> = graph
+        .pages
+        .iter()
+        .filter(|(_, page)| page.kind == PageKind::Page)
+        .map(|(name, _)| external_page_name(graph, &root, name))
+        .collect();
+    pages.sort();
+    let directories = Graph::page_directories(&root).map_err(|error| error.to_string())?;
+    Ok(PageTreeDto { pages, directories })
+}
+
+#[tauri::command]
+pub async fn page_directory_create(
+    directory: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    Graph::create_page_directory(&directory, &root).map_err(|error| error.to_string())?;
+    crate::watcher::reindex_and_emit(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn page_path_get(name: String, state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let path = page_abs_path(&state, &name)?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 /// Переименовывает страницу: файл + ссылки на неё во всех файлах графа.
@@ -599,8 +655,10 @@ pub async fn page_rename(
         let Some(graph) = graph.as_mut() else {
             return Err("граф не загружен".into());
         };
+        let old_local = crate::core::page_names::local_page_name(&root, &old_name)
+            .ok_or_else(|| "не удалось определить имя графа".to_string())?;
         graph
-            .rename_page(&old_name, &new_name, &root)
+            .rename_page(&old_local, &new_name, &root)
             .map_err(|e| format!("{e}"))
     };
     crate::watcher::reindex_and_emit(&app);
@@ -612,7 +670,9 @@ fn page_abs_path(state: &AppState, name: &str) -> Result<std::path::PathBuf, Str
     let root = state.root.read().clone().ok_or("граф не загружен")?;
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
-    let page = graph.pages.get(name).ok_or("страница не найдена")?;
+    let local = crate::core::page_names::resolve_local_page_name(graph, &root, name)
+        .ok_or("страница не найдена")?;
+    let page = graph.pages.get(&local).ok_or("страница не найдена")?;
     let rel = page
         .path
         .clone()
@@ -643,8 +703,10 @@ pub async fn page_delete(
     {
         let graph = state.graph.read();
         let graph = graph.as_ref().ok_or("граф не загружен")?;
+        let local = crate::core::page_names::local_page_name(&root, &name)
+            .ok_or_else(|| "не удалось определить имя графа".to_string())?;
         graph
-            .delete_page_file(&name, &root)
+            .delete_page_file(&local, &root)
             .map_err(|e| format!("удаление {name}: {e}"))?;
     }
     crate::watcher::reindex_and_emit(&app);
@@ -657,49 +719,38 @@ pub async fn page_delete(
 #[tauri::command]
 pub async fn page_create(
     name: String,
+    directory: Option<String>,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<PageDto, String> {
-    let name = name.trim().to_string();
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    let name = crate::core::page_names::local_page_name(&root, name.trim())
+        .ok_or_else(|| "не удалось определить имя графа".to_string())?;
+    let directory = directory.unwrap_or_default();
+    crate::core::page_names::validate_relative_path(directory.trim(), true)
+        .map_err(|error| error.to_string())?;
+    let local = if directory.trim().is_empty() {
+        name
+    } else {
+        format!("{}/{}", directory.trim(), name)
+    };
     {
         let graph = state.graph.read();
         let graph = graph.as_ref().ok_or("граф не загружен")?;
         if let Some(existing) = graph
             .pages
             .keys()
-            .find(|k| k.to_lowercase() == name.to_lowercase())
+            .find(|key| key.to_lowercase() == local.to_lowercase())
             .cloned()
         {
-            return page_get_impl(graph, &existing);
+            return page_get_impl(graph, &root, &existing);
         }
     }
-    let root = state.root.read().clone().ok_or("граф не загружен")?;
-    Graph::create_page_file(&name, &root).map_err(|e| e.to_string())?;
+    Graph::create_page_file(&local, &root).map_err(|error| error.to_string())?;
     crate::watcher::reindex_and_emit(&app);
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
-    page_get_impl(graph, &name)
-}
-
-fn is_journal_name(name: &str) -> bool {
-    let mut parts = name.split('_');
-    let (y, m, d) = match (parts.next(), parts.next(), parts.next()) {
-        (Some(y), Some(m), Some(d)) => (y, m, d),
-        _ => return false,
-    };
-    if parts.next().is_some() {
-        return false;
-    }
-    y.len() == 4
-        && y.parse::<u16>().is_ok()
-        && m.len() == 2
-        && d.len() == 2
-        && m.parse::<u8>()
-            .map(|m| (1..=12).contains(&m))
-            .unwrap_or(false)
-        && d.parse::<u8>()
-            .map(|d| (1..=31).contains(&d))
-            .unwrap_or(false)
+    page_get_impl(graph, &root, &local)
 }
 
 /// Задача для UI: блок + страница-источник
@@ -933,9 +984,11 @@ fn query_task_dtos(graph: &Graph, q: &crate::core::query::SavedQuery) -> Vec<Tas
 /// Задачи по сохранённой подборке (фильтр + сортировка)
 #[tauri::command]
 pub fn tasks_by_query(
-    q: crate::core::query::SavedQuery,
+    mut q: crate::core::query::SavedQuery,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<TaskDto>, String> {
+    let root = state.root.read().clone().ok_or("граф не загружен")?;
+    localize_query(&root, &mut q);
     let graph = state.graph.read();
     let graph = graph.as_ref().ok_or("граф не загружен")?;
     Ok(query_task_dtos(graph, &q))
@@ -1074,6 +1127,54 @@ pub async fn task_set_quadrant(
     reindexed_block_uuid(&state, &page, position)
 }
 
+fn canonicalize_query(
+    graph: &Graph,
+    root: &std::path::Path,
+    query: &mut crate::core::query::SavedQuery,
+) -> bool {
+    let mut changed = false;
+    for (value, prefix) in [
+        (&mut query.filter.page, false),
+        (&mut query.filter.page_prefix, true),
+        (&mut query.filter.exclude_page, false),
+    ] {
+        let Some(current) = value else { continue };
+        if prefix {
+            let canonical = crate::core::page_names::stored_page_name(graph, root, current, true);
+            changed |= canonical != *current;
+            *current = canonical;
+        } else {
+            let canonical = current
+                .split(',')
+                .map(|name| crate::core::page_names::stored_page_name(graph, root, name.trim(), false))
+                .collect::<Vec<_>>()
+                .join(",");
+            changed |= canonical != *current;
+            *current = canonical;
+        }
+    }
+    changed
+}
+
+fn localize_query(root: &std::path::Path, query: &mut crate::core::query::SavedQuery) {
+    for value in [
+        &mut query.filter.page,
+        &mut query.filter.page_prefix,
+        &mut query.filter.exclude_page,
+    ] {
+        if let Some(current) = value {
+            *current = current
+                .split(',')
+                .map(|name| {
+                    crate::core::page_names::local_page_name(root, name.trim())
+                        .unwrap_or_else(|| name.trim().to_string())
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+        }
+    }
+}
+
 /// Сохранённые запросы графа (читает/пишет <граф>/.logtask/queries.json)
 #[tauri::command]
 pub fn queries_list(
@@ -1086,7 +1187,20 @@ pub fn queries_list(
     let path = root.join(".logtask").join("queries.json");
     if path.exists() {
         match std::fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str(&text).map_err(|e| format!("queries.json: {e}")),
+            Ok(text) => {
+                let mut queries: Vec<crate::core::query::SavedQuery> =
+                    serde_json::from_str(&text).map_err(|e| format!("queries.json: {e}"))?;
+                let graph = state.graph.read();
+                let graph = graph.as_ref().ok_or("граф не загружен")?;
+                let changed = queries
+                    .iter_mut()
+                    .fold(false, |changed, query| canonicalize_query(graph, &root, query) || changed);
+                if changed {
+                    let migrated = serde_json::to_string_pretty(&queries).map_err(|e| e.to_string())?;
+                    crate::core::fswrite::atomic_write(&path, &migrated).map_err(|e| e.to_string())?;
+                }
+                Ok(queries)
+            }
             Err(_) => Ok(default_queries()),
         }
     } else {
@@ -1578,6 +1692,8 @@ pub async fn block_create(
 ) -> Result<String, String> {
     let root = state.root.read().clone();
     let root = root.ok_or("граф не загружен")?;
+    let page = crate::core::page_names::local_page_name(&root, &page)
+        .ok_or_else(|| "не удалось определить имя графа".to_string())?;
     let status = marker.as_deref().and_then(Status::from_marker);
 
     let position = {
@@ -1741,6 +1857,27 @@ async fn clock_toggle(
     reindexed_block_uuid(&state, &page, position)
 }
 
+fn migrate_stored_settings(
+    graph: &Graph,
+    root: &std::path::Path,
+    settings: &mut crate::settings::Settings,
+) -> bool {
+    let mut changed = false;
+    for favorite in &mut settings.favorites {
+        let canonical = crate::core::page_names::stored_page_name(graph, root, favorite, false);
+        changed |= canonical != *favorite;
+        *favorite = canonical;
+    }
+    for source in &mut settings.integrations.sources {
+        if !source.page.is_empty() {
+            let canonical = crate::core::page_names::stored_page_name(graph, root, &source.page, false);
+            changed |= canonical != source.page;
+            source.page = canonical;
+        }
+    }
+    changed
+}
+
 /// Настройки графа (тема, шрифты, статусы канбана)
 #[tauri::command]
 pub fn settings_get(
@@ -1748,7 +1885,16 @@ pub fn settings_get(
 ) -> Result<crate::settings::Settings, String> {
     let root = state.root.read().clone();
     match root {
-        Some(root) => crate::settings::load(&root),
+        Some(root) => {
+            let mut settings = crate::settings::load(&root)?;
+            let graph = state.graph.read();
+            let graph = graph.as_ref().ok_or("граф не загружен")?;
+            let changed = migrate_stored_settings(graph, &root, &mut settings);
+            if changed {
+                crate::settings::save(&root, &settings).map_err(|e| e.to_string())?;
+            }
+            Ok(settings)
+        }
         None => Ok(crate::settings::Settings::default()),
     }
 }
@@ -2555,7 +2701,10 @@ fn base64_encode(data: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{backlink_dtos, base64_encode, prev_journals_slice, query_task_dtos, task_dto};
+    use super::{
+        backlink_dtos, base64_encode, canonicalize_query, localize_query,
+        migrate_stored_settings, prev_journals_slice, query_task_dtos, task_dto,
+    };
 
     #[test]
     fn tasks_by_query_sorts_nested_tasks_with_parent_rules() {
@@ -2761,6 +2910,47 @@ mod tests {
     }
 
     #[test]
+    fn settings_and_queries_migrate_canonical_page_names() {
+        let dir = std::env::temp_dir().join("logtask_canonical_migration_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages/Repo")).unwrap();
+        std::fs::write(dir.join("pages/A.md"), "- TODO A\n").unwrap();
+        std::fs::write(dir.join("pages/Repo/B.md"), "- TODO B\n").unwrap();
+        let mut graph = crate::core::model::Graph::default();
+        graph.index_dir(&dir).unwrap();
+        let mut settings = crate::settings::Settings {
+            favorites: vec!["A".into(), "Missing".into()],
+            ..Default::default()
+        };
+        settings.integrations.sources.push(crate::sync::config::SourceConfig {
+            page: "A".into(),
+            ..Default::default()
+        });
+
+        assert!(migrate_stored_settings(&graph, &dir, &mut settings));
+        let graph_name = crate::core::page_names::graph_name(&dir).unwrap();
+        assert_eq!(settings.favorites, [format!("{graph_name}/A"), "Missing".to_string()]);
+        assert_eq!(settings.integrations.sources[0].page, format!("{graph_name}/A"));
+
+        let mut query = crate::core::query::SavedQuery {
+            filter: crate::core::query::TaskFilter {
+                page: Some("A".into()),
+                page_prefix: Some("Repo/".into()),
+                exclude_page: Some("A,Missing".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(canonicalize_query(&graph, &dir, &mut query));
+        localize_query(&dir, &mut query);
+        assert_eq!(query.filter.page.as_deref(), Some("A"));
+        assert_eq!(query.filter.page_prefix.as_deref(), Some("Repo/"));
+        assert_eq!(query.filter.exclude_page.as_deref(), Some("A,Missing"));
+        assert_eq!(graph.query(&query).len(), 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn backlink_dtos_include_task_metadata() {
         let dir = std::env::temp_dir().join("logtask_backlink_dto_test");
         let _ = std::fs::remove_dir_all(&dir);
@@ -2773,13 +2963,13 @@ mod tests {
         let mut graph = crate::core::model::Graph::default();
         graph.index_dir(&dir).unwrap();
 
-        let links = backlink_dtos(&graph, "Заметка");
+        let links = backlink_dtos(&graph, &dir, "Заметка");
         assert_eq!(links.len(), 2);
         let plain = links
             .iter()
             .find(|l| l.text == "обычная [[Заметка]]")
             .unwrap();
-        assert_eq!(plain.page, "Источник");
+        assert_eq!(plain.page, "logtask_backlink_dto_test/Источник");
         assert!(!plain.task);
         assert_eq!(plain.status, None);
         assert!(graph.blocks.contains_key(&plain.uuid));
@@ -2787,7 +2977,7 @@ mod tests {
             .iter()
             .find(|l| l.text.starts_with("задача о [[Заметка]]"))
             .unwrap();
-        assert_eq!(task.page, "Источник");
+        assert_eq!(task.page, "logtask_backlink_dto_test/Источник");
         assert!(task.task);
         assert_eq!(task.status.as_deref(), Some("DONE"));
         assert!(graph.blocks.contains_key(&task.uuid));

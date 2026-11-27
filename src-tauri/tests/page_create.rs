@@ -25,15 +25,13 @@ fn create_page_writes_empty_file() {
 }
 
 #[test]
-fn create_page_rejects_slash() {
+fn create_page_supports_nested_path() {
     let dir = std::env::temp_dir().join("logtask_page_create_test_slash");
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("pages")).unwrap();
 
-    let err = Graph::create_page_file("Foo/Bar", &dir).expect_err("ошибка на /");
-    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-    assert!(err.to_string().contains("недопустимое"), "{err}");
-    assert!(!dir.join("pages/Foo").exists(), "ничего не создано");
+    Graph::create_page_file("Foo/Bar", &dir).expect("вложенное создание");
+    assert!(dir.join("pages/Foo/Bar.md").is_file());
 }
 
 #[test]
@@ -157,7 +155,7 @@ fn ensure_page_rejects_invalid_and_journal_names() {
     fs::create_dir_all(dir.join("pages")).unwrap();
     let mut graph = Graph::default();
 
-    for bad in ["", "   ", " Новая ", "Foo/Bar", "Foo\\Bar", "2026_11_07"] {
+    for bad in ["", "   ", " Новая ", "Foo\\Bar", "2026_11_07"] {
         let err = graph.ensure_page(bad, &dir).expect_err("недопустимое имя");
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{bad}");
     }

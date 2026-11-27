@@ -22,7 +22,11 @@ impl TestGraph {
     }
 
     fn write(&self, rel: &str, text: &str) {
-        fs::write(self.root.join(rel), text).unwrap();
+        let path = self.root.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, text).unwrap();
     }
 }
 
@@ -92,6 +96,19 @@ fn changed_added_and_removed_files_invalidate_cache() {
     fs::remove_file(fixture.root.join("pages/Первая.md")).unwrap();
     graph.index_dir(&fixture.root).unwrap();
     assert!(!graph.pages.contains_key("Первая"));
+}
+
+#[test]
+fn nested_file_addition_invalidates_cache() {
+    let fixture = TestGraph::new("nested-addition");
+    fixture.write("pages/Dir/Initial.md", "- initial\n");
+    let mut graph = Graph::default();
+    graph.index_dir(&fixture.root).unwrap();
+
+    fixture.write("pages/Dir/New.md", "- new\n");
+    graph.index_dir(&fixture.root).unwrap();
+
+    assert!(graph.pages.contains_key("Dir/New"));
 }
 
 #[test]

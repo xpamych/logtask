@@ -310,12 +310,14 @@ fn apply_merge(
     report: &mut SyncReport,
 ) -> MergeSummary {
     let mut summary = MergeSummary::default();
-    let mut by_page: HashMap<&str, Vec<&RemoteTask>> = HashMap::new();
+    let mut by_page: HashMap<String, Vec<&RemoteTask>> = HashMap::new();
     for t in remote {
-        by_page.entry(t.page.as_str()).or_default().push(t);
+        let local = crate::core::page_names::local_page_name(root, &t.page)
+            .unwrap_or_else(|| t.page.clone());
+        by_page.entry(local).or_default().push(t);
     }
 
-    let mut pages: Vec<String> = by_page.keys().map(|s| s.to_string()).collect();
+    let mut pages: Vec<String> = by_page.keys().cloned().collect();
     for name in graph.pages.keys() {
         if !by_page.contains_key(name.as_str())
             && !page_blocks_with_source(graph, name, &cfg.id).is_empty()
@@ -425,6 +427,9 @@ fn apply_merge(
 
 /// Создаёт файл страницы, если её ещё нет (пустой — наполнится задачами)
 fn ensure_page(graph: &mut Graph, root: &Path, name: &str) -> std::io::Result<()> {
+    let local = crate::core::page_names::local_page_name(root, name)
+        .unwrap_or_else(|| name.to_string());
+    let name = local.as_str();
     if graph.pages.contains_key(name) {
         return Ok(());
     }
@@ -670,6 +675,23 @@ pub async fn startup_and_ticker(app: tauri::AppHandle) {
 mod tests {
     use super::*;
     use crate::core::model::Priority;
+
+    #[test]
+    fn ensure_page_accepts_canonical_name_without_duplicate() {
+        let root = std::env::temp_dir().join(format!("logtask-sync-canonical-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("pages")).unwrap();
+        std::fs::write(root.join("pages/PPDB - TODO.md"), "").unwrap();
+        let mut graph = Graph::default();
+        graph.index_dir(&root).unwrap();
+        let canonical = crate::core::page_names::canonical_page_name(&root, "PPDB - TODO").unwrap();
+
+        ensure_page(&mut graph, &root, &canonical).unwrap();
+
+        assert_eq!(graph.pages.len(), 1);
+        assert!(graph.pages.contains_key("PPDB - TODO"));
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn fnv1a_stable() {

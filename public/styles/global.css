@@ -2018,7 +2018,132 @@ select.settings-select {
 
 .allpages-link {
   flex: 1;
+  min-height: 28px;
   text-align: left;
+}
+
+.allpages-header,
+.allpages-actions,
+.allpages-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.allpages-header {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.allpages-directory {
+  position: relative;
+}
+
+.allpages-directory > summary {
+  min-height: 32px;
+  padding: 5px 36px 5px 4px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  list-style: none;
+}
+
+.allpages-directory > summary::-webkit-details-marker {
+  display: none;
+}
+
+.allpages-directory > summary::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin: 0 10px 3px 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.allpages-directory[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.allpages-directory > summary:hover {
+  background: var(--bg-alt);
+}
+
+.allpages-directory-name {
+  font-weight: 600;
+}
+
+.allpages-directory-more {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+}
+
+.allpages-children {
+  margin-left: 12px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+.allpages-more {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.allpages-dialog {
+  width: min(440px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.allpages-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.allpages-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.allpages-dialog input {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-alt);
+  color: var(--text);
+  font: inherit;
+}
+
+.allpages-dialog-context {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.allpages-dialog-actions {
+  justify-content: flex-end;
+}
+
+.allpages-dialog :focus-visible,
+.allpages-list :focus-visible,
+.allpages-header :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .allpages-list button,
+  .allpages-list summary,
+  .allpages-header button {
+    min-height: 48px;
+  }
 }
 
 /* ---- Страница «Задачи» ---- */

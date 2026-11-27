@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::index::IndexStats;
 use super::model::{Graph, PageKind};
 
-const FORMAT_VERSION: u32 = 2;
+const FORMAT_VERSION: u32 = 3;
 const CACHE_REL_PATH: &str = ".logtask/index-cache.bin";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,21 +100,19 @@ pub(crate) fn manifest(root: &Path) -> Option<Vec<FileStamp>> {
         if !dir.is_dir() {
             continue;
         }
-        for entry in std::fs::read_dir(dir).ok()? {
-            let path = entry.ok()?.path();
-            if !path.is_file()
-                || path
-                    .extension()
-                    .map(|extension| extension != "md")
-                    .unwrap_or(true)
-            {
-                continue;
-            }
+        for path in super::page_names::markdown_files(&dir, kind == PageKind::Page).ok()? {
             if kind == PageKind::Journal && super::index::journal_name(&path).is_none() {
                 continue;
             }
-            if kind == PageKind::Page && path.file_stem().and_then(|stem| stem.to_str()).is_none() {
-                continue;
+            if kind == PageKind::Page {
+                let Some(relative) = path.strip_prefix(&dir).ok() else {
+                    continue;
+                };
+                let mut without_extension = relative.to_path_buf();
+                without_extension.set_extension("");
+                if super::page_names::path_to_slashes(&without_extension).is_none() {
+                    continue;
+                }
             }
             let metadata = std::fs::metadata(&path).ok()?;
             files.push(FileStamp {

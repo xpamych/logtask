@@ -37,10 +37,11 @@ src-tauri (команды) ←————→ SolidJS UI
 ```
 - На старте индекс восстанавливается из производного бинарного снимка
   `.logtask/index-cache.bin`, если версия формата и манифест `.md` (пути, размеры,
-  mtime) совпадают. Иначе строится полным проходом по `journals/` и `pages/`
-  (706 файлов / 7 МБ — фон, бюджет <100 мс, замер 72 мс) и снимок атомарно
+  mtime) совпадают. Иначе строится полным проходом по `journals/` и рекурсивно
+  по `pages/` (706 файлов / 7 МБ — фон, бюджет <100 мс, замер 72 мс) и снимок атомарно
   обновляется. Повреждение или ошибка записи кэша не мешает загрузке из `.md`.
-- `notify` следит за изменениями снаружи (Syncthing, ручное редактирование):
+- `notify` следит за изменениями снаружи (Syncthing, ручное редактирование),
+  рекурсивно включая вложенные каталоги `pages/`:
   на событие — **полная переиндексация графа** (дешевле, чем инкремент,
   ~72 мс), события доступа фильтруются, дребезг коалесцируется окном
   тишины 350 мс.
@@ -96,11 +97,17 @@ enum LinkTarget { Page(String) | Tag(String) | Block(String) | Asset(String) }
 Backlinks — обратный индекс `page-name → ссылающиеся блоки` (поле
 `Graph.backlinks`), считается в ядре, выдаётся командой `backlinks_get`,
 рендерится мгновенно. `Asset` участвует только в визуальном графе и не меняет
-backlinks или round-trip.
+backlinks или round-trip. Внутри `Graph` обычная страница называется путём
+относительно `pages/` без `.md`; на IPC-границе используется каноническое
+`<имя графа>/<локальный путь>`. Прежние локальные ссылки разрешаются в текущем
+графе, canonical ссылки других графов переключают его через список недавних.
+Избранное, query-фильтры и generic-страницы интеграций мигрируют к canonical
+именам; перед query/sync они снова локализуются для ядра.
 
 ## IPC (Tauri commands, см. `lib.rs`)
 - Чтение: `graph_load`, `graph_summary`, `journal_list`, `journal_prev`,
-  `page_get`, `page_list`, `follow_link`, `search`, `backlinks_get`
+  `page_get`, `page_list`, `page_tree`, `page_directory_create`, `page_path_get`,
+  `follow_link`, `search`, `backlinks_get`
 - Визуальный граф: `visual_graph_snapshot`, `visual_graph_local`,
   `visual_graph_path`, `visual_graph_layout_get`, `visual_graph_layout_save`,
   `asset_open`, `asset_reveal`, `asset_save`, `clipboard_asset_save`

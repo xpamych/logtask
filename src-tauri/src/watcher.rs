@@ -67,6 +67,7 @@ pub fn spawn_for_current(app: &AppHandle) -> Result<(), String> {
     }
 
     let tx_event = tx.clone();
+    let watch_root = root.clone();
     let mut watcher: RecommendedWatcher =
         notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
@@ -77,7 +78,12 @@ pub fn spawn_for_current(app: &AppHandle) -> Result<(), String> {
                     EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
                 }
                 for path in event.paths {
-                    if path.extension().is_some_and(|ext| ext == "md") {
+                    let in_pages = path.starts_with(watch_root.join("pages"));
+                    let is_markdown = path.extension().is_some_and(|ext| ext == "md");
+                    let possible_directory = in_pages
+                        && path.extension().is_none()
+                        && (path.is_dir() || !path.exists());
+                    if is_markdown || possible_directory {
                         let _ = tx_event.send(path);
                     }
                 }
@@ -88,8 +94,13 @@ pub fn spawn_for_current(app: &AppHandle) -> Result<(), String> {
     for sub in ["journals", "pages"] {
         let dir = root.join(sub);
         if dir.is_dir() {
+            let mode = if sub == "pages" {
+                RecursiveMode::Recursive
+            } else {
+                RecursiveMode::NonRecursive
+            };
             watcher
-                .watch(&dir, RecursiveMode::NonRecursive)
+                .watch(&dir, mode)
                 .map_err(|e| format!("watch {dir:?}: {e}"))?;
         }
     }
@@ -102,6 +113,13 @@ pub fn spawn_for_current(app: &AppHandle) -> Result<(), String> {
 pub fn paths_need_reindex(graph: &Graph, root: &Path, paths: &HashSet<PathBuf>) -> bool {
     for path in paths {
         if path.extension().map(|ext| ext != "md").unwrap_or(true) {
+            let pages = root.join("pages");
+            if path.starts_with(pages)
+                && path.extension().is_none()
+                && (path.is_dir() || !path.exists())
+            {
+                return true;
+            }
             continue;
         }
         let Ok(relative) = path.strip_prefix(root) else {
@@ -279,6 +297,31 @@ mod tests {
             &graph,
             &root,
             &paths(&root, &["pages/A.md", "pages/B.md"])
+        ));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn nested_markdown_and_directory_changes_require_reindex() {
+        let (root, graph) = graph_root("nested");
+        std::fs::create_dir_all(root.join("pages/Dir/Empty")).unwrap();
+        std::fs::write(root.join("pages/Dir/New.md"), "- new\n").unwrap();
+
+        assert!(paths_need_reindex(
+            &graph,
+            &root,
+            &paths(&root, &["pages/Dir/New.md"])
+        ));
+        assert!(paths_need_reindex(
+            &graph,
+            &root,
+            &paths(&root, &["pages/Dir/Empty"])
+        ));
+        std::fs::remove_dir_all(root.join("pages/Dir/Empty")).unwrap();
+        assert!(paths_need_reindex(
+            &graph,
+            &root,
+            &paths(&root, &["pages/Dir/Empty"])
         ));
         std::fs::remove_dir_all(root).unwrap();
     }

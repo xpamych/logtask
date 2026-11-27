@@ -239,7 +239,7 @@ impl Graph {
             return Ok(None);
         }
         rebuild_order(&mut working, &page_name);
-        working.write_page(&page_name, kind, rel_path, abs)?;
+        working.write_page(&page_name, kind, rel_path, abs, root)?;
         *self = working;
         Ok(Some(page_name))
     }

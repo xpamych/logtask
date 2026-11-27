@@ -84,7 +84,7 @@ impl Graph {
         }
 
         // обратные ссылки
-        self.rebuild_backlinks();
+        self.rebuild_backlinks(root);
         if complete {
             if let Some(files) = manifest {
                 super::index_cache::save_if_unchanged(root, self, &stats, files);
@@ -102,11 +102,7 @@ impl Graph {
         stats: &mut IndexStats,
         complete: &mut bool,
     ) -> std::io::Result<()> {
-        let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)?
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.is_file() && p.extension().map(|e| e == "md").unwrap_or(false))
-            .collect();
-        entries.sort();
+        let entries = super::page_names::markdown_files(dir, kind == PageKind::Page)?;
 
         for path in entries {
             let name = match kind {
@@ -114,9 +110,13 @@ impl Graph {
                     Some(n) => n,
                     None => continue,
                 },
-                PageKind::Page => match path.file_stem().and_then(|s| s.to_str()) {
-                    Some(s) => s.to_string(),
-                    None => continue,
+                PageKind::Page => match path.strip_prefix(dir).ok().map(|relative| {
+                    let mut without_extension = relative.to_path_buf();
+                    without_extension.set_extension("");
+                    super::page_names::path_to_slashes(&without_extension)
+                }) {
+                    Some(Some(name)) if !name.is_empty() => name,
+                    _ => continue,
                 },
             };
             if self.pages.contains_key(&name) {
@@ -190,12 +190,19 @@ impl Graph {
     }
 
     /// Перестраивает карту обратных ссылок: page-name → блоки, которые ссылаются
-    pub fn rebuild_backlinks(&mut self) {
+    pub fn rebuild_backlinks(&mut self, root: &Path) {
         self.backlinks.clear();
         for (id, block) in &self.blocks {
             for link in &block.links {
                 let target = match link {
-                    LinkTarget::Page(p) | LinkTarget::Tag(p) => p.clone(),
+                    LinkTarget::Page(target) | LinkTarget::Tag(target) => super::page_names::local_page_name(root, target)
+                        .filter(|local| {
+                            target == local
+                                || self.pages.contains_key(local)
+                                || super::page_names::graph_name(root)
+                                    .is_ok_and(|graph| target.starts_with(&format!("{graph}/")))
+                        })
+                        .unwrap_or_else(|| target.clone()),
                     LinkTarget::Block(_) | LinkTarget::Asset(_) => continue,
                 };
                 self.backlinks.entry(target).or_default().push(*id);
@@ -236,7 +243,7 @@ impl Graph {
     /// (заменяет блоки страницы и перестраивает обратные ссылки).
     /// Используется и после успешной записи, и для восстановления памяти
     /// после неудачной (чтобы граф не расходился с файлом).
-    fn reload_page(&mut self, name: &str, kind: PageKind, abs: &Path, rel_path: Option<PathBuf>) {
+    fn reload_page(&mut self, name: &str, kind: PageKind, abs: &Path, root: &Path, rel_path: Option<PathBuf>) {
         if let Some(page) = self.pages.get(name) {
             let old_order = page.order.clone();
             for old in old_order {
@@ -255,7 +262,7 @@ impl Graph {
             links: 0,
         };
         self.index_file_content(name, kind, &text, mtime, &mut stats, rel_path);
-        self.rebuild_backlinks();
+        self.rebuild_backlinks(root);
     }
 
     /// Обратные ссылки на страницу: (id блока, его страница)
@@ -314,12 +321,12 @@ impl Graph {
         if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
             // память уже изменена — перечитываем страницу с диска, чтобы
             // in-memory граф не расходился с файлом
-            self.reload_page(&page_name, kind, &abs, Some(rel_path.clone()));
+            self.reload_page(&page_name, kind, &abs, root, Some(rel_path.clone()));
             return Err(e);
         }
 
         // переиндексация этой страницы: удалить старые блоки и добавить новые
-        self.reload_page(&page_name, kind, &abs, Some(rel_path));
+        self.reload_page(&page_name, kind, &abs, root, Some(rel_path));
 
         Ok(Some(page_name))
     }
@@ -363,13 +370,10 @@ impl Graph {
                 "имя страницы пустое",
             ));
         }
-        if name.contains('/') || name.contains('\\') {
-            return Err(std::io::Error::new(
-                ErrorKind::InvalidInput,
-                format!("недопустимое имя страницы: {name}"),
-            ));
-        }
-        let abs = root.join("pages").join(format!("{name}.md"));
+        let relative = super::page_names::validate_relative_path(name, false)?;
+        let parent = relative.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
+        let abs = root.join("pages").join(relative).with_extension("md");
+        create_safe_pages_directory(root, &parent)?;
         OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -382,6 +386,30 @@ impl Graph {
                     std::io::Error::new(e.kind(), format!("создание {}: {e}", abs.display()))
                 }
             })
+    }
+
+    pub fn create_page_directory(directory: &str, root: &Path) -> std::io::Result<()> {
+        let relative = super::page_names::validate_relative_path(directory.trim(), false)?;
+        let abs = create_safe_pages_directory(root, &relative)?;
+        let metadata = std::fs::symlink_metadata(&abs)?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            Ok(())
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "по указанному пути существует не каталог",
+            ))
+        }
+    }
+
+    pub fn page_directories(root: &Path) -> std::io::Result<Vec<String>> {
+        let pages = root.join("pages");
+        let mut directories = Vec::new();
+        if pages.is_dir() {
+            collect_page_directories(&pages, &pages, &mut directories)?;
+        }
+        directories.sort();
+        Ok(directories)
     }
 
     /// Создаёт и индексирует отсутствующую обычную страницу для первой записи.
@@ -556,11 +584,11 @@ impl Graph {
         if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
             // память уже изменена — перечитываем страницу с диска, чтобы
             // in-memory граф не расходился с файлом
-            self.reload_page(&page_name, kind, &abs, Some(rel_path.clone()));
+            self.reload_page(&page_name, kind, &abs, root, Some(rel_path.clone()));
             return Err(e);
         }
 
-        self.reload_page(&page_name, kind, &abs, Some(rel_path));
+        self.reload_page(&page_name, kind, &abs, root, Some(rel_path));
         Ok(Some(page_name))
     }
 
@@ -625,7 +653,7 @@ impl Graph {
         if pos == 0 {
             if page.order.len() == 1 && source.is_some_and(|text| !text.trim().is_empty()) {
                 self.blocks.get_mut(id).expect("блок").set_source("");
-                self.write_page(&page_name, kind, rel_path, abs)?;
+                self.write_page(&page_name, kind, rel_path, abs, root)?;
                 return Ok(Some((page_name, 0)));
             }
             return Ok(None); // первому блоку не с кем склеиваться
@@ -739,10 +767,10 @@ impl Graph {
         let page_snapshot = self.pages[&page_name].clone();
         let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
         if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
-            self.reload_page(&page_name, kind, &abs, Some(rel_path.clone()));
+            self.reload_page(&page_name, kind, &abs, root, Some(rel_path.clone()));
             return Err(e);
         }
-        self.reload_page(&page_name, kind, &abs, Some(rel_path));
+        self.reload_page(&page_name, kind, &abs, root, Some(rel_path));
         // выживший блок остался на позиции prev (pos - 1)
         Ok(Some((page_name, pos - 1)))
     }
@@ -817,14 +845,15 @@ impl Graph {
         kind: super::model::PageKind,
         rel_path: PathBuf,
         abs: PathBuf,
+        root: &Path,
     ) -> std::io::Result<()> {
         let page_snapshot = self.pages[page_name].clone();
         let text = super::serializer::serialize_page(&page_snapshot, &self.blocks);
         if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
-            self.reload_page(page_name, kind, &abs, Some(rel_path.clone()));
+            self.reload_page(page_name, kind, &abs, root, Some(rel_path.clone()));
             return Err(e);
         }
-        self.reload_page(page_name, kind, &abs, Some(rel_path));
+        self.reload_page(page_name, kind, &abs, root, Some(rel_path));
         Ok(())
     }
 
@@ -936,7 +965,7 @@ impl Graph {
             .iter()
             .position(|x| x == id)
             .expect("блок на месте");
-        self.write_page(&page_name, kind, rel_path, abs)?;
+        self.write_page(&page_name, kind, rel_path, abs, root)?;
         Ok(Some((page_name, pos)))
     }
 
@@ -1053,7 +1082,7 @@ impl Graph {
             .iter()
             .position(|x| x == id)
             .expect("блок на месте");
-        self.write_page(&page_name, kind, rel_path, abs)?;
+        self.write_page(&page_name, kind, rel_path, abs, root)?;
         Ok(Some((page_name, pos)))
     }
 
@@ -1147,7 +1176,7 @@ impl Graph {
             .order
             .insert(end, new_id);
 
-        self.write_page(&page_name, kind, rel_path, abs)?;
+        self.write_page(&page_name, kind, rel_path, abs, root)?;
         Ok(Some((page_name, end)))
     }
 
@@ -1212,11 +1241,11 @@ impl Graph {
         if let Err(e) = super::fswrite::atomic_write(&abs, &text) {
             // память уже изменена — перечитываем страницу с диска, чтобы
             // in-memory граф не расходился с файлом
-            self.reload_page(page_name, kind, &abs, Some(rel_path.clone()));
+            self.reload_page(page_name, kind, &abs, root, Some(rel_path.clone()));
             return Err(e);
         }
 
-        self.reload_page(page_name, kind, &abs, Some(rel_path));
+        self.reload_page(page_name, kind, &abs, root, Some(rel_path));
         // uuid пересоздаётся при переиндексации (Logseq не хранит его в .md),
         // поэтому находим свежий блок по содержанию
         let new_id = self
@@ -1271,7 +1300,11 @@ impl Graph {
         if page.kind != PageKind::Page {
             return Err(invalid("журналы нельзя переименовывать"));
         }
-        if self.pages.contains_key(new) {
+        let new_local = old
+            .rsplit_once('/')
+            .map(|(parent, _)| format!("{parent}/{new}"))
+            .unwrap_or_else(|| new.to_string());
+        if self.pages.contains_key(&new_local) {
             return Err(invalid("страница с таким именем уже существует"));
         }
 
@@ -1280,7 +1313,7 @@ impl Graph {
             .clone()
             .unwrap_or_else(|| default_rel_path(old, page.kind));
         let old_abs = root.join(old_rel);
-        let new_abs = root.join(default_rel_path(new, PageKind::Page));
+        let new_abs = old_abs.with_file_name(format!("{new}.md"));
         if new_abs.exists() {
             return Err(invalid("файл с таким именем уже существует"));
         }
@@ -1314,7 +1347,13 @@ impl Graph {
                 root.join(rel)
             };
             let original = std::fs::read_to_string(&read_abs)?;
-            let updated = super::rename::replace_refs(&original, old, new);
+            let mut updated = super::rename::replace_refs(&original, old, &new_local);
+            if let (Ok(canonical_old), Ok(canonical_new)) = (
+                super::page_names::canonical_page_name(root, old),
+                super::page_names::canonical_page_name(root, &new_local),
+            ) {
+                updated = super::rename::replace_refs(&updated, &canonical_old, &canonical_new);
+            }
             let mtime = p
                 .mtime
                 .ok_or_else(|| std::io::Error::other(format!("нет mtime страницы {name}")))?;
@@ -1388,6 +1427,50 @@ impl Graph {
         check_mtime(&abs, page.mtime)?;
         std::fs::remove_file(abs)
     }
+}
+
+fn create_safe_pages_directory(root: &Path, relative: &Path) -> std::io::Result<PathBuf> {
+    let mut current = root.join("pages");
+    for component in std::iter::once(None).chain(relative.components().map(Some)) {
+        if let Some(component) = component {
+            current.push(component.as_os_str());
+        }
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!("путь содержит файл или symlink: {}", current.display()),
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::create_dir(&current)?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(current)
+}
+
+fn collect_page_directories(
+    root: &Path,
+    dir: &Path,
+    output: &mut Vec<String>,
+) -> std::io::Result<()> {
+    let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let file_type = entry.file_type()?;
+        if !file_type.is_dir() || file_type.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        if let Some(relative) = path.strip_prefix(root).ok().and_then(super::page_names::path_to_slashes) {
+            output.push(relative);
+        }
+        collect_page_directories(root, &path, output)?;
+    }
+    Ok(())
 }
 
 /// Err, если файл на диске новее прочитанного (внешняя правка)

@@ -11,6 +11,7 @@ import {
   logFrontend,
   pageList,
   pickGraphDir,
+  recentGraphs,
   settingsGet,
   editRedo,
   editUndo,
@@ -47,6 +48,7 @@ import { centerGridColumn, mobilePanelAfterNavigation, mobilePanelAfterToggle, p
 import { isGraphNotChosen, loadGraphBootstrap } from "~/lib/startup";
 import { selectedTaskUuid } from "~/lib/taskNavigation";
 import { SettingsWriteQueue } from "~/lib/settingsQueue";
+import { canonicalRenameTarget, graphBaseName, resolveCrossGraphTarget } from "~/lib/crossGraph";
 
 const RECENT_PAGES_KEY = "logtask:recentPages";
 
@@ -76,11 +78,18 @@ const DEFAULT_SETTINGS: Settings = {
   shortcuts: {},
 };
 
-function loadRecentPages(): string[] {
+function loadRecentPages(root = "", pages: string[] = []): string[] {
   try {
-    const raw = localStorage.getItem(RECENT_PAGES_KEY);
+    const scopedKey = root ? `${RECENT_PAGES_KEY}:${root}` : RECENT_PAGES_KEY;
+    const raw = localStorage.getItem(scopedKey) ?? (root ? localStorage.getItem(RECENT_PAGES_KEY) : null);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((p) => typeof p === "string") : [];
+    if (!Array.isArray(parsed)) return [];
+    const graphName = graphBaseName(root);
+    return parsed.filter((page): page is string => typeof page === "string").map((page) => {
+      if (!root || pages.includes(page)) return page;
+      const canonical = `${graphName}/${page}`;
+      return pages.includes(canonical) ? canonical : page;
+    });
   } catch {
     return [];
   }
@@ -341,14 +350,39 @@ const App: Component = () => {
     });
   });
 
-  const openPage = (name: string, uuid?: string, preserveRight = false) => {
-    if (!name) return;
+  const saveRecentPages = (list: string[]) => {
+    const root = summary()?.root;
+    if (root) localStorage.setItem(`${RECENT_PAGES_KEY}:${root}`, JSON.stringify(list));
+  };
+  const openPageLocal = (name: string, uuid?: string, preserveRight = false) => {
     navigate({ kind: "page", name }, preserveRight);
     setFocusUuid(uuid ?? null);
-    // недавние страницы (свежие первыми, максимум 10)
-    const list = [name, ...recentPages().filter((p) => p !== name)].slice(0, 10);
+    const list = [name, ...recentPages().filter((page) => page !== name)].slice(0, 10);
     setRecentPages(list);
-    localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(list));
+    saveRecentPages(list);
+  };
+  const openPage = async (name: string, uuid?: string, preserveRight = false) => {
+    if (!name) return;
+    const root = summary()?.root ?? "";
+    let resolution = resolveCrossGraphTarget(name, root, pages(), []);
+    if (resolution.kind === "unknown") {
+      resolution = resolveCrossGraphTarget(name, root, pages(), await recentGraphs());
+    }
+    if (resolution.kind === "local") {
+      openPageLocal(name, uuid, preserveRight);
+    } else if (resolution.kind === "switch") {
+      await openGraph(resolution.path, resolution.name);
+    } else if (resolution.kind === "ambiguous") {
+      showToast(`Несколько графов называются «${resolution.graphName}» — переход неоднозначен`);
+    } else {
+      const selected = await pickGraphDir(`Выбрать граф «${resolution.graphName}»`);
+      if (!selected) return;
+      if (graphBaseName(selected) !== resolution.graphName) {
+        showToast(`Выбранный граф должен называться «${resolution.graphName}»`);
+        return;
+      }
+      await openGraph(selected, resolution.name);
+    }
   };
 
   const showJournal = () => navigate({ kind: "journal" });
@@ -496,6 +530,7 @@ const App: Component = () => {
   const renameCurrentPage = (newName: string) => {
     const old = current();
     if (!old) return;
+    newName = canonicalRenameTarget(summary()?.root ?? "", newName);
     const s = settings();
     if (s.favorites.includes(old)) {
       const favorites = s.favorites.map((f) => (f === old ? newName : f));
@@ -506,7 +541,7 @@ const App: Component = () => {
     if (recentPages().includes(old)) {
       const rec = recentPages().map((r) => (r === old ? newName : r));
       setRecentPages(rec);
-      localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(rec));
+      saveRecentPages(rec);
     }
     openPage(newName);
   };
@@ -524,7 +559,7 @@ const App: Component = () => {
     if (recentPages().includes(old)) {
       const rec = recentPages().filter((r) => r !== old);
       setRecentPages(rec);
-      localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(rec));
+      saveRecentPages(rec);
     }
     showHome();
   };
@@ -549,6 +584,7 @@ const App: Component = () => {
       setSummary(summary);
       settingsWriter.setGraph(summary.root ?? "");
       setPages(pages);
+      setRecentPages(loadRecentPages(summary.root ?? "", pages));
       applySettings(settings);
       // стартовый вид — домашняя страница из настроек
       applyView(homeViewOf(settings));
@@ -669,7 +705,7 @@ const App: Component = () => {
     }
   };
 
-  const openGraph = async (path: string) => {
+  const openGraph = async (path: string, pendingPage?: string) => {
     setError(null);
     setStarting(true);
     try {
@@ -691,6 +727,8 @@ const App: Component = () => {
       // стартовый вид графа — домашняя страница из настроек
       applyView(homeViewOf(settings));
       setPages(pages);
+      setRecentPages(loadRecentPages(summary.root ?? "", pages));
+      if (pendingPage) openPageLocal(pendingPage);
       setRefreshKey((k) => k + 1);
     } catch (e) {
       setError(String(e));
@@ -865,10 +903,13 @@ const App: Component = () => {
                               }
                             >
                               <AllPages
+                                graphRoot={summary()?.root ?? ""}
+                                refreshKey={refreshKey()}
                                 pages={pages()}
                                 favorites={settings().favorites}
                                 onOpenPage={openPage}
                                 onToggleFavorite={toggleFavorite}
+                                onToast={showToast}
                               />
                             </Show>
                           }

@@ -7,6 +7,7 @@ pub mod index;
 pub mod index_cache;
 pub mod model;
 pub mod parser;
+pub mod page_names;
 pub mod query;
 pub mod rename;
 pub mod serializer;

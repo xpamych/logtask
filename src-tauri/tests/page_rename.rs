@@ -14,6 +14,26 @@ fn make_graph(name: &str) -> std::path::PathBuf {
 }
 
 #[test]
+fn rename_nested_page_keeps_directory_and_updates_canonical_links() {
+    let dir = std::env::temp_dir().join("logtask_nested_rename_test/Заметки");
+    let _ = fs::remove_dir_all(dir.parent().unwrap());
+    fs::create_dir_all(dir.join("pages/Dir")).unwrap();
+    fs::write(dir.join("pages/Dir/Old.md"), "- задача\n").unwrap();
+    fs::write(dir.join("pages/Other.md"), "- [[Заметки/Dir/Old]]\n").unwrap();
+    let mut graph = Graph::default();
+    graph.index_dir(&dir).unwrap();
+
+    graph.rename_page("Dir/Old", "New", &dir).unwrap();
+
+    assert!(!dir.join("pages/Dir/Old.md").exists());
+    assert!(dir.join("pages/Dir/New.md").is_file());
+    assert_eq!(
+        fs::read_to_string(dir.join("pages/Other.md")).unwrap(),
+        "- [[Заметки/Dir/New]]\n"
+    );
+}
+
+#[test]
 fn rename_moves_file_and_rewrites_refs() {
     let dir = make_graph("logtask_rename_test1");
     fs::write(dir.join("pages/Старая.md"), "- TODO задача\n").unwrap();
