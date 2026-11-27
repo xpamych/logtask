@@ -915,6 +915,7 @@ const App: Component = () => {
                           }
                         >
                           <TasksPage
+                            graphRoot={summary()?.root ?? ""}
                             refreshKey={refreshKey()}
                             settings={settings()}
                             onOpenPage={openPage}

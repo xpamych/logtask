@@ -129,7 +129,7 @@ export function IntegrationSources(props: {
 }) {
   const [states, setStates] = createSignal<SourceState[]>([]);
   const [openId, setOpenId] = createSignal<string | null>(null);
-  const [notice, setNotice] = createSignal<string | null>(null);
+  const [notice, setNotice] = createSignal<{ id: string; text: string } | null>(null);
   const [tokenDraft, setTokenDraft] = createSignal("");
   // список репозиториев — черновик строкой, коммит по blur/Enter:
   // иначе парсинг на каждый ввод съедает только что набранную запятую
@@ -169,29 +169,30 @@ export function IntegrationSources(props: {
     // если в поле токена есть несохранённый ввод — сначала сбрасываем в keyring,
     // иначе проверка уйдёт без секрета и вернёт «не найден в хранилище»
     await saveToken(s);
-    setNotice("Проверка подключения…");
+    setNotice({ id: s.id, text: "Проверка подключения…" });
     try {
       const n = await integrationsTest(s);
-      setNotice(`«${s.name}»: подключение ok, задач: ${n}`);
+      setNotice({ id: s.id, text: `Подключение ok, задач: ${n}` });
     } catch (e) {
-      setNotice(`«${s.name}»: ошибка — ${e}`);
+      setNotice({ id: s.id, text: `Ошибка — ${e}` });
     }
   };
 
   const syncOne = async (s: SourceConfig) => {
     await saveToken(s); // как в testConnection: сбросить несохранённый токен
-    setNotice(`Синхронизация «${s.name}»…`);
+    setNotice({ id: s.id, text: "Синхронизация…" });
     try {
       const reports = await integrationsSync(s.id);
       const r = reports[0];
-      setNotice(
-        r?.error
-          ? `«${s.name}»: ошибка — ${r.error}`
-          : `«${s.name}»: +${r?.added ?? 0} обновлено ${r?.updated ?? 0}, удалено ${r?.removed ?? 0}`,
-      );
+      setNotice({
+        id: s.id,
+        text: r?.error
+          ? `Ошибка — ${r.error}`
+          : `+${r?.added ?? 0}, обновлено ${r?.updated ?? 0}, удалено ${r?.removed ?? 0}`,
+      });
       await refreshStates();
     } catch (e) {
-      setNotice(`«${s.name}»: ошибка — ${e}`);
+      setNotice({ id: s.id, text: `Ошибка — ${e}` });
     }
   };
 
@@ -207,7 +208,7 @@ export function IntegrationSources(props: {
       await integrationsSetSecret(name, value);
       setTokenDraft("");
       setTokenError(null);
-      setNotice(`Токен «${name}» сохранён в системном хранилище`);
+      setNotice({ id: s.id, text: `Токен «${name}» сохранён в системном хранилище` });
       await refreshStates();
     } catch (e) {
       setTokenError(`Токен не сохранён: ${e}`);
@@ -384,7 +385,7 @@ export function IntegrationSources(props: {
                         <PushBodyEditor
                           value={p().bodyTemplate}
                           onCommit={(v) => update(idx, { push: { ...p(), bodyTemplate: v } })}
-                          onError={(msg) => setNotice(msg)}
+                          onError={(msg) => setNotice({ id: s().id, text: msg })}
                         />
                         <MapEditor
                           title="Маркер → значение сервера (statusMapOut)"
@@ -511,6 +512,9 @@ export function IntegrationSources(props: {
                     Удалить
                   </button>
                 </div>
+                <Show when={notice()?.id === s().id}>
+                  <p class="integration-notice" aria-live="polite">{notice()?.text}</p>
+                </Show>
               </div>
             </Show>
           </div>
@@ -527,9 +531,6 @@ export function IntegrationSources(props: {
         </For>
       </div>
 
-      <Show when={notice()}>
-        <p class="integration-notice">{notice()}</p>
-      </Show>
     </>
   );
 }

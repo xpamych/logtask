@@ -11,6 +11,8 @@ import {
 import { refreshGuarded } from "~/lib/editState";
 import { upsertQuery } from "~/lib/queryState";
 import { selectedTaskUuid, setSelectedTaskUuid } from "~/lib/taskNavigation";
+import { graphBaseName } from "~/lib/crossGraph";
+import { localQueryText } from "~/lib/pageTree";
 import { QueryEditor } from "./QueryEditor";
 import { TaskCard } from "./TaskCard";
 
@@ -68,16 +70,16 @@ function countMatches(tasks: TaskDto[]): number {
 }
 
 /** Человекочитаемое описание фильтра: «открытые · В работе · #проект» */
-export function filterSummary(q: SavedQuery, settings?: Settings | null): string {
+export function filterSummary(q: SavedQuery, settings?: Settings | null, graphName = ""): string {
   const parts: string[] = [q.filter.open ? "открытые" : "все статусы"];
   const labelOf = (marker: string) =>
     settings?.statuses.find((s) => s.marker === marker)?.label ?? marker;
   if (q.filter.status.length > 0) {
     parts.push(q.filter.status.map(labelOf).join(", "));
   }
-  if (q.filter.page) parts.push(`страница «${q.filter.page}»`);
-  if (q.filter.pagePrefix) parts.push(`страница начинается с «${q.filter.pagePrefix}»`);
-  if (q.filter.excludePage) parts.push(`кроме «${q.filter.excludePage}»`);
+  if (q.filter.page) parts.push(`страница «${localQueryText(q.filter.page, graphName)}»`);
+  if (q.filter.pagePrefix) parts.push(`страница начинается с «${localQueryText(q.filter.pagePrefix, graphName)}»`);
+  if (q.filter.excludePage) parts.push(`кроме «${localQueryText(q.filter.excludePage, graphName)}»`);
   if (q.filter.tags.length > 0) {
     parts.push(q.filter.tags.map((t) => `#${t}`).join(" "));
   }
@@ -95,6 +97,7 @@ export function filterSummary(q: SavedQuery, settings?: Settings | null): string
 }
 
 export function Queries(props: {
+  graphRoot: string;
   refreshKey: number;
   settings?: Settings | null;
   onOpenPage: (name: string) => void;
@@ -222,7 +225,7 @@ export function Queries(props: {
             >
               <span class="caret">{collapsed()[q.title] ? "▸" : "▾"}</span>
               <span class="query-title">{q.title}</span>
-              <span class="query-summary">{filterSummary(q, props.settings)}</span>
+              <span class="query-summary">{filterSummary(q, props.settings, graphBaseName(props.graphRoot))}</span>
               <span class="query-count">
                 {pluralTasks(countMatches(results()[q.title] ?? []))}
               </span>
@@ -263,6 +266,7 @@ export function Queries(props: {
       <Show when={editorOpen()}>
         <QueryEditor
           query={editing()}
+          graphRoot={props.graphRoot}
           settings={props.settings}
           onClose={() => setEditorOpen(false)}
           onSave={onSaveQuery}

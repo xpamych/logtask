@@ -3,6 +3,8 @@ import { IconX } from "~/components/icons";
 import type { JSX } from "solid-js";
 import { SORT_FIELDS } from "~/lib/api";
 import type { SavedQuery, Settings, SortRule } from "~/lib/api";
+import { graphBaseName } from "~/lib/crossGraph";
+import { localQueryText } from "~/lib/pageTree";
 
 const QUADRANTS = [
   { key: "do", label: "Сделать (срочно и важно)" },
@@ -13,12 +15,14 @@ const QUADRANTS = [
 
 export function QueryEditor(props: {
   query: SavedQuery | null;
+  graphRoot: string;
   settings?: Settings | null;
   onClose: () => void;
   onSave: (q: SavedQuery, originalTitle: string | null) => void;
   onDelete: (title: string) => void;
 }): JSX.Element {
   const isNew = () => props.query === null;
+  const graphName = () => graphBaseName(props.graphRoot);
   const [draft, setDraft] = createSignal<SavedQuery>(
     props.query
       ? JSON.parse(JSON.stringify(props.query))
@@ -175,7 +179,7 @@ export function QueryEditor(props: {
             <input
               class="status-label-input"
               placeholder="точное название, например: Проект - TODO"
-              value={draft().filter.page ?? ""}
+              value={localQueryText(draft().filter.page ?? "", graphName())}
               onInput={(e) =>
                 setDraft((d) => ({
                   ...d,
@@ -190,7 +194,7 @@ export function QueryEditor(props: {
             <input
               class="status-label-input"
               placeholder="например: Проект -"
-              value={draft().filter.pagePrefix ?? ""}
+              value={localQueryText(draft().filter.pagePrefix ?? "", graphName())}
               onInput={(e) =>
                 setDraft((d) => ({
                   ...d,
@@ -205,7 +209,7 @@ export function QueryEditor(props: {
             <input
               class="status-label-input"
               placeholder="названия страниц через запятую"
-              value={draft().filter.excludePage ?? ""}
+              value={localQueryText(draft().filter.excludePage ?? "", graphName())}
               onInput={(e) =>
                 setDraft((d) => ({
                   ...d,

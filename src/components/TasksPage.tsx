@@ -35,6 +35,7 @@ function loadBoardView(): BoardView {
 
 /** Страница «Задачи»: подборки (по умолчанию) и доска (канбан/матрица) */
 export function TasksPage(props: {
+  graphRoot: string;
   refreshKey: number;
   settings?: Settings | null;
   onOpenPage: (name: string, uuid?: string) => void;
@@ -95,6 +96,7 @@ export function TasksPage(props: {
           when={mode() === "Доска"}
           fallback={
             <Queries
+              graphRoot={props.graphRoot}
               refreshKey={props.refreshKey}
               settings={props.settings}
               onOpenPage={props.onOpenPage}

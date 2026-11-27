@@ -15,6 +15,17 @@ export function pageNameStem(name: string): string {
   return name.split("/").at(-1) ?? name;
 }
 
+export function localQueryText(value: string, graphName: string): string {
+  const prefix = `${graphName}/`;
+  return value
+    .split(",")
+    .map((part) => {
+      const name = part.trim();
+      return name.startsWith(prefix) ? name.slice(prefix.length) : name;
+    })
+    .join(", ");
+}
+
 export function buildPageTree(data: PageTreeDto, graphName: string): PageTreeNode {
   const root: PageTreeNode = { kind: "directory", name: graphName, path: graphName, children: [] };
   const directories = new Map<string, PageTreeNode>([[graphName, root]]);

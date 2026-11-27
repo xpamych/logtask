@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildPageTree,
+  localQueryText,
   pageNameStem,
   readExpandedDirs,
   revealPath,
   writeExpandedDirs,
 } from "./pageTree.ts";
+
+test("локальные фильтры скрывают имя графа во всех страничных полях", () => {
+  assert.equal(localQueryText("Logtask/Dir/Page", "Logtask"), "Dir/Page");
+  assert.equal(localQueryText("Logtask/РЕД СОФТ - TODO,Logtask/LG - TODO", "Logtask"), "РЕД СОФТ - TODO, LG - TODO");
+  assert.equal(localQueryText("Dir/Page", "Logtask"), "Dir/Page");
+});
 
 test("имя файла отделяется от canonical пути для проверки rename без изменений", () => {
   assert.equal(pageNameStem("Logtask/Dir/blink-codes"), "blink-codes");
